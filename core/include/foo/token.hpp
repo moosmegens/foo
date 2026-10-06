@@ -114,7 +114,7 @@ namespace foo
     };
 
 
-    struct Var      { static constexpr std::string_view name = "Var";
+    struct Var { static constexpr std::string_view name = "Var";
         std::string to_string() const { return "var"; }
     };
 
@@ -194,6 +194,11 @@ namespace foo
         std::string value;
     };
 
+    struct Import { static constexpr std::string_view name = "Import";
+        std::string to_string() const { return "import"; }
+    };
+
+
     struct Doc
     {
         static constexpr std::string_view name = "Doc";
@@ -230,6 +235,8 @@ namespace foo
         Var, Function, Struct, Ref,
         If, Else, While, For, In,
         Return,
+
+        Import,
 
         Doc, EndOfFile
     >;

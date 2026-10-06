@@ -1,18 +1,81 @@
 #include <iostream>
 #include <ostream>
 
-#include "utest.hpp"
+#include "doctest.hpp"
 
 #include <foo/lexer.hpp>
 
 
-UTEST(lexer, operator_soup)
+void lex_test(
+    const std::vector<foo::Token>& tokens,
+    std::initializer_list<foo::TokenKind> expected)
 {
-    auto r = foo::tokenize("+<=-<5+1");
+    REQUIRE(tokens.size() == expected.size());
 
-    for (auto token : r.tokens)
+    size_t i = 0;
+    for (const auto& expected_kind : expected)
     {
-        std::cout << name(token.kind) << std::endl;
+        CHECK_MESSAGE(
+            tokens[i].kind.index() == expected_kind.index(),
+            "token " << i
+            << ": expected " << foo::name(expected_kind)
+            << ", got " << foo::name(tokens[i].kind)
+        );
+
+        i++;
     }
+}
+
+
+TEST_CASE("lexer - operators")
+{
+    auto r = foo::tokenize("+ - * / %");
+
+    lex_test(r.tokens, {
+        foo::PlusOp{},
+        foo::MinusOp{},
+        foo::MultiplyOp{},
+        foo::DivideOp{},
+        foo::ModuloOp{},
+        foo::EndOfFile{},
+    });
+}
+
+TEST_CASE("lexer - comparison operators")
+{
+    auto r = foo::tokenize("== != < <= > >=");
+
+    lex_test(r.tokens, {
+        foo::EqualOp{},
+        foo::NotEqualOp{},
+        foo::LessOp{},
+        foo::LessEqualOp{},
+        foo::GreaterOp{},
+        foo::GreaterEqualOp{},
+        foo::EndOfFile{},
+    });
+}
+
+TEST_CASE("lexer - logical operators")
+{
+    auto r = foo::tokenize("&& || !");
+
+    lex_test(r.tokens, {
+        foo::AndOp{},
+        foo::OrOp{},
+        foo::NotOp{},
+        foo::EndOfFile{},
+    });
+}
+
+TEST_CASE("lexer - assignment")
+{
+    auto r = foo::tokenize("a =");
+
+    lex_test(r.tokens, {
+        foo::Identifier{},
+        foo::AssignOp{},
+        foo::EndOfFile{},
+    });
 }
 

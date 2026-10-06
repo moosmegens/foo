@@ -63,6 +63,7 @@ namespace foo
             {"return", Return{}},
             {"true", Boolean{true}},
             {"false", Boolean{false}},
+            {"import", Import{}},
         };
 
         if (auto it = keywords.find(text); it != keywords.end())
@@ -168,6 +169,22 @@ namespace foo
             case '-': return make(MinusOp{},    start, offset);
             case '*': return make(MultiplyOp{}, start, offset);
             case '%': return make(ModuloOp{},   start, offset);
+
+            case '=':
+            {
+                if (match(src, offset, '='))
+                    return make(EqualOp{}, start, offset);
+                else
+                    return make(AssignOp{}, start, offset);
+            }
+
+            case '!':
+            {
+                if (match(src, offset, '='))
+                    return make(NotEqualOp{}, start, offset);
+                else
+                    return make(NotOp{}, start, offset);
+            }
 
             case '<':
             {
