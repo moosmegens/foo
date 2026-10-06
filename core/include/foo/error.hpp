@@ -20,6 +20,12 @@ namespace foo
 
     template<class T>
     using Result = std::expected<T, Error>;
+
+    template<class... Args>
+    std::unexpected<Error> fail(SourceSpan location, std::format_string<Args...> fmt, Args&&... args)
+    {
+        return std::unexpected(Error{location, std::format(fmt, std::forward<Args>(args)...)});
+    }
 }
 
 
