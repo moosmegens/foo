@@ -9,209 +9,90 @@
 
 #include "source.hpp"
 
+#define FOO_TOKEN(NAME, TO_STRING, ...)                 \
+    struct NAME {                                  \
+        static constexpr std::string_view name = #NAME; \
+        __VA_ARGS__                                \
+        std::string to_string() const { return TO_STRING; } \
+        bool operator==(const NAME&) const = default; \
+    }
 
 namespace foo
 {
-    struct LParen { static constexpr std::string_view name = "LParen";
-        std::string to_string() const { return "("; }
-    };
+    FOO_TOKEN(LParen, "(");
+    FOO_TOKEN(RParen, ")");
 
-    struct RParen { static constexpr std::string_view name = "RParen";
-        std::string to_string() const { return ")"; }
-    };
+    FOO_TOKEN(LBracket, "[");
+    FOO_TOKEN(RBracket, "]");
 
-    struct LBracket { static constexpr std::string_view name = "LBracket";
-        std::string to_string() const { return "["; }
-    };
+    FOO_TOKEN(LBrace, "{");
+    FOO_TOKEN(RBrace, "}");
 
-    struct RBracket { static constexpr std::string_view name = "RBracket";
-        std::string to_string() const { return "]"; }
-    };
+    FOO_TOKEN(Comma, ",");
+    FOO_TOKEN(Semicolon, ";");
+    FOO_TOKEN(Colon, ":");
+    FOO_TOKEN(Dot, ".");
 
-    struct LBrace { static constexpr std::string_view name = "LBrace";
-        std::string to_string() const { return "{"; }
-    };
+    FOO_TOKEN(PlusOp, "+");
+    FOO_TOKEN(MinusOp, "-");
+    FOO_TOKEN(MultiplyOp, "*");
+    FOO_TOKEN(DivideOp, "/");
+    FOO_TOKEN(ModuloOp, "%");
 
-    struct RBrace { static constexpr std::string_view name = "RBrace";
-        std::string to_string() const { return "}"; }
-    };
+    FOO_TOKEN(EqualOp, "==");
+    FOO_TOKEN(NotEqualOp, "!=");
+    FOO_TOKEN(LessOp, "<");
+    FOO_TOKEN(LessEqualOp, "<=");
+    FOO_TOKEN(GreaterOp, ">");
+    FOO_TOKEN(GreaterEqualOp, ">=");
 
+    FOO_TOKEN(AndOp, "&&");
+    FOO_TOKEN(OrOp, "||");
+    FOO_TOKEN(NotOp, "!");
 
-    struct Comma { static constexpr std::string_view name = "Comma";
-        std::string to_string() const { return ","; }
-    };
+    FOO_TOKEN(AssignOp, "=");
 
-    struct Semicolon { static constexpr std::string_view name = "Semicolon";
-        std::string to_string() const { return ";"; }
-    };
+    FOO_TOKEN(Var, "var");
+    FOO_TOKEN(Function, "fn");
+    FOO_TOKEN(Struct, "struct");
+    FOO_TOKEN(Ref, "ref");
 
-    struct Colon { static constexpr std::string_view name = "Colon";
-        std::string to_string() const { return ":"; }
-    };
+    FOO_TOKEN(If, "if");
+    FOO_TOKEN(Else, "else");
+    FOO_TOKEN(While, "while");
+    FOO_TOKEN(For, "for");
+    FOO_TOKEN(In, "in");
 
-    struct Dot { static constexpr std::string_view name = "Dot";
-        std::string to_string() const { return "."; }
-    };
+    FOO_TOKEN(Return, "return");
 
-
-    struct PlusOp { static constexpr std::string_view name = "PlusOp";
-        std::string to_string() const { return "+"; }
-    };
-
-    struct MinusOp { static constexpr std::string_view name = "MinusOp";
-        std::string to_string() const { return "-"; }
-    };
-
-    struct MultiplyOp { static constexpr std::string_view name = "MultiplyOp";
-        std::string to_string() const { return "*"; }
-    };
-
-    struct DivideOp { static constexpr std::string_view name = "DivideOp";
-        std::string to_string() const { return "/"; }
-    };
-
-    struct ModuloOp { static constexpr std::string_view name = "ModuloOp";
-        std::string to_string() const { return "%"; }
-    };
-
-
-    struct EqualOp { static constexpr std::string_view name = "EqualOp";
-        std::string to_string() const { return "=="; }
-    };
-
-    struct NotEqualOp { static constexpr std::string_view name = "NotEqualOp";
-        std::string to_string() const { return "!="; }
-    };
-
-    struct LessOp { static constexpr std::string_view name = "LessOp";
-        std::string to_string() const { return "<"; }
-    };
-
-    struct LessEqualOp { static constexpr std::string_view name = "LessEqualOp";
-        std::string to_string() const { return "<="; }
-    };
-
-    struct GreaterOp { static constexpr std::string_view name = "GreaterOp";
-        std::string to_string() const { return ">"; }
-    };
-
-    struct GreaterEqualOp { static constexpr std::string_view name = "GreaterEqualOp";
-        std::string to_string() const { return ">="; }
-    };
-
-    struct AndOp { static constexpr std::string_view name = "AndOp";
-        std::string to_string() const { return "&&"; }
-    };
-    struct OrOp { static constexpr std::string_view name = "OrOp";
-        std::string to_string() const { return "||"; }
-    };
-    struct NotOp { static constexpr std::string_view name = "NotOp";
-        std::string to_string() const { return "!"; }
-    };
-
-    struct AssignOp { static constexpr std::string_view name = "AssignOp";
-        std::string to_string() const { return "="; }
-    };
-
-
-    struct Var { static constexpr std::string_view name = "Var";
-        std::string to_string() const { return "var"; }
-    };
-
-    struct Function { static constexpr std::string_view name = "Function";
-        std::string to_string() const { return "fn"; }
-    };
-
-    struct Struct   { static constexpr std::string_view name = "Struct";
-        std::string to_string() const { return "struct"; }
-    };
-
-    struct Ref { static constexpr std::string_view name = "Ref";
-        std::string to_string() const { return "ref"; }
-    };
-
-    struct If { static constexpr std::string_view name = "If";
-        std::string to_string() const { return "if"; }
-    };
-
-    struct Else { static constexpr std::string_view name = "Else";
-        std::string to_string() const { return "else"; }
-    };
-
-    struct While { static constexpr std::string_view name = "While";
-        std::string to_string() const { return "while"; }
-    };
-
-    struct For { static constexpr std::string_view name = "For";
-        std::string to_string() const { return "for"; }
-    };
-
-    struct In { static constexpr std::string_view name = "In";
-        std::string to_string() const { return "in"; }
-    };
-
-    struct Return { static constexpr std::string_view name = "Return";
-        std::string to_string() const { return "return"; }
-    };
-
-    struct String
-    {
-        static constexpr std::string_view name = "String";
-        std::string to_string() const { return "\"" + value + "\""; }
-
+    FOO_TOKEN(String, "\"" + value + "\"",
         std::string value;
-    };
+    );
 
-    struct Integer
-    {
-        static constexpr std::string_view name = "Integer";
-        std::string to_string() const { return "int(" + std::to_string(value) + ")"; }
-
+    FOO_TOKEN(Integer, "int(" + std::to_string(value) + ")",
         std::int64_t value;
-    };
+    );
 
-    struct Float
-    {
-        static constexpr std::string_view name = "Float";
-        std::string to_string() const { return std::format("float({})", value); }
-
+    FOO_TOKEN(Float, std::format("float({})", value),
         double value;
-    };
+    );
 
-    struct Boolean
-    {
-        static constexpr std::string_view name = "Boolean";
-        std::string to_string() const { return value ? "true" : "false"; }
-
+    FOO_TOKEN(Boolean, value ? "true" : "false",
         bool value;
-    };
+    );
 
-    struct Identifier
-    {
-        static constexpr std::string_view name = "Identifier";
-        std::string to_string() const { return "ident(" + value + ")"; }
-
+    FOO_TOKEN(Identifier, "ident(" + value + ")",
         std::string value;
-    };
+    );
 
-    struct Import { static constexpr std::string_view name = "Import";
-        std::string to_string() const { return "import"; }
-    };
+    FOO_TOKEN(Import, "import");
 
-
-    struct Doc
-    {
-        static constexpr std::string_view name = "Doc";
-        std::string to_string() const { return "doc(" + text + ")"; }
-
+    FOO_TOKEN(Doc, "doc(" + text + ")",
         std::string text;
-    };
+    );
 
-    struct EndOfFile
-    {
-        static constexpr std::string_view name = "EndOfFile";
-        static std::string to_string() { return "EOF"; }
-    };
+    FOO_TOKEN(EndOfFile, "EOF");
+
 
     using TokenKind = std::variant<
         LParen, RParen,
@@ -250,6 +131,9 @@ namespace foo
     std::string_view name(const TokenKind& kind);
     std::string to_string(const TokenKind& kind);
 }
+
+
+#undef FOO_TOKEN
 
 
 #endif //FOO_TOKEN_HPP

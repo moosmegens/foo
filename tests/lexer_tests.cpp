@@ -16,10 +16,10 @@ void lex_test(
     for (const auto& expected_kind : expected)
     {
         CHECK_MESSAGE(
-            tokens[i].kind.index() == expected_kind.index(),
+            tokens[i].kind == expected_kind,
             "token " << i
-            << ": expected " << foo::name(expected_kind)
-            << ", got " << foo::name(tokens[i].kind)
+            << ": expected " << foo::to_string(expected_kind)
+            << ", got " << foo::to_string(tokens[i].kind)
         );
 
         i++;
@@ -70,10 +70,10 @@ TEST_CASE("lexer - logical operators")
 
 TEST_CASE("lexer - assignment")
 {
-    auto r = foo::tokenize("a =");
+    auto r = foo::tokenize("name_test =");
 
     lex_test(r.tokens, {
-        foo::Identifier{},
+        foo::Identifier{"name_test"},
         foo::AssignOp{},
         foo::EndOfFile{},
     });
