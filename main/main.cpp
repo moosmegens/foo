@@ -5,14 +5,27 @@
 
 int main()
 {
+//     std::string str = R"(
+// //this is a comment
+// fn main(args: string[])
+// {
+//     //this is another comment
+//     print("hello\"");
+//     5.2+1 <= 1.2+hello+(2<= 1.0) -2000
+// }
+// )";
+
     std::string str = R"(
-//this is a comment
-fn main(args: string[])
-{
-    //this is another comment
-    print("hello\"");
-    5.2+1 <= 1.2+hello+(2<= 1.0) -2000
-}
+/*!
+This function returns ...
+
+    a: object to
+    b: testing
+
+- a
+
+- b
+*/
 )";
 
     foo::LexOutput tokens = foo::tokenize(str);

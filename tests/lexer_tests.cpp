@@ -21,9 +21,21 @@ std::string tokens_to_string(std::span<const foo::Token> tokens)
     return result;
 }
 
+std::string tokens_to_string(std::span<const foo::TokenVariant> tokens)
+{
+    std::string result;
+    for (const auto& token : tokens)
+    {
+        result += to_string(token);
+        result += ' ';
+    }
+    return result;
+}
+
+
 void lex_test(
     const std::vector<foo::Token>& tokens,
-    std::initializer_list<foo::Token> expected)
+    std::initializer_list<foo::TokenVariant> expected)
 {
     INFO("got      ", tokens_to_string(tokens));
     INFO("expected ", tokens_to_string(expected));
@@ -35,7 +47,7 @@ void lex_test(
     for (const auto& expected_kind : expected)
     {
         CHECK_MESSAGE(
-            tokens[i] == expected_kind,
+            tokens[i].variant == expected_kind,
             "token " << i
             << ": expected " << foo::to_string(expected_kind)
             << ", got " << foo::to_string(tokens[i])
@@ -99,7 +111,73 @@ TEST_SUITE("lexer")
         });
     }
 
-    TEST_CASE("lexer - all")
+    TEST_CASE("lexer - comments and docs")
+    {
+        auto r = foo::tokenize("/*! this is a doc. */ /* blah blah blah */\n//! another doc, until newline. \n// this should be ignored\n");
+
+        lex_test(r.tokens, {
+            tok::Doc{"this is a doc."},
+            tok::Doc{"another doc, until newline."},
+            tok::End{},
+        });
+    }
+
+    TEST_CASE("lexer - strings")
+    {
+        auto r = foo::tokenize(
+            "\"\" "
+            "\"a\" "
+            "\"\\\\\" "
+            "\"\\\"\" "
+            "\"a\\\\b\" "
+            "\"a\\nb\" "
+            "\"a\\tb\" "
+            "\"a { } ( ) , ! = < > && || b\""
+        );
+
+        lex_test(r.tokens, {
+            tok::String{""},
+            tok::String{"a"},
+            tok::String{"\\"},
+            tok::String{"\""},
+            tok::String{"a\\b"},
+            tok::String{"a\nb"},
+            tok::String{"a\tb"},
+            tok::String{"a { } ( ) , ! = < > && || b"},
+            tok::End{},
+        });
+    }
+
+    TEST_CASE("lexer - newlines")
+    {
+        auto r = foo::tokenize(
+            "foo\n"
+            "bar\r\n"
+            "baz\r"
+            "qux"
+        );
+
+        lex_test(r.tokens, {
+            tok::Identifier{"foo"},
+            tok::Identifier{"bar"},
+            tok::Identifier{"baz"},
+            tok::Identifier{"qux"},
+            tok::End{},
+        });
+    }
+
+    TEST_CASE("lexer - empty input")
+    {
+        auto r = foo::tokenize("");
+
+        lex_test(r.tokens, {
+            tok::End{},
+        });
+    }
+
+
+
+    TEST_CASE("lexer - alot")
     {
         auto r = foo::tokenize("==name!=<<=>>=\"this is a string\\\\\"&&name||name!\n"
                                "struct{\"a \\n b\"} fn(name1, name2) return true false for");

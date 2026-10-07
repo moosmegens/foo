@@ -97,7 +97,7 @@ namespace foo
     }
 
 
-    using Token = std::variant<
+    using TokenVariant = std::variant<
         tok::LParen, tok::RParen,
         tok::LBracket, tok::RBracket,
         tok::LBrace, tok::RBrace,
@@ -125,8 +125,17 @@ namespace foo
         tok::Doc, tok::End
     >;
 
-    std::string_view name(const Token& token);
-    std::string to_string(const Token& token);
+    struct Token
+    {
+        TokenVariant variant;
+        SourceSpan source;
+    };
+
+    std::string_view name(const TokenVariant& token);
+    std::string to_string(const TokenVariant& token);
+
+    inline std::string_view name(const Token& token) {  return name(token.variant); }
+    inline std::string to_string(const Token& token) {  return to_string(token.variant); }
 }
 
 

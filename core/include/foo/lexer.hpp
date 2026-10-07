@@ -19,10 +19,7 @@ namespace foo
 
     struct LexOutput
     {
-        // parallel
         std::vector<Token> tokens;
-        std::vector<SourceSpan> sources;
-        //
 
         std::vector<LexError> errors;
     };
