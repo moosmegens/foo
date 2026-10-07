@@ -19,107 +19,110 @@
 
 namespace foo
 {
-    FOO_TOKEN(LParen, "(");
-    FOO_TOKEN(RParen, ")");
+    namespace tok
+    {
+        FOO_TOKEN(LParen, "(");
+        FOO_TOKEN(RParen, ")");
 
-    FOO_TOKEN(LBracket, "[");
-    FOO_TOKEN(RBracket, "]");
+        FOO_TOKEN(LBracket, "[");
+        FOO_TOKEN(RBracket, "]");
 
-    FOO_TOKEN(LBrace, "{");
-    FOO_TOKEN(RBrace, "}");
+        FOO_TOKEN(LBrace, "{");
+        FOO_TOKEN(RBrace, "}");
 
-    FOO_TOKEN(Comma, ",");
-    FOO_TOKEN(Semicolon, ";");
-    FOO_TOKEN(Colon, ":");
-    FOO_TOKEN(Dot, ".");
+        FOO_TOKEN(Comma, ",");
+        FOO_TOKEN(Semicolon, ";");
+        FOO_TOKEN(Colon, ":");
+        FOO_TOKEN(Dot, ".");
 
-    FOO_TOKEN(PlusOp, "+");
-    FOO_TOKEN(MinusOp, "-");
-    FOO_TOKEN(MultiplyOp, "*");
-    FOO_TOKEN(DivideOp, "/");
-    FOO_TOKEN(ModuloOp, "%");
+        FOO_TOKEN(PlusOp, "+");
+        FOO_TOKEN(MinusOp, "-");
+        FOO_TOKEN(MultiplyOp, "*");
+        FOO_TOKEN(DivideOp, "/");
+        FOO_TOKEN(ModuloOp, "%");
 
-    FOO_TOKEN(EqualOp, "==");
-    FOO_TOKEN(NotEqualOp, "!=");
-    FOO_TOKEN(LessOp, "<");
-    FOO_TOKEN(LessEqualOp, "<=");
-    FOO_TOKEN(GreaterOp, ">");
-    FOO_TOKEN(GreaterEqualOp, ">=");
+        FOO_TOKEN(EqualOp, "==");
+        FOO_TOKEN(NotEqualOp, "!=");
+        FOO_TOKEN(LessOp, "<");
+        FOO_TOKEN(LessEqualOp, "<=");
+        FOO_TOKEN(GreaterOp, ">");
+        FOO_TOKEN(GreaterEqualOp, ">=");
 
-    FOO_TOKEN(AndOp, "&&");
-    FOO_TOKEN(OrOp, "||");
-    FOO_TOKEN(NotOp, "!");
+        FOO_TOKEN(AndOp, "&&");
+        FOO_TOKEN(OrOp, "||");
+        FOO_TOKEN(NotOp, "!");
 
-    FOO_TOKEN(AssignOp, "=");
+        FOO_TOKEN(AssignOp, "=");
 
-    FOO_TOKEN(Var, "var");
-    FOO_TOKEN(Function, "fn");
-    FOO_TOKEN(Struct, "struct");
-    FOO_TOKEN(Ref, "ref");
+        FOO_TOKEN(Var, "var");
+        FOO_TOKEN(Function, "fn");
+        FOO_TOKEN(Struct, "struct");
+        FOO_TOKEN(Ref, "ref");
 
-    FOO_TOKEN(If, "if");
-    FOO_TOKEN(Else, "else");
-    FOO_TOKEN(While, "while");
-    FOO_TOKEN(For, "for");
-    FOO_TOKEN(In, "in");
+        FOO_TOKEN(If, "if");
+        FOO_TOKEN(Else, "else");
+        FOO_TOKEN(While, "while");
+        FOO_TOKEN(For, "for");
+        FOO_TOKEN(In, "in");
 
-    FOO_TOKEN(Return, "return");
+        FOO_TOKEN(Return, "return");
 
-    FOO_TOKEN(String, "\"" + value + "\"",
-        std::string value;
-    );
+        FOO_TOKEN(String, "\"" + value + "\"",
+            std::string value;
+        );
 
-    FOO_TOKEN(Integer, "int(" + std::to_string(value) + ")",
-        std::int64_t value;
-    );
+        FOO_TOKEN(Integer, "int(" + std::to_string(value) + ")",
+            std::int64_t value;
+        );
 
-    FOO_TOKEN(Float, std::format("float({})", value),
-        double value;
-    );
+        FOO_TOKEN(Float, std::format("float({})", value),
+            double value;
+        );
 
-    FOO_TOKEN(Boolean, value ? "true" : "false",
-        bool value;
-    );
+        FOO_TOKEN(Boolean, value ? "true" : "false",
+            bool value;
+        );
 
-    FOO_TOKEN(Identifier, "ident(" + value + ")",
-        std::string value;
-    );
+        FOO_TOKEN(Identifier, "ident(" + value + ")",
+            std::string value;
+        );
 
-    FOO_TOKEN(Import, "import");
+        FOO_TOKEN(Import, "import");
 
-    FOO_TOKEN(Doc, "doc(" + text + ")",
-        std::string text;
-    );
+        FOO_TOKEN(Doc, "doc(" + text + ")",
+            std::string text;
+        );
 
-    FOO_TOKEN(End, "END");
+        FOO_TOKEN(End, "END");
+    }
 
 
     using Token = std::variant<
-        LParen, RParen,
-        LBracket, RBracket,
-        LBrace, RBrace,
+        tok::LParen, tok::RParen,
+        tok::LBracket, tok::RBracket,
+        tok::LBrace, tok::RBrace,
 
-        Comma, Semicolon, Colon, Dot,
+        tok::Comma, tok::Semicolon, tok::Colon, tok::Dot,
 
-        Identifier, String, Integer, Float, Boolean,
+        tok::Identifier, tok::String, tok::Integer, tok::Float, tok::Boolean,
 
-        PlusOp, MinusOp, MultiplyOp, ModuloOp, DivideOp,
+        tok::PlusOp, tok::MinusOp, tok::MultiplyOp, tok::ModuloOp, tok::DivideOp,
 
-        EqualOp, NotEqualOp,
-        LessOp, LessEqualOp,
-        GreaterOp, GreaterEqualOp,
+        tok::EqualOp, tok::NotEqualOp,
+        tok::LessOp, tok::LessEqualOp,
+        tok::GreaterOp, tok::GreaterEqualOp,
 
-        AndOp, OrOp, NotOp,
+        tok::AndOp, tok::OrOp, tok::NotOp,
 
-        AssignOp,
+        tok::AssignOp,
 
-        Var, Function, Struct, Ref,
-        If, Else, While, For, In,
-        Return,
+        tok::Var, tok::Function, tok::Struct, tok::Ref,
+        tok::If, tok::Else, tok::While, tok::For, tok::In,
+        tok::Return,
 
-        Import,
+        tok::Import,
 
-        Doc, End
+        tok::Doc, tok::End
     >;
 
     std::string_view name(const Token& token);

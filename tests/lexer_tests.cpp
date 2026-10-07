@@ -6,6 +6,10 @@
 
 #include <foo/lexer.hpp>
 
+
+using namespace foo;
+
+
 std::string tokens_to_string(std::span<const foo::Token> tokens)
 {
     std::string result;
@@ -48,12 +52,12 @@ TEST_SUITE("lexer")
         auto r = foo::tokenize("+-*/%");
 
         lex_test(r.tokens, {
-            foo::PlusOp{},
-            foo::MinusOp{},
-            foo::MultiplyOp{},
-            foo::DivideOp{},
-            foo::ModuloOp{},
-            foo::End{},
+            tok::PlusOp{},
+            tok::MinusOp{},
+            tok::MultiplyOp{},
+            tok::DivideOp{},
+            tok::ModuloOp{},
+            tok::End{},
         });
     }
 
@@ -62,13 +66,13 @@ TEST_SUITE("lexer")
         auto r = foo::tokenize("==!=<<=>>=");
 
         lex_test(r.tokens, {
-            foo::EqualOp{},
-            foo::NotEqualOp{},
-            foo::LessOp{},
-            foo::LessEqualOp{},
-            foo::GreaterOp{},
-            foo::GreaterEqualOp{},
-            foo::End{},
+            tok::EqualOp{},
+            tok::NotEqualOp{},
+            tok::LessOp{},
+            tok::LessEqualOp{},
+            tok::GreaterOp{},
+            tok::GreaterEqualOp{},
+            tok::End{},
         });
     }
 
@@ -77,10 +81,10 @@ TEST_SUITE("lexer")
         auto r = foo::tokenize("&&||!");
 
         lex_test(r.tokens, {
-            foo::AndOp{},
-            foo::OrOp{},
-            foo::NotOp{},
-            foo::End{},
+            tok::AndOp{},
+            tok::OrOp{},
+            tok::NotOp{},
+            tok::End{},
         });
     }
 
@@ -89,9 +93,9 @@ TEST_SUITE("lexer")
         auto r = foo::tokenize("name_test=");
 
         lex_test(r.tokens, {
-            foo::Identifier{"name_test"},
-            foo::AssignOp{},
-            foo::End{},
+            tok::Identifier{"name_test"},
+            tok::AssignOp{},
+            tok::End{},
         });
     }
 
@@ -101,37 +105,37 @@ TEST_SUITE("lexer")
                                "struct{\"a \\n b\"} fn(name1, name2) return true false for");
 
         lex_test(r.tokens, {
-            foo::EqualOp{},
-            foo::Identifier{"name"},
-            foo::NotEqualOp{},
-            foo::LessOp{},
-            foo::LessEqualOp{},
-            foo::GreaterOp{},
-            foo::GreaterEqualOp{},
-            foo::String{"this is a string\\"},
-            foo::AndOp{},
-            foo::Identifier{"name"},
-            foo::OrOp{},
-            foo::Identifier{"name"},
-            foo::NotOp{},
-            foo::Struct{},
-            foo::LBrace{},
-            foo::String{"a \n b"},
-            foo::RBrace{},
-            foo::Function{},
-            foo::LParen{},
-            foo::Identifier{"name1"},
-            foo::Comma{},
-            foo::Identifier{"name2"},
-            foo::RParen{},
-            foo::Return{},
-            foo::Boolean{true},
-            foo::Boolean{false},
-            foo::For{},
+            tok::EqualOp{},
+            tok::Identifier{"name"},
+            tok::NotEqualOp{},
+            tok::LessOp{},
+            tok::LessEqualOp{},
+            tok::GreaterOp{},
+            tok::GreaterEqualOp{},
+            tok::String{"this is a string\\"},
+            tok::AndOp{},
+            tok::Identifier{"name"},
+            tok::OrOp{},
+            tok::Identifier{"name"},
+            tok::NotOp{},
+            tok::Struct{},
+            tok::LBrace{},
+            tok::String{"a \n b"},
+            tok::RBrace{},
+            tok::Function{},
+            tok::LParen{},
+            tok::Identifier{"name1"},
+            tok::Comma{},
+            tok::Identifier{"name2"},
+            tok::RParen{},
+            tok::Return{},
+            tok::Boolean{true},
+            tok::Boolean{false},
+            tok::For{},
 
 
 
-            foo::End{},
+            tok::End{},
         });
     }
 }

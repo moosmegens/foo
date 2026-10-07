@@ -56,7 +56,7 @@ namespace foo
                     continue;
                 }
 
-                const bool done = holds_alternative<End>(result.value().token);
+                const bool done = holds_alternative<tok::End>(result.value().token);
                 out.tokens.push_back(std::move(result.value().token));
 
                 if (done)
@@ -104,25 +104,25 @@ namespace foo
             const std::string_view text = _source.substr(start, _offset - start);
 
             static const std::unordered_map<std::string_view, Token> keywords = {
-                {"var", Var{}},
-                {"fn", Function{}},
-                {"struct", Struct{}},
-                {"ref", Ref{}},
-                {"if", If{}},
-                {"else", Else{}},
-                {"while", While{}},
-                {"for", For{}},
-                {"in", In{}},
-                {"return", Return{}},
-                {"true", Boolean{true}},
-                {"false", Boolean{false}},
-                {"import", Import{}},
+                {"var", tok::Var{}},
+                {"fn", tok::Function{}},
+                {"struct", tok::Struct{}},
+                {"ref", tok::Ref{}},
+                {"if", tok::If{}},
+                {"else", tok::Else{}},
+                {"while", tok::While{}},
+                {"for", tok::For{}},
+                {"in", tok::In{}},
+                {"return", tok::Return{}},
+                {"true", tok::Boolean{true}},
+                {"false", tok::Boolean{false}},
+                {"import", tok::Import{}},
             };
 
             if (auto it = keywords.find(text); it != keywords.end())
                 return make(it->second, start, _offset);
 
-            return make(Identifier{std::string(text)}, start, _offset);
+            return make(tok::Identifier{std::string(text)}, start, _offset);
         }
 
         Result<LexToken, LexError> lex_string(size_t start)
@@ -135,7 +135,7 @@ namespace foo
 
                 const char c = _source[_offset++];
                 if (c == '"')
-                    return make(String{std::move(value)}, start, _offset);
+                    return make(tok::String{std::move(value)}, start, _offset);
 
                 if (c != '\\')
                 {
@@ -180,9 +180,9 @@ namespace foo
             try
             {
                 if (is_float)
-                    return make(Float{std::stod(std::string(text))}, start, _offset);
+                    return make(tok::Float{std::stod(std::string(text))}, start, _offset);
 
-                return make(Integer{std::stoll(std::string(text))}, start, _offset);
+                return make(tok::Integer{std::stoll(std::string(text))}, start, _offset);
             }
             catch (const std::exception& e)
             {
@@ -199,65 +199,65 @@ namespace foo
             const size_t start = _offset;
 
             if (_offset >= _source.size())
-                return make(End{}, start, _offset);
+                return make(tok::End{}, start, _offset);
 
             const char c = _source[_offset++];
             switch (c)
             {
-                case '(': return make(LParen{},   start, _offset);
-                case ')': return make(RParen{},   start, _offset);
-                case '[': return make(LBracket{}, start, _offset);
-                case ']': return make(RBracket{}, start, _offset);
-                case '{': return make(LBrace{},   start, _offset);
-                case '}': return make(RBrace{},   start, _offset);
+                case '(': return make(tok::LParen{},   start, _offset);
+                case ')': return make(tok::RParen{},   start, _offset);
+                case '[': return make(tok::LBracket{}, start, _offset);
+                case ']': return make(tok::RBracket{}, start, _offset);
+                case '{': return make(tok::LBrace{},   start, _offset);
+                case '}': return make(tok::RBrace{},   start, _offset);
 
-                case ',': return make(Comma{},     start, _offset);
-                case ';': return make(Semicolon{}, start, _offset);
-                case ':': return make(Colon{},     start, _offset);
-                case '.': return make(Dot{},       start, _offset);
+                case ',': return make(tok::Comma{},     start, _offset);
+                case ';': return make(tok::Semicolon{}, start, _offset);
+                case ':': return make(tok::Colon{},     start, _offset);
+                case '.': return make(tok::Dot{},       start, _offset);
 
-                case '+': return make(PlusOp{},     start, _offset);
-                case '-': return make(MinusOp{},    start, _offset);
-                case '*': return make(MultiplyOp{}, start, _offset);
-                case '%': return make(ModuloOp{},   start, _offset);
+                case '+': return make(tok::PlusOp{},     start, _offset);
+                case '-': return make(tok::MinusOp{},    start, _offset);
+                case '*': return make(tok::MultiplyOp{}, start, _offset);
+                case '%': return make(tok::ModuloOp{},   start, _offset);
 
                 case '=':
                 {
                     if (match('='))
-                        return make(EqualOp{}, start, _offset);
+                        return make(tok::EqualOp{}, start, _offset);
                     else
-                        return make(AssignOp{}, start, _offset);
+                        return make(tok::AssignOp{}, start, _offset);
                 }
 
                 case '!':
                 {
                     if (match('='))
-                        return make(NotEqualOp{}, start, _offset);
+                        return make(tok::NotEqualOp{}, start, _offset);
                     else
-                        return make(NotOp{}, start, _offset);
+                        return make(tok::NotOp{}, start, _offset);
                 }
 
                 case '<':
                 {
                     if (match('='))
-                        return make(LessEqualOp{}, start, _offset);
+                        return make(tok::LessEqualOp{}, start, _offset);
                     else
-                        return make(LessOp{}, start, _offset);
+                        return make(tok::LessOp{}, start, _offset);
                 }
 
                 case '>':
                 {
                     if (match('='))
-                        return make(GreaterEqualOp{}, start, _offset);
+                        return make(tok::GreaterEqualOp{}, start, _offset);
                     else
-                        return make(GreaterOp{}, start, _offset);
+                        return make(tok::GreaterOp{}, start, _offset);
                 }
 
                 case '&':
-                    if (match('&')) return make(AndOp{}, start, _offset);
+                    if (match('&')) return make(tok::AndOp{}, start, _offset);
                     return std::unexpected<LexError>{{SourceSpan::between(start, _offset), "unexpected '&', did you mean '&&'?"}};
                 case '|':
-                    if (match('|')) return make(OrOp{}, start, _offset);
+                    if (match('|')) return make(tok::OrOp{}, start, _offset);
                     return std::unexpected<LexError>{{SourceSpan::between(start, _offset), "unexpected '|', did you mean '||'?"}};
 
                 case '"': return lex_string(start);
@@ -270,10 +270,10 @@ namespace foo
                         while (_offset < _source.size() && _source[_offset] != '\n')
                             _offset++;
 
-                        return make(Doc{std::string(_source.substr(text_start, _offset - text_start))}, start, _offset);
+                        return make(tok::Doc{std::string(_source.substr(text_start, _offset - text_start))}, start, _offset);
                     }
 
-                    return make(DivideOp{}, start, _offset);
+                    return make(tok::DivideOp{}, start, _offset);
             }
 
 
