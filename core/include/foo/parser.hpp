@@ -24,7 +24,7 @@ namespace foo
         std::vector<ParseError> errors;
     };
 
-    ParseOutput parse(std::span<Token> tokens, std::span<SourceSpan> sources);
+    ParseOutput parse(std::span<Token> tokens);
 }
 
 

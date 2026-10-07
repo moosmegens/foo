@@ -131,6 +131,12 @@ namespace foo
     {
         TokenVariant variant;
         SourceSpan source;
+
+        template <class T>
+        bool is() const
+        {
+            return std::holds_alternative<T>(variant);
+        }
     };
 
     std::string_view name(const TokenVariant& token);
