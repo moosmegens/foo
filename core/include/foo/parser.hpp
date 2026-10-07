@@ -1,11 +1,12 @@
 #ifndef FOO_PARSER_HPP
 #define FOO_PARSER_HPP
 
+
 #include <span>
 #include <vector>
 
 #include <foo/token.hpp>
-
+#include <foo/ast.hpp>
 
 
 namespace foo
@@ -18,6 +19,8 @@ namespace foo
 
     struct ParseOutput
     {
+        std::vector<ast::Decl> decls;
+
         std::vector<ParseError> errors;
     };
 

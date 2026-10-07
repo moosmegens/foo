@@ -18,11 +18,13 @@ namespace foo
         struct Stmt;
         struct Expr;
         struct TypeExpr;
+        struct Decl;
 
 
         using TypeExprPtr = std::shared_ptr<TypeExpr>;
         using StmtPtr = std::unique_ptr<Stmt>;
         using ExprPtr = std::unique_ptr<Expr>;
+        using DeclPtr = std::unique_ptr<Decl>;
 
 
         // type expressions
@@ -122,7 +124,7 @@ namespace foo
             std::string name;
             TypeExprPtr type;
             bool reffed = false;
-            SourceSpan  span;
+            SourceSpan span;
         };
 
         struct FnDecl
@@ -133,7 +135,32 @@ namespace foo
             std::vector<StmtPtr> body;
         };
 
+        struct StructField
+        {
+            std::string name;
+            TypeExprPtr type;
+            SourceSpan span;
+        };
 
+        struct StructDecl
+        {
+            std::string name;
+            std::vector<StructField> fields;
+            std::vector<FnDecl> methods;
+        };
+
+        struct NamespaceDecl
+        {
+            std::string name;
+            std::vector<DeclPtr> decls;
+        };
+
+        using DeclKind = std::variant<FnDecl, StructDecl, NamespaceDecl>;
+
+        struct Decl
+        {
+            DeclKind kind;
+        };
     }
 }
 
