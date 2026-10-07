@@ -7,7 +7,8 @@
 #include <string>
 #include <variant>
 
-#include "source.hpp"
+#include <foo/source.hpp>
+
 
 #define FOO_TOKEN(NAME, TO_STRING, ...)                 \
     struct NAME {                                  \
@@ -16,6 +17,7 @@
         std::string to_string() const { return TO_STRING; } \
         bool operator==(const NAME&) const = default; \
     }
+
 
 namespace foo
 {

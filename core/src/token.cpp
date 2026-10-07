@@ -1,7 +1,9 @@
 #include <typeinfo>
-#include <foo/token.hpp>
 
-#include <foo/util.hpp>
+#include <foo/token.hpp>
+#include <foo/util/str.hpp>
+#include <foo/util/overloaded.hpp>
+
 
 namespace foo
 {

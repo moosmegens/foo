@@ -1,8 +1,8 @@
 #include <unordered_map>
-#include <foo/lexer.hpp>
 #include <utility>
 
-#include "foo/util.hpp"
+#include <foo/lexer.hpp>
+#include <foo/util/str.hpp>
 
 namespace foo
 {

@@ -4,7 +4,7 @@
 #include <span>
 #include <vector>
 
-#include "token.hpp"
+#include <foo/token.hpp>
 
 
 

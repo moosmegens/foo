@@ -115,6 +115,25 @@ namespace foo
         };
 
 
+        // declarations
+
+        struct Param
+        {
+            std::string name;
+            TypeExprPtr type;
+            bool reffed = false;
+            SourceSpan  span;
+        };
+
+        struct FnDecl
+        {
+            std::string name;
+            std::vector<Param> params;
+            TypeExprPtr return_type;
+            std::vector<StmtPtr> body;
+        };
+
+
     }
 }
 

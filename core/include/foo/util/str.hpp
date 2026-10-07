@@ -1,18 +1,11 @@
-#ifndef FOO_UTIL_HPP
-#define FOO_UTIL_HPP
+#ifndef FOO_STR_UTIL_HPP
+#define FOO_STR_UTIL_HPP
 
 #include <algorithm>
 #include <string_view>
 
 namespace foo
 {
-    // https://en.cppreference.com/cpp/utility/variant/visit2
-    template<typename ... Ts>
-    struct overload : Ts ... { using Ts::operator() ...; };
-
-    template<class... Ts>
-    overload(Ts...) -> overload<Ts...>;
-
     inline std::string_view left_trim(std::string_view str, std::string_view pattern = " \t\n\r\f\v")
     {
         const auto pos(str.find_first_not_of(pattern));
@@ -35,4 +28,4 @@ namespace foo
     }
 }
 
-#endif //FOO_UTIL_HPP
+#endif //FOO_STR_UTIL_HPP

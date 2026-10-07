@@ -3,43 +3,35 @@
 
 #include <foo/lexer.hpp>
 
-int main()
+#include <foo/util/scoped_timer.hpp>
+
+void rng_lex()
 {
-//     std::string str = R"(
-// //this is a comment
-// fn main(args: string[])
-// {
-//     //this is another comment
-//     print("hello\"");
-//     5.2+1 <= 1.2+hello+(2<= 1.0) -2000
-// }
-// )";
+    std::string chars = "<+->!=a";
+    std::string str;
 
-    std::string str = R"(
-/*!
-This function returns ...
+    std::srand(std::time(nullptr));
 
-    a: object to
-    b: testing
-
-- a
-
-- b
-*/
-)";
-
-    foo::LexOutput tokens = foo::tokenize(str);
-
-    for (const auto& token : tokens.tokens)
+    for (int i = 0; i < 20000; i++)
     {
-        std::cout << foo::to_string(token) << std::endl;
+        str += chars[std::rand() % chars.length()];
+    }
+
+    foo::LexOutput tokens;
+    {
+        foo::scoped_timer timer{"tokenize", true};
+        tokens = foo::tokenize(str);
     }
 
     for (const auto& error : tokens.errors)
     {
-        std::cout << "error: " << error.error  << std::endl << std::endl <<
-        str.substr(error.source.start, error.source.size) << std::endl;
+        std::cout << "error: " << error.error << std::endl;
     }
+}
+
+int main()
+{
+    rng_lex();
 
     return 0;
 }
