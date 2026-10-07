@@ -4,11 +4,14 @@
 
 namespace foo
 {
-    struct LexToken
+    namespace
     {
-        Token token;
-        SourceSpan source;
-    };
+        struct LexToken
+        {
+            Token token;
+            SourceSpan source;
+        };
+    }
 
 
     static bool is_ident_start(char c)

@@ -15,9 +15,7 @@ int main()
 // }
 // )";
 
-    std::string str = R"(
-    10000000000000000000000000
-)";
+    std::string str = "==name!=<<=>>=\"this is a string\"&&name||name!\nstruct{\"string\"} fn(name1, name2)";
 
     foo::LexOutput tokens = foo::tokenize(str);
 
