@@ -5,17 +5,15 @@
 
 int main()
 {
-//     std::string str = R"(
-// //this is a comment
-// fn main(args: string[])
-// {
-//     //this is another comment
-//     print("hello\"");
-//     5.2+1 <= 1.2+hello+(2<= 1.0) -2000
-// }
-// )";
-
-    std::string str = "==name!=<<=>>=\"this is a string\"&&name||name!\nstruct{\"string\"} fn(name1, name2)";
+    std::string str = R"(
+//this is a comment
+fn main(args: string[])
+{
+    //this is another comment
+    print("hello\"");
+    5.2+1 <= 1.2+hello+(2<= 1.0) -2000
+}
+)";
 
     foo::LexOutput tokens = foo::tokenize(str);
 
