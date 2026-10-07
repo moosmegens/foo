@@ -5,13 +5,13 @@
 
 namespace foo
 {
-    std::string_view name(const TokenKind& kind)
+    std::string_view name(const Token& token)
     {
-        return std::visit(overload{[](const auto& e){ return e.name; },}, kind);
+        return std::visit(overload{[](const auto& e){ return e.name; },}, token);
     }
 
-    std::string to_string(const TokenKind& kind)
+    std::string to_string(const Token& token)
     {
-        return std::visit(overload{[](const auto& e){ return e.to_string(); },}, kind);
+        return std::visit(overload{[](const auto& e){ return e.to_string(); },}, token);
     }
 }

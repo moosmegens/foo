@@ -1,29 +1,15 @@
 #include <unordered_map>
 #include <foo/lexer.hpp>
+#include <utility>
 
 namespace foo
 {
-    static char peek(std::string_view src, size_t offset, size_t ahead = 0)
+    struct LexToken
     {
-        return offset + ahead < src.size() ? src[offset + ahead] : '\0';
-    }
+        Token token;
+        SourceSpan source;
+    };
 
-    static void skip(std::string_view src, size_t& offset)
-    {
-        while (offset < src.size() && std::isspace(static_cast<unsigned char>(src[offset])))
-            ++offset;
-    }
-
-    static bool match(std::string_view src, size_t& offset, char c)
-    {
-        if (peek(src, offset) == c)
-        {
-            ++offset;
-            return true;
-        }
-
-        return false;
-    }
 
     static bool is_ident_start(char c)
     {
@@ -35,231 +21,278 @@ namespace foo
         return c >= '0' && c <= '9';
     }
 
-    static bool is_ident_part(char c) noexcept
+    static bool is_ident_part(char c)
     {
         return is_ident_start(c) || is_digit(c);
     }
 
-    static Token make(TokenKind kind, size_t start, size_t end)
+    static LexToken make(Token token, size_t start, size_t end)
     {
-        return Token{std::move(kind), SourceSpan::between(start, end)};
+        return LexToken{std::move(token), SourceSpan::between(start, end)};
     }
 
-    static Result<Token> lex_word(std::string_view src, size_t& offset, size_t start)
+    class Lexer
     {
-        while (is_ident_part(peek(src, offset))) ++offset;
-        const std::string_view text = src.substr(start, offset - start);
+    public:
+        Lexer() = default;
 
-        static const std::unordered_map<std::string_view, TokenKind> keywords = {
-            {"var", Var{}},
-            {"fn", Function{}},
-            {"struct", Struct{}},
-            {"ref", Ref{}},
-            {"if", If{}},
-            {"else", Else{}},
-            {"while", While{}},
-            {"for", For{}},
-            {"in", In{}},
-            {"return", Return{}},
-            {"true", Boolean{true}},
-            {"false", Boolean{false}},
-            {"import", Import{}},
-        };
-
-        if (auto it = keywords.find(text); it != keywords.end())
-            return make(it->second, start, offset);
-
-        return make(Identifier{std::string(text)}, start, offset);
-    }
-
-    static Result<Token> lex_string(std::string_view src, size_t& pos, size_t start)
-    {
-        std::string value;
-        while (true)
+        LexOutput tokenize(std::string_view source = "")
         {
-            if (pos >= src.size() || src[pos] == '\n')
-                return fail(SourceSpan::between(start, pos), "unterminated string");
+            _source = source;
+            _offset = 0;
 
-            const char c = src[pos++];
-            if (c == '"')
-                return make(String{std::move(value)}, start, pos);
 
-            if (c != '\\')
+            LexOutput out{};
+
+            while (true)
             {
-                value += c;
-                continue;
-            }
-
-            if (pos >= src.size())
-                return fail(SourceSpan::between(start, pos), "unterminated string");
-
-            const size_t esc = pos - 1;
-            switch (const char e = src[pos++])
-            {
-                case 'n':  value += '\n'; break;
-                case 't':  value += '\t'; break;
-                case '\\': value += '\\'; break;
-                case '"':  value += '"';  break;
-                default:
-                    return fail(SourceSpan::between(esc, pos), "invalid escape sequence '\\{}'", e);
-            }
-        }
-    }
-
-    static Result<Token> lex_number(std::string_view src, size_t& offset, size_t start)
-    {
-        bool is_float = false;
-
-        while (is_digit(peek(src, offset)))
-            ++offset;
-
-        if (peek(src, offset) == '.' && is_digit(peek(src, offset, 1)))
-        {
-            is_float = true;
-            ++offset;
-
-            while (is_digit(peek(src, offset)))
-                ++offset;
-        }
-
-        const std::string_view text = src.substr(start, offset - start);
-
-        try
-        {
-            if (is_float)
-                return make(Float{std::stod(std::string(text))}, start, offset);
-
-            return make(Integer{std::stoll(std::string(text))}, start, offset);
-        }
-        catch (const std::exception& e)
-        {
-            return fail(
-                SourceSpan::between(start, offset),
-                "invalid numeric literal '{}': {}",
-                text, e.what()
-            );
-        }
-    }
-
-
-    static Result<Token> lex_token(std::string_view src, size_t& offset)
-    {
-        skip(src, offset);
-        const size_t start = offset;
-
-        if (offset >= src.size())
-            return make(EndOfFile{}, start, offset);
-
-        const char c = src[offset++];
-        switch (c)
-        {
-            case '(': return make(LParen{},   start, offset);
-            case ')': return make(RParen{},   start, offset);
-            case '[': return make(LBracket{}, start, offset);
-            case ']': return make(RBracket{}, start, offset);
-            case '{': return make(LBrace{},   start, offset);
-            case '}': return make(RBrace{},   start, offset);
-
-            case ',': return make(Comma{},     start, offset);
-            case ';': return make(Semicolon{}, start, offset);
-            case ':': return make(Colon{},     start, offset);
-            case '.': return make(Dot{},       start, offset);
-
-            case '+': return make(PlusOp{},     start, offset);
-            case '-': return make(MinusOp{},    start, offset);
-            case '*': return make(MultiplyOp{}, start, offset);
-            case '%': return make(ModuloOp{},   start, offset);
-
-            case '=':
-            {
-                if (match(src, offset, '='))
-                    return make(EqualOp{}, start, offset);
-                else
-                    return make(AssignOp{}, start, offset);
-            }
-
-            case '!':
-            {
-                if (match(src, offset, '='))
-                    return make(NotEqualOp{}, start, offset);
-                else
-                    return make(NotOp{}, start, offset);
-            }
-
-            case '<':
-            {
-                if (match(src, offset, '='))
-                    return make(LessEqualOp{}, start, offset);
-                else
-                    return make(LessOp{}, start, offset);
-            }
-
-            case '>':
-            {
-                if (match(src, offset, '='))
-                    return make(GreaterEqualOp{}, start, offset);
-                else
-                    return make(GreaterOp{}, start, offset);
-            }
-
-            case '&':
-                if (match(src, offset, '&')) return make(AndOp{}, start, offset);
-                return fail(SourceSpan::between(start, offset), "unexpected '&', did you mean '&&'?");
-            case '|':
-                if (match(src, offset, '|')) return make(OrOp{}, start, offset);
-                return fail(SourceSpan::between(start, offset), "unexpected '|', did you mean '||'?");
-
-            case '"': return lex_string(src, offset, start);
-
-            case '/':
-                if (peek(src, offset) == '/')
+                auto result = lex_token();
+                if (!result)
                 {
-                    const size_t text_start = ++offset;
-                    while (offset < src.size() && src[offset] != '\n')
-                        ++offset;
-
-                    return make(Doc{std::string(src.substr(text_start, offset - text_start))}, start, offset);
+                    out.errors.push_back(std::move(result.error()));
+                    continue;
                 }
-                return make(DivideOp{}, start, offset);
+
+                const bool done = holds_alternative<End>(result.value().token);
+                out.tokens.push_back(std::move(result.value().token));
+
+                if (done)
+                    break;
+            }
+
+            return out;
         }
 
+    private:
+        std::string_view _source;
+        size_t _offset{0};
 
-        if (is_ident_start(c))
+        [[nodiscard]] char peek(size_t ahead = 0) const
         {
-            while (is_ident_part(peek(src, offset)))
-                ++offset;
-
-            return lex_word(src, offset, start);
+            return (_offset + ahead < _source.size()) ?
+                _source[_offset + ahead] :
+                '\0';
         }
 
-        if (is_digit(c))
-            return lex_number(src, offset, start);
+        void skip()
+        {
+            while (_offset < _source.size() && std::isspace(static_cast<unsigned char>(_source[_offset])))
+            {
+                _offset++;
+            }
+        }
 
-        return fail(SourceSpan{start, offset}, "unexpected character '{}'", c);
-    }
+        bool match(char c)
+        {
+            if (peek() == c)
+            {
+                _offset++;
+                return true;
+            }
 
+            return false;
+        }
+
+        Result<LexToken, LexError> lex_word(size_t start)
+        {
+            while (is_ident_part(peek()))
+                _offset++;
+
+            const std::string_view text = _source.substr(start, _offset - start);
+
+            static const std::unordered_map<std::string_view, Token> keywords = {
+                {"var", Var{}},
+                {"fn", Function{}},
+                {"struct", Struct{}},
+                {"ref", Ref{}},
+                {"if", If{}},
+                {"else", Else{}},
+                {"while", While{}},
+                {"for", For{}},
+                {"in", In{}},
+                {"return", Return{}},
+                {"true", Boolean{true}},
+                {"false", Boolean{false}},
+                {"import", Import{}},
+            };
+
+            if (auto it = keywords.find(text); it != keywords.end())
+                return make(it->second, start, _offset);
+
+            return make(Identifier{std::string(text)}, start, _offset);
+        }
+
+        Result<LexToken, LexError> lex_string(size_t start)
+        {
+            std::string value;
+            while (true)
+            {
+                if (_offset >= _source.size() || _source[_offset] == '\n')
+                    return std::unexpected<LexError>{{SourceSpan::between(start, _offset), "unterminated string"}};
+
+                const char c = _source[_offset++];
+                if (c == '"')
+                    return make(String{std::move(value)}, start, _offset);
+
+                if (c != '\\')
+                {
+                    value += c;
+                    continue;
+                }
+
+                if (_offset >= _source.size())
+                    return std::unexpected<LexError>{{SourceSpan::between(start, _offset), "unterminated string"}};
+
+                //const size_t esc = _offset - 1;
+                switch (const char e = _source[_offset++])
+                {
+                    case 'n':  value += '\n'; break;
+                    case 't':  value += '\t'; break;
+                    case '\\': value += '\\'; break;
+                    case '"':  value += '"';  break;
+                    default:
+                        return std::unexpected<LexError>{{SourceSpan::between(start, _offset), std::format("invalid escape: '{}'", e)}};
+                }
+            }
+        }
+
+        Result<LexToken, LexError> lex_number(size_t start)
+        {
+            bool is_float = false;
+
+            while (is_digit(peek()))
+                ++_offset;
+
+            if (peek() == '.' && is_digit(peek(1)))
+            {
+                is_float = true;
+                _offset++;
+
+                while (is_digit(peek()))
+                    _offset++;
+            }
+
+            const std::string_view text = _source.substr(start, _offset - start);
+
+            try
+            {
+                if (is_float)
+                    return make(Float{std::stod(std::string(text))}, start, _offset);
+
+                return make(Integer{std::stoll(std::string(text))}, start, _offset);
+            }
+            catch (const std::exception& e)
+            {
+                return std::unexpected<LexError>{{
+                    SourceSpan::between(start, _offset),
+                    std::format("invalid numeric literal '{}'", text)
+                }};
+            }
+        }
+
+        Result<LexToken, LexError> lex_token()
+        {
+            skip();
+            const size_t start = _offset;
+
+            if (_offset >= _source.size())
+                return make(End{}, start, _offset);
+
+            const char c = _source[_offset++];
+            switch (c)
+            {
+                case '(': return make(LParen{},   start, _offset);
+                case ')': return make(RParen{},   start, _offset);
+                case '[': return make(LBracket{}, start, _offset);
+                case ']': return make(RBracket{}, start, _offset);
+                case '{': return make(LBrace{},   start, _offset);
+                case '}': return make(RBrace{},   start, _offset);
+
+                case ',': return make(Comma{},     start, _offset);
+                case ';': return make(Semicolon{}, start, _offset);
+                case ':': return make(Colon{},     start, _offset);
+                case '.': return make(Dot{},       start, _offset);
+
+                case '+': return make(PlusOp{},     start, _offset);
+                case '-': return make(MinusOp{},    start, _offset);
+                case '*': return make(MultiplyOp{}, start, _offset);
+                case '%': return make(ModuloOp{},   start, _offset);
+
+                case '=':
+                {
+                    if (match('='))
+                        return make(EqualOp{}, start, _offset);
+                    else
+                        return make(AssignOp{}, start, _offset);
+                }
+
+                case '!':
+                {
+                    if (match('='))
+                        return make(NotEqualOp{}, start, _offset);
+                    else
+                        return make(NotOp{}, start, _offset);
+                }
+
+                case '<':
+                {
+                    if (match('='))
+                        return make(LessEqualOp{}, start, _offset);
+                    else
+                        return make(LessOp{}, start, _offset);
+                }
+
+                case '>':
+                {
+                    if (match('='))
+                        return make(GreaterEqualOp{}, start, _offset);
+                    else
+                        return make(GreaterOp{}, start, _offset);
+                }
+
+                case '&':
+                    if (match('&')) return make(AndOp{}, start, _offset);
+                    return std::unexpected<LexError>{{SourceSpan::between(start, _offset), "unexpected '&', did you mean '&&'?"}};
+                case '|':
+                    if (match('|')) return make(OrOp{}, start, _offset);
+                    return std::unexpected<LexError>{{SourceSpan::between(start, _offset), "unexpected '|', did you mean '||'?"}};
+
+                case '"': return lex_string(start);
+
+                case '/':
+                    if (peek() == '/')
+                    {
+                        const size_t text_start = ++_offset;
+
+                        while (_offset < _source.size() && _source[_offset] != '\n')
+                            _offset++;
+
+                        return make(Doc{std::string(_source.substr(text_start, _offset - text_start))}, start, _offset);
+                    }
+
+                    return make(DivideOp{}, start, _offset);
+            }
+
+
+            if (is_ident_start(c))
+            {
+                while (is_ident_part(peek()))
+                    _offset++;
+
+                return lex_word(start);
+            }
+
+            if (is_digit(c))
+                return lex_number(start);
+
+            return std::unexpected<LexError>{{SourceSpan::between(start, _offset),
+                std::format("unexpected character '{}'", c)}};
+        }
+    };
 
     LexOutput tokenize(std::string_view src)
     {
-        LexOutput out{};
-        size_t offset = 0;
-
-        while (true)
-        {
-            auto result = lex_token(src, offset);
-            if (!result)
-            {
-                out.errors.push_back(std::move(result.error()));
-                continue;
-            }
-
-            const bool done = holds_alternative<EndOfFile>(result->kind);
-            out.tokens.push_back(std::move(*result));
-
-            if (done)
-                break;
-        }
-
-        return out;
+        Lexer lexer{};
+        return lexer.tokenize(src);
     }
 }

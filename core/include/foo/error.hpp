@@ -12,20 +12,13 @@
 
 namespace foo
 {
-    struct Error
+    struct SimpleError
     {
-        SourceSpan location;
-        std::string text;
+        std::string msg;
     };
 
-    template<class T>
-    using Result = std::expected<T, Error>;
-
-    template<class... Args>
-    std::unexpected<Error> fail(SourceSpan location, std::format_string<Args...> fmt, Args&&... args)
-    {
-        return std::unexpected(Error{location, std::format(fmt, std::forward<Args>(args)...)});
-    }
+    template<class T, class E = SimpleError>
+    using Result = std::expected<T, E>;
 }
 
 

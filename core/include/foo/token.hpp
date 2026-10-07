@@ -91,10 +91,10 @@ namespace foo
         std::string text;
     );
 
-    FOO_TOKEN(EndOfFile, "EOF");
+    FOO_TOKEN(End, "END");
 
 
-    using TokenKind = std::variant<
+    using Token = std::variant<
         LParen, RParen,
         LBracket, RBracket,
         LBrace, RBrace,
@@ -119,17 +119,11 @@ namespace foo
 
         Import,
 
-        Doc, EndOfFile
+        Doc, End
     >;
 
-    struct Token
-    {
-        TokenKind kind;
-        SourceSpan source;
-    };
-
-    std::string_view name(const TokenKind& kind);
-    std::string to_string(const TokenKind& kind);
+    std::string_view name(const Token& token);
+    std::string to_string(const Token& token);
 }
 
 

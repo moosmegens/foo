@@ -11,10 +11,20 @@
 
 namespace foo
 {
+    struct LexError
+    {
+        SourceSpan source;
+        std::string error;
+    };
+
     struct LexOutput
     {
+        // parallel
         std::vector<Token> tokens;
-        std::vector<Error> errors;
+        std::vector<SourceSpan> sources;
+        //
+
+        std::vector<LexError> errors;
     };
 
     LexOutput tokenize(std::string_view src);
