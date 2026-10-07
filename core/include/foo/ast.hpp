@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <foo/source.hpp>
@@ -24,6 +25,8 @@ namespace foo
         using ExprPtr = std::unique_ptr<Expr>;
 
 
+        // type expressions
+
         struct NamedType { std::string name; };
         struct ArrayType { TypeExprPtr element_type; };
 
@@ -39,11 +42,14 @@ namespace foo
             And, Or
         };
 
-        struct IntLiteral       { int64_t value; };
-        struct FloatLiteral     { double value; };
-        struct StringLiteral    { std::string value; };
-        struct BoolLiteral      { bool value; };
-        struct ArrayLiteral     { std::vector<ExprPtr> elements; };
+
+        // expressions
+
+        struct IntLit       { int64_t value; };
+        struct FloatLit     { double value; };
+        struct StringLit    { std::string value; };
+        struct BoolLit      { bool value; };
+        struct ArrayLit     { std::vector<ExprPtr> elements; };
 
         struct Name             { std::string name; };
         struct Unary            { UnaryOp op; ExprPtr operant; };
@@ -51,6 +57,62 @@ namespace foo
         struct Call             { ExprPtr callee; std::vector<ExprPtr> args; };
         struct Index            { ExprPtr target; ExprPtr indexer; };
         struct Member           { ExprPtr target; std::string name; };
+
+        using ExprKind = std::variant<
+            IntLit, FloatLit, StringLit, BoolLit, ArrayLit,
+            Name,
+            Unary, Binary,
+            Index, Call, Member>;
+
+        struct Expr
+        {
+            ExprKind kind;
+            SourceSpan span;
+        };
+
+
+        // statements
+
+        struct Block { std::vector<StmtPtr> statements; };
+
+        struct VarDecl
+        {
+            std::string name;
+            TypeExprPtr type;
+            ExprPtr init; // can be null
+        };
+
+        struct Assign   { ExprPtr target, value; };
+        struct ExprStmt { ExprPtr expr; };
+        struct Return   { ExprPtr value; /* can be null */ };
+
+        struct If
+        {
+            ExprPtr cond;
+            StmtPtr then_branch;
+            StmtPtr else_branch; // nullptr if no else
+        };
+
+        struct While
+        {
+            ExprPtr cond;
+            StmtPtr body;
+        };
+
+        struct ForIn
+        {
+            std::string variable_name;
+            ExprPtr iterable;
+            StmtPtr body;
+        };
+
+        using StmtKind = std::variant<Block, VarDecl, Assign, ExprStmt, Return, If, While, ForIn>;
+
+        struct Stmt
+        {
+            StmtKind kind;
+            SourceSpan span;
+        };
 
 
     }
