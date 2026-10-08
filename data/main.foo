@@ -1,3 +1,7 @@
+fn my_func(): int                     fn my_func(): int
+fn  my_func(a : [  string , io ::  file   [  ]  ]   ): int
 fn my_func(): int
+fn my_func():
+
 
 fn main(args: string[])
