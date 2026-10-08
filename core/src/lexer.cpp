@@ -161,7 +161,7 @@ namespace foo
             bool is_float = false;
 
             while (is_digit(peek()))
-                ++_offset;
+                _offset++;
 
             if (peek() == '.' && is_digit(peek(1)))
             {
@@ -192,14 +192,13 @@ namespace foo
 
         Result<Token, LexError> lex_token()
         {
-
             while (true)
             {
                 skip();
                 const size_t start = _offset;
 
                 if (_offset >= _source.size())
-                    return make(tok::End{}, start, _offset);
+                    return make(tok::End{}, _source.size()-1, _source.size());
 
                 const char c = _source[_offset++];
                 switch (c)

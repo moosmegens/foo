@@ -1,5 +1,7 @@
 #include <iostream>
 #include <ostream>
+#include <optional>
+
 #include <foo/parser.hpp>
 #include <foo/ast.hpp>
 #include <foo/ast_printer.hpp>
@@ -18,8 +20,18 @@ namespace foo
                 init(tokens);
                 ParseOutput result;
 
-                auto t = parse_type();
-                std::cout << to_string(t) << std::endl;
+                while (!is_at_end())
+                {
+                    auto decl = parse_decl();
+
+                    if (decl)
+                    {
+                        result.decls.push_back(std::move(decl));
+                    } else
+                    {
+                        advance();
+                    }
+                }
 
                 result.errors = std::move(_errors);
                 return result;
@@ -33,11 +45,21 @@ namespace foo
                 _errors = {};
             }
 
+            bool is_at_end() const { return current().is<tok::End>(); }
+
             const Token& current() const { return peek(0); }
 
             const Token& peek(int ahead = 0) const
             {
-                return _tokens[std::min(_offset + static_cast<size_t>(ahead), _tokens.size() - 1)];
+                int target = static_cast<int>(_offset) + ahead;
+
+                if (target < 0)
+                    target = 0;
+
+                if (target >= static_cast<int>(_tokens.size()))
+                    target = static_cast<int>(_tokens.size()) - 1;
+
+                return _tokens[static_cast<size_t>(target)];
             }
 
             const Token& advance()
@@ -81,6 +103,21 @@ namespace foo
                 return false;
             }
 
+            void finish_span(SourceSpan& span)
+            {
+                if (_offset > 0)
+                {
+                    const Token& last_token = _tokens[_offset - 1];
+
+                    size_t end_offset = last_token.source.start + last_token.source.size;
+
+                    if (end_offset > span.start)
+                    {
+                        span.size = end_offset - span.start;
+                    }
+                }
+            }
+
             void report_error(const Token& invalid_token, std::string_view msg)
             {
                 ParseError err;
@@ -121,8 +158,8 @@ namespace foo
                         return nullptr;
                     }
 
-                    span.add(current().source);
                     advance(); // consume ']'
+                    finish_span(span);
 
                     base = std::make_unique<ast::TypeExpr>();
                     base->type = ast::MapType{std::move(key_type), std::move(value_type)};
@@ -132,8 +169,9 @@ namespace foo
                 {
                     std::vector<std::string> parts;
                     parts.push_back(std::get<tok::Identifier>(current().variant).value);
-                    span.add(current().source);
+
                     advance();
+                    finish_span(span);
 
                     while (match<tok::ColonColon>())
                     {
@@ -161,7 +199,7 @@ namespace foo
                     if (!expect<tok::RBracket>())
                         break;
 
-                    span.add(current().source);
+                    finish_span(span);
 
                     auto arr = std::make_unique<ast::TypeExpr>();
                     arr->type = ast::ArrayType{std::move(base)};
@@ -170,6 +208,107 @@ namespace foo
                 }
 
                 return base;
+            }
+
+
+            // parse:
+            //      decl's
+
+            ast::DeclPtr parse_decl()
+            {
+                SourceSpan span{current().source.start, 0};
+
+                if (match<tok::Function>())
+                {
+                    auto fn = parse_fn_decl();
+                    if (!fn)
+                        return nullptr;
+
+                    auto decl = std::make_unique<ast::Decl>();
+                    decl->kind = std::move(*fn);
+                    finish_span(span);
+                    return decl;
+                }
+
+                if (match<tok::Struct>())
+                {
+                    auto decl = std::make_unique<ast::Decl>();
+
+                }
+
+                report_error(current(), "Expected declaration");
+                return nullptr;
+            }
+
+            std::optional<ast::FnDecl> parse_fn_decl()
+            {
+                if (!check<tok::Identifier>())
+                {
+                    report_error(current(), "Expected function name");
+                    return std::nullopt;
+                }
+
+                std::string name = std::get<tok::Identifier>(current().variant).value;
+                advance();
+
+                if (!expect<tok::LParen>())
+                    return std::nullopt;
+
+                std::vector<ast::Param> params;
+                if (!check<tok::RParen>())
+                {
+                    do {
+                        auto param = parse_param();
+                        if (!param)
+                            return std::nullopt;
+
+                        params.push_back(std::move(*param));
+                    } while (match<tok::Comma>());
+                }
+
+                if (!expect<tok::RParen>())
+                    return std::nullopt;
+
+                ast::TypeExprPtr return_type = nullptr;
+                if (match<tok::Colon>())
+                {
+                    return_type = parse_type();
+                    if (!return_type)
+                        return std::nullopt;
+                }
+
+
+                return ast::FnDecl{
+                    std::move(name), std::move(params), std::move(return_type), {}
+                };
+            }
+
+            std::optional<ast::Param> parse_param()
+            {
+                if (!check<tok::Identifier>())
+                {
+                    report_error(current(), "Expected parameter name");
+                    return std::nullopt;
+                }
+
+                std::string name = std::get<tok::Identifier>(current().variant).value;
+                SourceSpan span = current().source;
+
+                advance();
+
+                if (!expect<tok::Colon>())
+                    return std::nullopt;
+
+                bool is_ref = match<tok::Ref>();
+
+                auto type = parse_type();
+
+                if (!type)
+                    return std::nullopt;
+
+                span.add(type->span);
+
+                return ast::Param{std::move(name), std::move(type), is_ref, span};
             }
 
 

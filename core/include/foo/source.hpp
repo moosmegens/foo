@@ -74,7 +74,7 @@ namespace foo
         size_t underline_length{};
     };
 
-    inline std::vector<DiagnosticLine> get_diagnostic_lines(std::string_view source, const SourceSpan & span)
+    inline std::vector<DiagnosticLine> get_diagnostic_lines(std::string_view source, const SourceSpan& span)
     {
         std::vector<DiagnosticLine> lines;
         if (span.size == 0)

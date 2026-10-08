@@ -39,4 +39,52 @@ namespace foo
             }
         }, type.type);
     }
+
+    std::string to_string(const ast::DeclPtr& decl_ptr)
+    {
+        if (!decl_ptr)
+            return"<null_decl>";
+
+        return to_string(*decl_ptr);
+    }
+
+    inline std::string to_string(const ast::Param& param)
+    {
+        std::string result = param.name + ": ";
+
+        if (param.reffed)
+            result += "ref ";
+
+        result += to_string(param.type);
+        return result;
+    }
+
+    std::string to_string(const ast::Decl& decl)
+    {
+        return std::visit<std::string>(overload{
+            [](const ast::FnDecl& fn)
+            {
+                std::ostringstream out;
+                out << "fn " << fn.name << "(";
+
+                for (size_t i = 0; i < fn.params.size(); ++i)
+                {
+                    if (i > 0) out << ", ";
+                    out << to_string(fn.params[i]);
+                }
+                out << ")";
+
+                if (fn.return_type)
+                {
+                    out << ": " << to_string(fn.return_type);
+                }
+
+                return out.str();
+            },
+            [](const auto&)
+            {
+                return "else";
+            }
+        }, decl.kind);
+    }
 }

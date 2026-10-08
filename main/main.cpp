@@ -1,3 +1,5 @@
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <ostream>
 
@@ -7,6 +9,8 @@
 
 #include <foo/parser.hpp>
 #include <foo/source.hpp>
+
+#include <foo/ast_printer.hpp>
 
 void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span)
 {
@@ -19,6 +23,11 @@ void print_diagnostics(const std::string& error, std::string_view src, foo::Sour
 
     std::cout << CLR_RED << "error" << CLR_RESET << ": " << error << "\n";
 
+    if (lines.empty())
+    {
+        std::cout << "NO LINES FOUND\n";
+        return;
+    }
 
     int max_line = lines.back().line_number;
     int pad_len = std::to_string(max_line).length();
@@ -44,33 +53,32 @@ void print_diagnostics(const std::string& error, std::string_view src, foo::Sour
     }
 }
 
-void rng_lex()
+std::filesystem::path foo_root()
 {
-    std::string chars = "<+->!=a:";
-    std::string str;
+    const char* root = std::getenv("FOO_ROOT");
 
-    std::srand(std::time(nullptr));
+    if (!root)
+        throw std::runtime_error("FOO_ROOT is not set");
 
-    for (int i = 0; i < 20000; i++)
-    {
-        str += chars[std::rand() % chars.length()];
-    }
-
-    foo::LexOutput tokens;
-    {
-        foo::scoped_timer timer{"tokenize", true};
-        tokens = foo::tokenize(str);
-    }
-
-    for (const auto& error : tokens.errors)
-    {
-        std::cout << "error: " << error.error << std::endl;
-    }
+    return root;
 }
+
+std::string load_file(const std::filesystem::path& path)
+{
+    std::ifstream file(path, std::ios::binary);
+
+    if (!file)
+        throw std::runtime_error("Failed to open " + path.string());
+
+
+    return {std::istreambuf_iterator<char>(file), {}};
+}
+
+
 
 void parse()
 {
-    std::string str = "[error, ]";
+    std::string str = load_file(foo_root() / "data" / "main.foo");
 
 
     auto lex_result = foo::tokenize(str);
@@ -86,12 +94,27 @@ void parse()
     {
         print_diagnostics(error.error, str, error.source);
     }
+
+    for (auto& decl : ast_result.decls)
+    {
+        std::cout << foo::to_string(decl) << std::endl;
+    }
 }
 
 int main()
 {
-    //rng_lex();
-    parse();
+    try
+    {
+
+        parse();
+
+    } catch (std::exception& e)
+    {
+        std::cerr << "exception: " << e.what() << std::endl;
+    } catch (...)
+    {
+        std::cerr << "exception" << std::endl;
+    }
 
     return 0;
 }

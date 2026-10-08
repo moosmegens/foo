@@ -177,6 +177,7 @@ namespace foo::ast
 
     struct Decl
     {
+        SourceSpan span;
         DeclKind kind;
     };
 }
