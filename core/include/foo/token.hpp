@@ -35,7 +35,17 @@ namespace foo
         FOO_TOKEN(Comma, ",");
         FOO_TOKEN(Semicolon, ";");
         FOO_TOKEN(Colon, ":");
+        FOO_TOKEN(ColonColon, "::");
         FOO_TOKEN(Dot, ".");
+        FOO_TOKEN(DotDot, "..");
+
+        FOO_TOKEN(Roof, "^");
+        FOO_TOKEN(Hash, "#");
+        FOO_TOKEN(At, "@");
+        FOO_TOKEN(Pipe, "|");
+        FOO_TOKEN(BackTick, "`");
+        FOO_TOKEN(CurlyLine, "~");
+
 
         FOO_TOKEN(PlusOp, "+");
         FOO_TOKEN(MinusOp, "-");
@@ -104,7 +114,9 @@ namespace foo
         tok::LBracket, tok::RBracket,
         tok::LBrace, tok::RBrace,
 
-        tok::Comma, tok::Semicolon, tok::Colon, tok::Dot,
+        tok::Comma, tok::Semicolon, tok::Colon, tok::ColonColon, tok::Dot, tok::DotDot,
+
+        tok::Roof, tok::Hash, tok::At, tok::Pipe, tok::BackTick, tok::CurlyLine,
 
         tok::Identifier, tok::String, tok::Integer, tok::Float, tok::Boolean,
 

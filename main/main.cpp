@@ -7,7 +7,7 @@
 
 void rng_lex()
 {
-    std::string chars = "<+->!=a";
+    std::string chars = "<+->!=a:";
     std::string str;
 
     std::srand(std::time(nullptr));

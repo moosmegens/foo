@@ -211,10 +211,30 @@ namespace foo
                     case '{': return make(tok::LBrace{},   start, _offset);
                     case '}': return make(tok::RBrace{},   start, _offset);
 
+                    case '`': return make(tok::BackTick{},   start, _offset);
+                    case '~': return make(tok::CurlyLine{},   start, _offset);
+                    case '@': return make(tok::At{}, start, _offset);
+                    case '#': return make(tok::Hash{}, start, _offset);
+                    case '|': return make(tok::Pipe{},   start, _offset);
+
                     case ',': return make(tok::Comma{},     start, _offset);
                     case ';': return make(tok::Semicolon{}, start, _offset);
-                    case ':': return make(tok::Colon{},     start, _offset);
-                    case '.': return make(tok::Dot{},       start, _offset);
+
+                    case ':':
+                    {
+                        if (match(':'))
+                            return make(tok::ColonColon{}, start, _offset);
+                        else
+                            return make(tok::Colon{}, start, _offset);
+                    }
+
+                    case '.':
+                    {
+                        if (match('.'))
+                            return make(tok::DotDot{}, start, _offset);
+                        else
+                            return make(tok::Dot{}, start, _offset);
+                    }
 
                     case '+': return make(tok::PlusOp{},     start, _offset);
                     case '-': return make(tok::MinusOp{},    start, _offset);

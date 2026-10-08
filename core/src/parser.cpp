@@ -24,6 +24,7 @@ namespace foo
             {
                 _tokens = tokens;
                 _offset = 0;
+                _errors = {};
             }
 
             const Token& peek(int ahead = 0) const
@@ -57,6 +58,28 @@ namespace foo
                 return true;
             }
 
+
+            // decl parsing
+
+            ast::DeclPtr parse_decl()
+            {
+                if (check<tok::Function>())
+                {
+                    return std::make_unique<ast::DeclPtr>(parse_function());
+                }
+
+                return nullptr;
+            }
+
+            ast::FnDecl parse_function()
+            {
+                return {};
+            }
+
+
+        private:
+
+            std::vector<ParseError> _errors;
             std::span<Token> _tokens;
             size_t _offset;
         };
