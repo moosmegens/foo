@@ -9,6 +9,7 @@
 namespace foo
 {
     std::string to_string(const ast::TypeExpr& type);
+    std::string to_string(const ast::TypeExprPtr& type_ptr);
 }
 
 

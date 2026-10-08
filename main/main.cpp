@@ -33,9 +33,23 @@ void rng_lex()
 
 void parse()
 {
-    std::string str = "io::file[]";
+    std::string str = "[ string[],    io:: file[]] [] [ ]";
+
+
     auto lex_result = foo::tokenize(str);
+
+    for (const auto& token : lex_result.tokens)
+    {
+        std::cout << foo::to_string(token.variant) << std::endl;
+    }
+
+
     auto ast_result = foo::parse(lex_result.tokens);
+
+    for (const auto& error : ast_result.errors)
+    {
+        std::cout << std::format("error [{}]: {}", str.substr(error.source.size, error.source.size), error.error) << std::endl;
+    }
 }
 
 int main()

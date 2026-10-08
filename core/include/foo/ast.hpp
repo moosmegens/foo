@@ -29,8 +29,9 @@ namespace foo::ast
 
     struct NamedType { std::vector<std::string> parts;  };
     struct ArrayType { TypeExprPtr element_type; };
+    struct MapType   { TypeExprPtr key_type; TypeExprPtr value_type; };
 
-    using TypeExprKind = std::variant<NamedType, ArrayType>;
+    using TypeExprKind = std::variant<NamedType, ArrayType, MapType>;
 
     struct TypeExpr
     {

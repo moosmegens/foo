@@ -18,8 +18,11 @@ namespace foo
                 init(tokens);
                 ParseOutput result;
 
+                auto t = parse_type();
+                std::cout << to_string(t) << std::endl;
 
-                return {};
+                result.errors = std::move(_errors);
+                return result;
             }
 
         private:
@@ -88,45 +91,79 @@ namespace foo
             }
 
 
-            // actual parsing
+            // parse:
+            //      types
 
             ast::TypeExprPtr parse_type()
             {
-                if (!check<tok::Identifier>())
-                {
-                    report_error(current(), "Expected type name");
-                    return nullptr;
-                }
-
-                std::vector<std::string> parts;
                 SourceSpan span = current().source;
+                ast::TypeExprPtr base = nullptr;
 
-                parts.push_back(std::get<tok::Identifier>(advance().variant).value);
 
-                while (match<tok::ColonColon>())
+                if (check<tok::LBracket>())
                 {
-                    if (!check<tok::Identifier>())
+                    advance(); // consume '['
+
+                    auto key_type = parse_type();
+                    if (!key_type)
+                        return nullptr;
+
+                    if (!expect<tok::Comma>())
+                        return nullptr;
+
+                    auto value_type = parse_type();
+                    if (!value_type)
+                        return nullptr;
+
+                    if (!check<tok::RBracket>())
                     {
-                        report_error(current(), "Expected identifier after '::'");
-                        break;
+                        report_error(current(), "Expected ']'");
+                        return nullptr;
                     }
 
-                    parts.push_back(std::get<tok::Identifier>(current().variant).value);
-                    advance();
+                    span.add(current().source);
+                    advance(); // consume ']'
+
+                    base = std::make_unique<ast::TypeExpr>();
+                    base->type = ast::MapType{std::move(key_type), std::move(value_type)};
+                    base->span = span;
                 }
+                else if (check<tok::Identifier>())
+                {
+                    std::vector<std::string> parts;
+                    parts.push_back(std::get<tok::Identifier>(current().variant).value);
+                    span.add(current().source);
+                    advance();
 
+                    while (match<tok::ColonColon>())
+                    {
+                        if (!check<tok::Identifier>())
+                        {
+                            report_error(current(), "Expected identifier after '::'");
+                            break;
+                        }
+                        parts.push_back(std::get<tok::Identifier>(current().variant).value);
+                        advance();
+                    }
 
-                auto base = std::make_unique<ast::TypeExpr>();
-                base->type = ast::NamedType{std::move(parts)};
-                base->span = span;
+                    base = std::make_unique<ast::TypeExpr>();
+                    base->type = ast::NamedType{std::move(parts)};
+                    base->span = span;
+                }
+                else
+                {
+                    report_error(current(), "Expected type name or '['");
+                    return nullptr;
+                }
 
                 while (match<tok::LBracket>())
                 {
                     if (!expect<tok::RBracket>())
                         break;
 
-                    auto arr = std::make_unique<ast::TypeExpr>();
+                    span.add(current().source);
 
+                    auto arr = std::make_unique<ast::TypeExpr>();
                     arr->type = ast::ArrayType{std::move(base)};
                     arr->span = span;
                     base = std::move(arr);
