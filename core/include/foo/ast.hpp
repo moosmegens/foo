@@ -30,6 +30,14 @@ namespace foo::ast
     struct NamedType { std::vector<std::string> parts;  };
     struct ArrayType { TypeExprPtr element_type; };
 
+    using TypeExprKind = std::variant<NamedType, ArrayType>;
+
+    struct TypeExpr
+    {
+        TypeExprKind type;
+        SourceSpan span;
+    };
+
 
     // ops
 

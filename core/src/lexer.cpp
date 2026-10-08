@@ -215,7 +215,6 @@ namespace foo
                     case '~': return make(tok::CurlyLine{},   start, _offset);
                     case '@': return make(tok::At{}, start, _offset);
                     case '#': return make(tok::Hash{}, start, _offset);
-                    case '|': return make(tok::Pipe{},   start, _offset);
 
                     case ',': return make(tok::Comma{},     start, _offset);
                     case ';': return make(tok::Semicolon{}, start, _offset);
@@ -276,9 +275,12 @@ namespace foo
                     case '&':
                         if (match('&')) return make(tok::AndOp{}, start, _offset);
                         return std::unexpected<LexError>{{SourceSpan::between(start, _offset), "unexpected '&', did you mean '&&'?"}};
+
                     case '|':
-                        if (match('|')) return make(tok::OrOp{}, start, _offset);
-                        return std::unexpected<LexError>{{SourceSpan::between(start, _offset), "unexpected '|', did you mean '||'?"}};
+                        if (match('|'))
+                            return make(tok::OrOp{}, start, _offset);
+                        else
+                            return make(tok::Pipe{},   start, _offset);
 
                     case '"': return lex_string(start);
 

@@ -2,6 +2,9 @@
 #define FOO_SOURCE_HPP
 
 
+#include <algorithm>
+
+
 namespace foo
 {
     struct SourceSpan
@@ -15,6 +18,19 @@ namespace foo
         static SourceSpan between(size_t begin, size_t end)
         {
             return {.start = begin, .size = end > begin ? end - begin : 0};
+        }
+
+        static SourceSpan combine(SourceSpan a, SourceSpan b)
+        {
+            const size_t begin = std::min(a.start, b.start);
+            const size_t end = std::max(a.end(), b.end());
+
+            return between(begin, end);
+        }
+
+        void add(SourceSpan b)
+        {
+            *this = combine(*this, b);
         }
     };
 }
