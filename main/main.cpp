@@ -12,6 +12,8 @@
 
 #include <foo/ast_printer.hpp>
 
+#include <foo/debug/log.hpp>
+
 void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span)
 {
     #define CLR_RED "\033[1;31m"
@@ -80,7 +82,6 @@ void parse()
 {
     std::string str = load_file(foo_root() / "data" / "main.foo");
 
-
     auto lex_result = foo::tokenize(str);
 
     for (const auto& error : lex_result.errors)
@@ -115,6 +116,11 @@ int main()
     {
         std::cerr << "exception" << std::endl;
     }
+
+    foo::trace("test");
+    foo::info("idk bro", "heeeeelp");
+    foo::error("idk bro", "heeeeelp\nerror in blah blah blah\nQIUIHOIQUWDH");
+    foo::trace();
 
     return 0;
 }
