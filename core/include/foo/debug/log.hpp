@@ -80,13 +80,22 @@ namespace foo
 
             const auto now = std::chrono::floor<std::chrono::milliseconds>(std::chrono::system_clock::now());
 
+            std::string possible_trace;
+            if (level == LogLevel::Trace)
+            {
+                possible_trace = std::format("{}:{}", std::filesystem::path(loc.file_name()).filename().string(), loc.line());
+                component = possible_trace;
+            }
+
             const std::string header = std::format(
-                "{:%F %T}  {:<5}  {:<12}  ",
+                "{:%F %T}|{:<5}|{:<14} : ",
                 now,
                 level_name,
                 component);
 
-            const std::string indent(header.size(), ' ');
+
+            std::string indent(header.size(), ' ');
+
             std::string body;
             body.reserve(msg.size());
             for (const char c : msg)
