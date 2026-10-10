@@ -129,7 +129,7 @@ namespace foo
 
             struct BindingPower { int left; int right; };
 
-            static const int prefix_bp  = 15;
+            static const int unary_bp = 15;
             static const int postfix_bp = 17;
 
             static std::optional<BindingPower> infix_bp(TokenVariant v)
@@ -181,6 +181,16 @@ namespace foo
                 if (token_variant_is<tok::AndOp>(v))          return Op::And;
                 if (token_variant_is<tok::OrOp>(v))           return Op::Or;
                 if (token_variant_is<tok::AssignOp>(v))       return Op::Assign;
+
+                return std::nullopt;
+            }
+
+            static std::optional<ast::UnaryOp> to_unary_op(const TokenVariant& v)
+            {
+                using Op = ast::UnaryOp;
+
+                if (token_variant_is<tok::MinusOp>(v))  return Op::Neg;
+                if (token_variant_is<tok::NotOp>(v))    return Op::Not;
 
                 return std::nullopt;
             }
@@ -335,9 +345,13 @@ namespace foo
                         return std::nullopt;
                 }
 
+                auto body = parse_block_body();
+                if (!body)
+                    return std::nullopt;
+
 
                 return ast::FnDecl{
-                    std::move(name), std::move(params), std::move(return_type), {}
+                    std::move(name), std::move(params), std::move(return_type), std::move(*body)
                 };
             }
 
@@ -373,10 +387,263 @@ namespace foo
             // parse:
             //      statements
 
+            std::optional<ast::Block> parse_block_body()
+            {
+                if (!expect<tok::LBrace>())
+                    return std::nullopt;
+
+                std::vector<ast::StmtPtr> stmts;
+
+                while (!check<tok::RBrace>())
+                {
+                    size_t before = _offset;
+
+                    if (auto stmt = parse_stmt())
+                    {
+                        stmts.push_back(std::move(stmt));
+                        continue;
+                    }
+
+                    if (_offset == before)
+                        advance();
+                }
+
+                expect<tok::RBrace>();
+                return ast::Block{std::move(stmts)};
+            }
+
+            ast::StmtPtr parse_stmt()
+            {
+                return parse_expr_stmt();
+            }
+
+            ast::StmtPtr parse_expr_stmt()
+            {
+                SourceSpan span = current().source;
+
+                auto expr = parse_expr();
+                if (!expr)
+                    return nullptr;
+
+                if (!expect<tok::Semicolon>())
+                    return nullptr;
+
+                finish_span(span);
+
+                auto stmt = std::make_unique<ast::Stmt>();
+                stmt->kind = ast::ExprStmt{std::move(expr)};
+                stmt->span = span;
+                return stmt;
+            }
+
 
             // parse:
             //      expressions
 
+            ast::ExprPtr parse_expr(int min_bp = 0)
+            {
+                auto left = parse_primary();
+                if (!left)
+                    return nullptr;
+
+                while (true)
+                {
+                    const TokenVariant& next = peek().variant;
+
+                    if (is_postfix(next))
+                    {
+                        if (postfix_bp < min_bp)
+                            break;
+
+                        left = parse_postfix(std::move(left));
+                    }
+                    else if (auto bp = infix_bp(next))
+                    {
+                        if (bp->left < min_bp)
+                            break;
+
+                        left = parse_binary(std::move(left), bp->right);
+                    }
+                    else break;
+
+                    if (!left)
+                        return nullptr;
+                }
+                return left;
+            }
+
+            ast::ExprPtr parse_primary()
+            {
+                SourceSpan span = current().source;
+                const TokenVariant& v = current().variant;
+
+                if (auto* t = std::get_if<tok::Integer>(&v))
+                {
+                    auto value = t->value;
+                    advance();
+                    return std::make_unique<ast::Expr>(ast::IntLit{value}, span);
+                }
+                if (auto* t = std::get_if<tok::Float>(&v))
+                {
+                    auto value = t->value;
+                    advance();
+                    return std::make_unique<ast::Expr>(ast::FloatLit{value}, span);
+                }
+                if (auto* t = std::get_if<tok::String>(&v))
+                {
+                    auto value = t->value;
+                    advance();
+                    return std::make_unique<ast::Expr>(ast::StringLit{std::move(value)}, span);
+                }
+                if (auto* t = std::get_if<tok::Boolean>(&v))
+                {
+                    auto value = t->value;
+                    advance();
+                    return std::make_unique<ast::Expr>(ast::BoolLit{value}, span);
+                }
+
+                if (auto* t = std::get_if<tok::Identifier>(&v))
+                {
+                    std::vector<std::string> parts;
+                    parts.push_back(t->value);
+                    advance();
+
+                    while (match<tok::ColonColon>())
+                    {
+                        if (!check<tok::Identifier>())
+                        {
+                            report_error(current(), "Expected identifier after '::'");
+                            return nullptr;
+                        }
+                        parts.push_back(std::get<tok::Identifier>(current().variant).value);
+                        advance();
+                    }
+
+                    finish_span(span);
+                    return std::make_unique<ast::Expr>(ast::Name{std::move(parts)}, span);
+                }
+
+                if (check<tok::MinusOp>() || check<tok::NotOp>())
+                {
+                    auto op = to_unary_op(peek().variant);
+                    advance();
+
+                    auto operand = parse_expr(unary_bp);
+                    if (!operand)
+                        return nullptr;
+
+                    finish_span(span);
+                    return std::make_unique<ast::Expr>(ast::Unary{*op, std::move(operand)}, span);
+                }
+
+                if (match<tok::LParen>())
+                {
+                    auto inner = parse_expr();
+
+                    if (!inner)
+                        return nullptr;
+
+                    if (!expect<tok::RParen>())
+                        return nullptr;
+
+                    finish_span(span);
+                    inner->span = span;
+                    return inner;
+                }
+
+                if (match<tok::LBracket>())
+                {
+                    std::vector<ast::ExprPtr> elements;
+                    if (!check<tok::RBracket>())
+                    {
+                        do {
+                            if (check<tok::RBracket>())
+                                break;
+
+                            auto e = parse_expr();
+
+                            if (!e)
+                                return nullptr;
+
+                            elements.push_back(std::move(e));
+                        } while (match<tok::Comma>());
+                    }
+
+                    if (!expect<tok::RBracket>())
+                        return nullptr;
+
+                    finish_span(span);
+                    return std::make_unique<ast::Expr>(ast::ArrayLit{std::move(elements)}, span);
+                }
+
+                report_error(current(), "Expected expression");
+                return nullptr;
+            }
+
+            ast::ExprPtr parse_postfix(ast::ExprPtr target)
+            {
+                SourceSpan span = target->span;
+
+                if (match<tok::LParen>())
+                {
+                    std::vector<ast::ExprPtr> args;
+                    if (!check<tok::RParen>())
+                    {
+                        do {
+                            auto arg = parse_expr();
+                            if (!arg)
+                                return nullptr;
+
+                            args.push_back(std::move(arg));
+                        } while (match<tok::Comma>());
+                    }
+                    if (!expect<tok::RParen>()) return nullptr;
+
+                    finish_span(span);
+                    return std::make_unique<ast::Expr>(ast::Call{std::move(target), std::move(args)}, span);
+                }
+
+                if (match<tok::LBracket>())
+                {
+                    auto indexer = parse_expr();
+                    if (!indexer) return nullptr;
+                    if (!expect<tok::RBracket>()) return nullptr;
+
+                    finish_span(span);
+                    return std::make_unique<ast::Expr>(ast::Index{std::move(target), std::move(indexer)}, span);
+                }
+
+                if (match<tok::Dot>())
+                {
+                    if (!check<tok::Identifier>())
+                    {
+                        report_error(current(), "Expected member name after '.'");
+                        return nullptr;
+                    }
+                    std::string name = std::get<tok::Identifier>(current().variant).value;
+                    advance();
+
+                    finish_span(span);
+                    return std::make_unique<ast::Expr>(ast::Member{std::move(target), std::move(name)}, span);
+                }
+
+                return nullptr;
+            }
+
+            ast::ExprPtr parse_binary(ast::ExprPtr lhs, int right_bp)
+            {
+                SourceSpan span = lhs->span;
+
+                auto op = to_binary_op(current().variant);
+                advance();
+
+                auto rhs = parse_expr(right_bp);
+                if (!rhs)
+                    return nullptr;
+
+                finish_span(span);
+                return std::make_unique<ast::Expr>(ast::Binary{*op, std::move(lhs), std::move(rhs)}, span);
+            }
 
 
         private:

@@ -1,7 +1,4 @@
-fn my_func(): int                     fn my_func(): int
-fn  my_func(a : [  string , io ::  file   [  ]  ]   ): int
 fn my_func(): int
-fn my_func(): int
-
-
-fn main(args: string[])
+{
+    a = complex_func(my_map["ke" + "y"], variable1.array[5 + -2][2 + 2 * 3 / 2].func(), 5 + 2 * 2 + -1);
+}

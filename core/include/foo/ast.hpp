@@ -152,7 +152,7 @@ namespace foo::ast
         std::string name;
         std::vector<Param> params;
         TypeExprPtr return_type;
-        std::vector<StmtPtr> body;
+        Block body;
     };
 
     struct StructField
