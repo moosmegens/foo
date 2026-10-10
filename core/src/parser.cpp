@@ -127,6 +127,64 @@ namespace foo
                 _errors.push_back(err);
             }
 
+            struct BindingPower { int left; int right; };
+
+            static const int prefix_bp  = 15;
+            static const int postfix_bp = 17;
+
+            static std::optional<BindingPower> infix_bp(TokenVariant v)
+            {
+                if (token_variant_is<tok::AssignOp>(v))
+                    return BindingPower{2, 1};
+
+                if (token_variant_is<tok::OrOp>(v))
+                    return BindingPower{3, 4};
+
+                if (token_variant_is<tok::AndOp>(v))
+                    return BindingPower{5, 6};
+
+                if (token_variant_is<tok::EqualOp, tok::NotEqualOp>(v))
+                    return BindingPower{7, 8};
+
+                if (token_variant_is<tok::LessOp, tok::LessEqualOp, tok::GreaterOp, tok::GreaterEqualOp>(v))
+                    return BindingPower{9, 10};
+
+                if (token_variant_is<tok::PlusOp, tok::MinusOp>(v))
+                    return BindingPower{11, 12};
+
+                if (token_variant_is<tok::MultiplyOp, tok::DivideOp, tok::ModuloOp>(v))
+                    return BindingPower{13, 14};
+
+                return std::nullopt;
+            }
+
+            static bool is_postfix(const TokenVariant& v)
+            {
+                return token_variant_is<tok::LParen, tok::LBracket, tok::Dot>(v);
+            }
+
+            static std::optional<ast::BinaryOp> to_binary_op(const TokenVariant& v)
+            {
+                using Op = ast::BinaryOp;
+
+                if (token_variant_is<tok::PlusOp>(v))         return Op::Add;
+                if (token_variant_is<tok::MinusOp>(v))        return Op::Sub;
+                if (token_variant_is<tok::MultiplyOp>(v))     return Op::Mul;
+                if (token_variant_is<tok::DivideOp>(v))       return Op::Div;
+                if (token_variant_is<tok::ModuloOp>(v))       return Op::Mod;
+                if (token_variant_is<tok::EqualOp>(v))        return Op::Eq;
+                if (token_variant_is<tok::NotEqualOp>(v))     return Op::NotEq;
+                if (token_variant_is<tok::LessOp>(v))         return Op::Less;
+                if (token_variant_is<tok::LessEqualOp>(v))    return Op::LessEq;
+                if (token_variant_is<tok::GreaterOp>(v))      return Op::Greater;
+                if (token_variant_is<tok::GreaterEqualOp>(v)) return Op::GreaterEq;
+                if (token_variant_is<tok::AndOp>(v))          return Op::And;
+                if (token_variant_is<tok::OrOp>(v))           return Op::Or;
+                if (token_variant_is<tok::AssignOp>(v))       return Op::Assign;
+
+                return std::nullopt;
+            }
+
 
             // parse:
             //      types
@@ -312,10 +370,19 @@ namespace foo
             }
 
 
+            // parse:
+            //      statements
+
+
+            // parse:
+            //      expressions
+
+
+
         private:
             std::vector<ParseError> _errors;
             std::span<Token> _tokens;
-            size_t _offset;
+            size_t _offset{};
         };
     }
 

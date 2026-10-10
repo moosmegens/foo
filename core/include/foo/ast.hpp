@@ -51,7 +51,8 @@ namespace foo::ast
     {
         Add, Sub, Mul, Div, Mod,
         Eq, NotEq, Less, LessEq, Greater, GreaterEq,
-        And, Or
+        And, Or,
+        Assign
     };
 
 
@@ -102,7 +103,6 @@ namespace foo::ast
         ExprPtr init; // can be null
     };
 
-    struct Assign   { ExprPtr target, value; };
     struct ExprStmt { ExprPtr expr; };
     struct Return   { ExprPtr value; /* can be null */ };
 
@@ -126,7 +126,9 @@ namespace foo::ast
         StmtPtr body;
     };
 
-    using StmtKind = std::variant<Block, VarDecl, Assign, ExprStmt, Return, If, While, ForIn>;
+    using StmtKind = std::variant<
+            Block, VarDecl, Return, If, While, ForIn,
+            ExprStmt>;
 
     struct Stmt
     {

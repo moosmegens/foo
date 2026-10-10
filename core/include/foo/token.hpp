@@ -139,15 +139,21 @@ namespace foo
         tok::Doc, tok::End
     >;
 
+    template <class... Ts>
+    constexpr bool token_variant_is(const TokenVariant& v)
+    {
+        return (std::holds_alternative<Ts>(v) || ...);
+    }
+
     struct Token
     {
         TokenVariant variant;
         SourceSpan source;
 
-        template <class T>
+        template <class... Ts>
         bool is() const
         {
-            return std::holds_alternative<T>(variant);
+            return (std::holds_alternative<Ts>(variant) || ...);
         }
     };
 
