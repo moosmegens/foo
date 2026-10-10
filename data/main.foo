@@ -1,4 +1,7 @@
 fn my_func(): int
 {
     a = complex_func(my_map["ke" + "y"], variable1.array[5 + -2][2 + 2 * 3 / 2].func(), 5 + 2 * 2 + -1);
+
+
+    @int[]::from_string("string", "another string" + " added string");
 }

@@ -576,6 +576,45 @@ namespace foo
                     return std::make_unique<ast::Expr>(ast::ArrayLit{std::move(elements)}, span);
                 }
 
+                if (match<tok::At>())
+                {
+                    auto type_expr = parse_type();
+                    if (!type_expr)
+                        return nullptr;
+
+                    if (!check<tok::ColonColon>())
+                    {
+                        report_error(current(), "Expected :: after the type");
+                        return nullptr;
+                    }
+                    advance();
+
+                    if (!check<tok::Identifier>())
+                    {
+                        report_error(current(), "Expected function name");
+                        return nullptr;
+                    }
+                    std::string name = std::get<tok::Identifier>(current().variant).value;
+                    advance();
+
+
+                    if (!expect<tok::LParen>())
+                        return nullptr;
+
+
+                    std::vector<ast::ExprPtr> args;
+                    if (!check<tok::RParen>())
+                    {
+                        args = parse_expr_group();
+                    }
+
+                    if (!expect<tok::RParen>())
+                        return nullptr;
+
+                    finish_span(span);
+                    return std::make_unique<ast::Expr>(ast::StaticCall{std::move(type_expr), name, std::move(args)});
+                }
+
                 report_error(current(), "Expected expression");
                 return nullptr;
             }
@@ -606,8 +645,11 @@ namespace foo
                 if (match<tok::LBracket>())
                 {
                     auto indexer = parse_expr();
-                    if (!indexer) return nullptr;
-                    if (!expect<tok::RBracket>()) return nullptr;
+                    if (!indexer)
+                        return nullptr;
+
+                    if (!expect<tok::RBracket>())
+                        return nullptr;
 
                     finish_span(span);
                     return std::make_unique<ast::Expr>(ast::Index{std::move(target), std::move(indexer)}, span);
@@ -643,6 +685,21 @@ namespace foo
 
                 finish_span(span);
                 return std::make_unique<ast::Expr>(ast::Binary{*op, std::move(lhs), std::move(rhs)}, span);
+            }
+
+            std::vector<ast::ExprPtr> parse_expr_group()
+            {
+                std::vector<ast::ExprPtr> args;
+
+                do {
+                    auto arg = parse_expr();
+                    if (!arg)
+                        return args;
+
+                    args.push_back(std::move(arg));
+                } while (match<tok::Comma>());
+
+                return args;
             }
 
 

@@ -171,7 +171,7 @@ namespace foo
                 {
                     out += "\n" + pad(indent) + "else";
                     out += std::holds_alternative<If>(n.else_branch->kind)
-                        ? " " + print(n.else_branch, indent)      // else-if chain stays flat
+                        ? " " + print(n.else_branch, indent)
                         : body(n.else_branch, indent);
                 }
                 return out;
