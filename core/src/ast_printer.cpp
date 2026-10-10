@@ -130,7 +130,7 @@ namespace foo
                 { return std::format("{}.{}", to_string(n.target), n.name); },
 
             [](const StaticCall& n)
-                { return std::format("{}::{}({})", to_string(n.target), n.method, list(n.args)); },
+                { return std::format("@{}.{}({})", to_string(n.target), n.method, list(n.args)); },
 
         }, e.kind);
     }

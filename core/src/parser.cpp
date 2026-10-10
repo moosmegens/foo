@@ -239,7 +239,6 @@ namespace foo
                     parts.push_back(std::get<tok::Identifier>(current().variant).value);
 
                     advance();
-                    finish_span(span);
 
                     while (match<tok::ColonColon>())
                     {
@@ -251,6 +250,8 @@ namespace foo
                         parts.push_back(std::get<tok::Identifier>(current().variant).value);
                         advance();
                     }
+
+                    finish_span(span);
 
                     base = std::make_unique<ast::TypeExpr>();
                     base->type = ast::NamedType{std::move(parts)};
@@ -295,6 +296,8 @@ namespace foo
                     auto decl = std::make_unique<ast::Decl>();
                     decl->kind = std::move(*fn);
                     finish_span(span);
+                    decl->span = span;
+
                     return decl;
                 }
 
@@ -394,7 +397,7 @@ namespace foo
 
                 std::vector<ast::StmtPtr> stmts;
 
-                while (!check<tok::RBrace>())
+                while (!check<tok::RBrace>() && !is_at_end())
                 {
                     size_t before = _offset;
 
@@ -414,7 +417,139 @@ namespace foo
 
             ast::StmtPtr parse_stmt()
             {
+                SourceSpan span = current().source;
+
+                if (match<tok::Var>())    return parse_var_stmt(span);
+                if (match<tok::Return>()) return parse_return_stmt(span);
+                if (match<tok::If>())     return parse_if_stmt(span);
+                if (match<tok::While>())  return parse_while_stmt(span);
+                if (match<tok::For>())    return parse_for_stmt(span);
+                if (check<tok::LBrace>()) return parse_block_stmt(span);
+
                 return parse_expr_stmt();
+            }
+
+            ast::StmtPtr parse_var_stmt(SourceSpan span)
+            {
+                if (!check<tok::Identifier>())
+                {
+                    report_error(current(), "Expected variable name");
+                    return nullptr;
+                }
+                const Token& name_token = current();
+                std::string name = std::get<tok::Identifier>(name_token.variant).value;
+                advance();
+
+                ast::TypeExprPtr type;
+                if (match<tok::Colon>())
+                {
+                    type = parse_type();
+                    if (!type) return nullptr;
+                }
+
+                ast::ExprPtr init;
+                if (match<tok::AssignOp>())
+                {
+                    init = parse_expr();
+                    if (!init) return nullptr;
+                }
+
+                if (!type && !init)
+                    report_error(name_token, "Variable needs a type or an initializer");
+
+                expect<tok::Semicolon>();
+                finish_span(span);
+                return std::make_unique<ast::Stmt>(ast::VarDecl{std::move(name), std::move(type), std::move(init)}, span);
+            }
+
+            ast::StmtPtr parse_return_stmt(SourceSpan span)
+            {
+                ast::ExprPtr value;
+                if (!check<tok::Semicolon>())
+                {
+                    value = parse_expr();
+                    if (!value) return nullptr;
+                }
+
+                expect<tok::Semicolon>();
+                finish_span(span);
+                return std::make_unique<ast::Stmt>(ast::Return{std::move(value)}, span);
+            }
+
+            ast::StmtPtr parse_block_stmt(SourceSpan span)
+            {
+                auto body = parse_block_body();
+                if (!body)
+                    return nullptr;
+
+                finish_span(span);
+                return std::make_unique<ast::Stmt>(std::move(*body), span);
+            }
+
+            ast::StmtPtr parse_if_stmt(SourceSpan span)
+            {
+                auto cond = parse_expr();
+                if (!cond)
+                    return nullptr;
+
+                auto then_branch = parse_block_stmt(current().source);
+                if (!then_branch)
+                    return nullptr;
+
+                ast::StmtPtr else_branch;
+                if (check<tok::Else>())
+                {
+                    SourceSpan else_span = current().source;
+                    advance();
+
+                    else_branch = match<tok::If>() ? parse_if_stmt(else_span)
+                                                   : parse_block_stmt(else_span);
+
+                    if (!else_branch)
+                        return nullptr;
+                }
+
+                finish_span(span);
+                return std::make_unique<ast::Stmt>(ast::If{std::move(cond), std::move(then_branch), std::move(else_branch)}, span);
+            }
+
+            ast::StmtPtr parse_while_stmt(SourceSpan span)
+            {
+                auto cond = parse_expr();
+                if (!cond)
+                    return nullptr;
+
+                auto body = parse_block_stmt(current().source);
+                if (!body)
+                    return nullptr;
+
+                finish_span(span);
+                return std::make_unique<ast::Stmt>(ast::While{std::move(cond), std::move(body)}, span);
+            }
+
+            ast::StmtPtr parse_for_stmt(SourceSpan span)
+            {
+                if (!check<tok::Identifier>())
+                {
+                    report_error(current(), "Expected loop variable name");
+                    return nullptr;
+                }
+                std::string name = std::get<tok::Identifier>(current().variant).value;
+                advance();
+
+                if (!expect<tok::In>())
+                    return nullptr;
+
+                auto iterable = parse_expr();
+                if (!iterable)
+                    return nullptr;
+
+                auto body = parse_block_stmt(current().source);
+                if (!body)
+                    return nullptr;
+
+                finish_span(span);
+                return std::make_unique<ast::Stmt>(ast::ForIn{std::move(name), std::move(iterable), std::move(body)}, span);
             }
 
             ast::StmtPtr parse_expr_stmt()
@@ -582,9 +717,9 @@ namespace foo
                     if (!type_expr)
                         return nullptr;
 
-                    if (!check<tok::ColonColon>())
+                    if (!check<tok::Dot>())
                     {
-                        report_error(current(), "Expected :: after the type");
+                        report_error(current(), "Expected . after the type");
                         return nullptr;
                     }
                     advance();
@@ -612,7 +747,7 @@ namespace foo
                         return nullptr;
 
                     finish_span(span);
-                    return std::make_unique<ast::Expr>(ast::StaticCall{std::move(type_expr), name, std::move(args)});
+                    return std::make_unique<ast::Expr>(ast::StaticCall{std::move(type_expr), name, std::move(args)}, span);
                 }
 
                 report_error(current(), "Expected expression");
@@ -694,7 +829,7 @@ namespace foo
                 do {
                     auto arg = parse_expr();
                     if (!arg)
-                        return args;
+                        return {};
 
                     args.push_back(std::move(arg));
                 } while (match<tok::Comma>());
