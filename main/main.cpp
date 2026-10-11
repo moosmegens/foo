@@ -1,3 +1,5 @@
+#include "foo/dynamic_runner.hpp"
+
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -77,8 +79,7 @@ std::string load_file(const std::filesystem::path& path)
 }
 
 
-
-void parse()
+void run()
 {
     std::string str = load_file(foo_root() / "data" / "main.foo");
 
@@ -96,9 +97,9 @@ void parse()
         print_diagnostics(error.error, str, error.source);
     }
 
-    for (auto& decl : ast_result.decls)
+    if (ast_result.errors.empty())
     {
-        std::cout << foo::to_string(decl) << std::endl;
+        foo::run(ast_result.decls);
     }
 }
 
@@ -107,7 +108,7 @@ int main()
     try
     {
 
-        parse();
+        run();
 
     } catch (std::exception& e)
     {
