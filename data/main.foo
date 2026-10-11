@@ -1,20 +1,9 @@
-fn my_func(): int
+fn main(): int
 {
-    var a: my_struct = @my_struct.make(my_map["ke" + "y"], variable1.array[5 + -2][2 + 2 * 3 / 2].func(), 5 + 2 * 2 + -1);
+    var strings = ["hello", "world"];
 
-
-    @int[].from_string("string", "another string" + " added string");
-
-    if true
+    for string in strings
     {
-        io::print("its true!");
-    } else if (true) /* always true */
-    {
-        io::print("its false!");
-    }
-
-    while (x < 10)
-    {
-
+        io::print(string);
     }
 }

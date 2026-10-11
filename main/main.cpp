@@ -99,7 +99,11 @@ void run()
 
     if (ast_result.errors.empty())
     {
-        foo::run(ast_result.decls);
+        auto error = foo::run(ast_result.decls);
+        if (error)
+        {
+            print_diagnostics(error->message, str, error->span);
+        }
     }
 }
 
