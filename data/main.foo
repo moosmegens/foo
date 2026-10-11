@@ -1,25 +1,67 @@
-fn my_func(x: int)
+fn print_board(board: _)
 {
-    return x * 2;
+    for y in range(0, 3)
+    {
+        io::print("|");
+        for x in range(0, 3)
+        {
+            var value = board[y * 3 + x];
+            if value == 0
+            {
+                io::print(" ");
+            }
+            if value == 1
+            {
+                io::print("X");
+            }
+            if value == 2
+            {
+                io::print("O");
+            }
+            io::print("|");
+        }
+        io::println("");
+    }
 }
 
 fn main(): int
 {
-    var strings = ["hello", "world"];
+    var board = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-    for string in strings
+    var turn_count = 0;
+
+    while turn_count < 9
     {
-        io::print(string);
+        var good_move = false;
+
+        print_board(board);
+        var user_input = io::input("> ");
+
+        if user_input == "quit"
+        {
+            return 0;
+        }
+
+        var move = to_int(user_input);
+        if (move <= 0 || move > 9)
+        {
+            io::println("move", move, "is out of bounds");
+        } else {
+            good_move = true;
+        }
+
+        if good_move
+        {
+            if (board[move-1] == 0)
+            {
+                board[move-1] = (turn_count % 2) + 1;
+                turn_count = turn_count + 1;
+                io::println();
+            } else {
+                io::println("there is already a piece here");
+            }
+        }
     }
 
-    for i in range(0, 10)
-    {
-        io::print(my_func(i));
-    }
-
-    io::print("what is your name?");
-    var name = io::input();
-
-    io::print("your name is " + name + "!");
-    io::print(name[0]);
+    return 0;
 }

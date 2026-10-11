@@ -1,5 +1,7 @@
 #include <foo/dynamic_runner.hpp>
 
+#include "foo/util/str.hpp"
+
 #include <chrono>
 #include <cmath>
 #include <foo/util/overloaded.hpp>
@@ -135,13 +137,51 @@ namespace foo
                 return RuntimeError{"no 'main' function", {}};
             }
 
-            _builtin_functions["io::print"] = [](std::span<Value> args, SourceSpan)
+            _builtin_functions["io::println"] = [](std::span<Value> args, SourceSpan)
             {
                 for (size_t i = 0; i < args.size(); i++)
                     std::cout << (i ? " " : "") << display(args[i]);
 
                 std::cout << '\n';
                 return Value{};
+            };
+
+            _builtin_functions["io::print"] = [](std::span<Value> args, SourceSpan)
+            {
+                for (size_t i = 0; i < args.size(); i++)
+                    std::cout << (i ? " " : "") << display(args[i]);
+
+                return Value{};
+            };
+
+            _builtin_functions["to_int"] = [](std::span<Value> args, SourceSpan span)
+            {
+                if (args.size() != 1)
+                    fail(std::format("to_int expects 1 argument, got {}", args.size()), span);
+
+                const Value& v = args[0];
+
+                if (auto* b = std::get_if<bool>(&v.data))
+                    return Value(static_cast<std::int64_t>(*b ? 1 : 0));
+
+                if (auto* s = std::get_if<std::string>(&v.data))
+                {
+                    try
+                    {
+                        size_t used = 0;
+                        std::int64_t out = std::stoll(*s, &used);
+                        if (used != s->size())
+                            fail("trailing characters", span);
+
+                        return Value(out);
+                    }
+                    catch (const std::invalid_argument&) { fail("not a number", span); }
+                    catch (const std::out_of_range&) { fail("number too large", span); }
+
+                    fail("to_int: cannot convert \"" + *s + "\" to an int", span);
+                }
+
+                fail(std::format("to_int: cannot convert {}", type_name(v)), span);
             };
 
             _builtin_functions["len"] = [](std::span<Value> args, SourceSpan span)
