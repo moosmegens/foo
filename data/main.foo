@@ -1,3 +1,8 @@
+fn my_func(x: int)
+{
+    return x * 2;
+}
+
 fn main(): int
 {
     var strings = ["hello", "world"];
@@ -6,4 +11,15 @@ fn main(): int
     {
         io::print(string);
     }
+
+    for i in range(0, 10)
+    {
+        io::print(my_func(i));
+    }
+
+    io::print("what is your name?");
+    var name = io::input();
+
+    io::print("your name is " + name + "!");
+    io::print(name[0]);
 }

@@ -1,5 +1,6 @@
 #include <foo/dynamic_runner.hpp>
 
+#include <chrono>
 #include <cmath>
 #include <foo/util/overloaded.hpp>
 
@@ -155,6 +156,42 @@ namespace foo
                 }
 
                 fail("len expects one array or string", span);
+            };
+
+            _builtin_functions["range"] = [](std::span<Value> a, SourceSpan span) -> Value
+            {
+                if (a.empty() || a.size() > 2)
+                    fail("range expects 1 or 2 ints", span);
+
+                auto* last = std::get_if<std::int64_t>(&a.back().data);
+                auto* first = a.size() == 2 ? std::get_if<std::int64_t>(&a[0].data) : nullptr;
+
+                if (!last || (a.size() == 2 && !first))
+                    fail("range expects ints", span);
+
+                Array out;
+                for (std::int64_t i = first ? *first : 0; i < *last; i++)
+                    out.push_back(Value(i));
+
+                return Value(std::move(out));
+            };
+
+            _builtin_functions["io::input"] = [](std::span<Value> a, SourceSpan span) -> Value
+            {
+                if (a.size() > 1)
+                    fail("input expects 0 or 1 arguments", span);
+
+                if (a.size() == 1)
+                    std::cout << display(a[0]) << std::flush;
+
+                std::string line;
+                if (!std::getline(std::cin, line))
+                    return Value{};
+
+                if (!line.empty() && line.back() == '\r')
+                    line.pop_back();
+
+                return Value(std::move(line));
             };
 
             try
