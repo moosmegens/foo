@@ -215,6 +215,8 @@ namespace foo
                     case '@': return make(tok::At{}, start, _offset);
                     case '#': return make(tok::Hash{}, start, _offset);
 
+                    case '?': return make(tok::QuestionMark{},   start, _offset);
+
                     case ',': return make(tok::Comma{},     start, _offset);
                     case ';': return make(tok::Semicolon{}, start, _offset);
 

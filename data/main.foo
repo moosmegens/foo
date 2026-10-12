@@ -39,6 +39,11 @@ fn fib(n: int): int
     return a;
 }
 
+fn func_that_returns_optional(): string?
+{
+
+}
+
 fn func(): string
 {
 

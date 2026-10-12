@@ -27,11 +27,12 @@ namespace foo::ast
 
     // type expressions
 
-    struct NamedType { std::vector<std::string> parts;  };
-    struct ArrayType { TypeExprPtr element_type; };
-    struct MapType   { TypeExprPtr key_type; TypeExprPtr value_type; };
+    struct NamedType    { std::vector<std::string> parts;  };
+    struct ArrayType    { TypeExprPtr element_type; };
+    struct MapType      { TypeExprPtr key_type; TypeExprPtr value_type; };
+    struct OptionalType { TypeExprPtr element_type; };
 
-    using TypeExprKind = std::variant<NamedType, ArrayType, MapType>;
+    using TypeExprKind = std::variant<NamedType, ArrayType, MapType, OptionalType>;
 
     struct TypeExpr
     {

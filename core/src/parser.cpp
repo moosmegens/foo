@@ -286,6 +286,16 @@ namespace foo
                     base = std::move(arr);
                 }
 
+                if (match<tok::QuestionMark>())
+                {
+                    finish_span(span);
+
+                    auto optional = std::make_unique<ast::TypeExpr>();
+                    optional->type = ast::OptionalType{std::move(base)};
+                    optional->span = span;
+                    base = std::move(optional);
+                }
+
                 return base;
             }
 

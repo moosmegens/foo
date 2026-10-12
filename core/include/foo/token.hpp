@@ -48,6 +48,7 @@ namespace foo
         FOO_TOKEN(Pipe, "|");
         FOO_TOKEN(BackTick, "`");
         FOO_TOKEN(CurlyLine, "~");
+        FOO_TOKEN(QuestionMark, "?");
 
 
         FOO_TOKEN(PlusOp, "+");
@@ -123,7 +124,7 @@ namespace foo
 
         tok::DotDot, tok::DotDotEq,
 
-        tok::Roof, tok::Hash, tok::At, tok::Pipe, tok::BackTick, tok::CurlyLine,
+        tok::Roof, tok::Hash, tok::At, tok::Pipe, tok::BackTick, tok::CurlyLine, tok::QuestionMark,
 
         tok::Identifier, tok::String, tok::Integer, tok::Float, tok::Boolean,
 

@@ -92,6 +92,9 @@ namespace foo
             [](const MapType& n)
                 { return std::format("[{}, {}]", to_string(n.key_type), to_string(n.value_type)); },
 
+            [](const OptionalType& n)
+                { return std::format("{}?", to_string(n.element_type)); },
+
         }, t.type);
     }
 
