@@ -36,8 +36,11 @@ namespace foo
         FOO_TOKEN(Semicolon, ";");
         FOO_TOKEN(Colon, ":");
         FOO_TOKEN(ColonColon, "::");
+
         FOO_TOKEN(Dot, ".");
+
         FOO_TOKEN(DotDot, "..");
+        FOO_TOKEN(DotDotEq, "..=");
 
         FOO_TOKEN(Roof, "^");
         FOO_TOKEN(Hash, "#");
@@ -65,6 +68,8 @@ namespace foo
         FOO_TOKEN(NotOp, "!");
 
         FOO_TOKEN(AssignOp, "=");
+        FOO_TOKEN(AssignPlusOp, "+=");
+        FOO_TOKEN(AssignMinusOp, "-=");
 
         FOO_TOKEN(Var, "var");
         FOO_TOKEN(Function, "fn");
@@ -114,7 +119,9 @@ namespace foo
         tok::LBracket, tok::RBracket,
         tok::LBrace, tok::RBrace,
 
-        tok::Comma, tok::Semicolon, tok::Colon, tok::ColonColon, tok::Dot, tok::DotDot,
+        tok::Comma, tok::Semicolon, tok::Colon, tok::ColonColon, tok::Dot,
+
+        tok::DotDot, tok::DotDotEq,
 
         tok::Roof, tok::Hash, tok::At, tok::Pipe, tok::BackTick, tok::CurlyLine,
 
@@ -128,7 +135,7 @@ namespace foo
 
         tok::AndOp, tok::OrOp, tok::NotOp,
 
-        tok::AssignOp,
+        tok::AssignOp, tok::AssignPlusOp, tok::AssignMinusOp,
 
         tok::Var, tok::Function, tok::Struct, tok::Ref,
         tok::If, tok::Else, tok::While, tok::For, tok::In,

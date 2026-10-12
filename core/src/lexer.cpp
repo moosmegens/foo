@@ -229,8 +229,12 @@ namespace foo
                     case '.':
                     {
                         if (match('.'))
+                        {
+                            if (match('='))
+                                return make(tok::DotDotEq{}, start, _offset);
+
                             return make(tok::DotDot{}, start, _offset);
-                        else
+                        } else
                             return make(tok::Dot{}, start, _offset);
                     }
 
@@ -319,7 +323,7 @@ namespace foo
                                 _offset++;
                                 const size_t text_start = _offset;
 
-                                while (peek() != '*' && peek(1) != '/')
+                                while (_offset < _source.size() && !(peek() == '*' && peek(1) == '/'))
                                     _offset++;
 
                                 _offset++;
@@ -333,7 +337,7 @@ namespace foo
                                 );
                             }
 
-                            while (peek() != '/' && peek(1))
+                            while (_offset < _source.size() && !(peek() == '*' && peek(1) == '/'))
                                 _offset++;
 
                             _offset++;

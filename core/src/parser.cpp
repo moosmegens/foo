@@ -129,31 +129,34 @@ namespace foo
 
             struct BindingPower { int left; int right; };
 
-            static const int unary_bp = 15;
-            static const int postfix_bp = 17;
+            static const int unary_bp = 19;
+            static const int postfix_bp = 21;
 
-            static std::optional<BindingPower> infix_bp(TokenVariant v)
+            static std::optional<BindingPower> binary_bp(TokenVariant v)
             {
                 if (token_variant_is<tok::AssignOp>(v))
                     return BindingPower{2, 1};
 
+                if (token_variant_is<tok::DotDot, tok::DotDotEq>(v))
+                    return BindingPower{4, 5};
+
                 if (token_variant_is<tok::OrOp>(v))
-                    return BindingPower{3, 4};
+                    return BindingPower{6, 7};
 
                 if (token_variant_is<tok::AndOp>(v))
-                    return BindingPower{5, 6};
+                    return BindingPower{8, 9};
 
                 if (token_variant_is<tok::EqualOp, tok::NotEqualOp>(v))
-                    return BindingPower{7, 8};
+                    return BindingPower{10, 11};
 
                 if (token_variant_is<tok::LessOp, tok::LessEqualOp, tok::GreaterOp, tok::GreaterEqualOp>(v))
-                    return BindingPower{9, 10};
+                    return BindingPower{12, 13};
 
                 if (token_variant_is<tok::PlusOp, tok::MinusOp>(v))
-                    return BindingPower{11, 12};
+                    return BindingPower{14, 15};
 
                 if (token_variant_is<tok::MultiplyOp, tok::DivideOp, tok::ModuloOp>(v))
-                    return BindingPower{13, 14};
+                    return BindingPower{16, 17};
 
                 return std::nullopt;
             }
@@ -161,6 +164,11 @@ namespace foo
             static bool is_postfix(const TokenVariant& v)
             {
                 return token_variant_is<tok::LParen, tok::LBracket, tok::Dot>(v);
+            }
+
+            static bool is_range_op(const TokenVariant& v)
+            {
+                return token_variant_is<tok::DotDot, tok::DotDotEq>(v);
             }
 
             static std::optional<ast::BinaryOp> to_binary_op(const TokenVariant& v)
@@ -592,12 +600,14 @@ namespace foo
 
                         left = parse_postfix(std::move(left));
                     }
-                    else if (auto bp = infix_bp(next))
+                    else if (auto bp = binary_bp(next))
                     {
                         if (bp->left < min_bp)
                             break;
 
-                        left = parse_binary(std::move(left), bp->right);
+                        left = is_range_op(next)
+                            ? parse_range(std::move(left), bp->right)
+                            : parse_binary(std::move(left), bp->right);
                     }
                     else break;
 
@@ -805,6 +815,27 @@ namespace foo
                 }
 
                 return nullptr;
+            }
+
+            ast::ExprPtr parse_range(ast::ExprPtr lhs, int right_bp)
+            {
+                SourceSpan span = lhs->span;
+
+                bool inclusive = check<tok::DotDotEq>();
+                advance();
+
+                auto rhs = parse_expr(right_bp);
+                if (!rhs)
+                    return nullptr;
+
+                if (is_range_op(peek().variant))
+                {
+                    report_error(current(), "Range operators cannot be chained");
+                    return nullptr;
+                }
+
+                finish_span(span);
+                return std::make_unique<ast::Expr>(ast::Range{std::move(lhs), std::move(rhs), inclusive}, span);
             }
 
             ast::ExprPtr parse_binary(ast::ExprPtr lhs, int right_bp)

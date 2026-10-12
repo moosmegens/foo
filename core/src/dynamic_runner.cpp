@@ -200,18 +200,41 @@ namespace foo
 
             _builtin_functions["range"] = [](std::span<Value> a, SourceSpan span) -> Value
             {
+                bool inclusive = false;
+
+                if (!a.empty())
+                {
+                    if (auto* flag = std::get_if<bool>(&a.back().data))
+                    {
+                        inclusive = *flag;
+                        a = a.first(a.size() - 1);
+                    }
+                }
+
                 if (a.empty() || a.size() > 2)
                     fail("range expects 1 or 2 ints", span);
 
-                auto* last = std::get_if<std::int64_t>(&a.back().data);
-                auto* first = a.size() == 2 ? std::get_if<std::int64_t>(&a[0].data) : nullptr;
+                auto* end   = std::get_if<std::int64_t>(&a.back().data);
+                auto* start = a.size() == 2 ? std::get_if<std::int64_t>(&a[0].data) : nullptr;
 
-                if (!last || (a.size() == 2 && !first))
+                if (!end || (a.size() == 2 && !start))
                     fail("range expects ints", span);
 
+                const std::int64_t s = start ? *start : 0;
+                const std::int64_t e = *end;
+
                 Array out;
-                for (std::int64_t i = first ? *first : 0; i < *last; i++)
+
+                if (inclusive ? s > e : s >= e)
+                    return Value(std::move(out));
+
+                const std::int64_t last = inclusive ? e : e - 1;
+                for (std::int64_t i = s; ; i++)
+                {
                     out.push_back(Value(i));
+                    if (i == last)
+                        break;
+                }
 
                 return Value(std::move(out));
             };
@@ -452,9 +475,18 @@ namespace foo
                     Value index = eval(*n.indexer);
                     return *element(base, index, e.span);
                 },
-                [&](const Call& n) -> Value { return eval_call(n, e.span); },
+                [&](const Call& n) -> Value     { return eval_call(n, e.span); },
                 [&](const Member&) -> Value     { fail("member access is not supported yet", e.span); },
                 [&](const StaticCall&) -> Value { fail("static calls are not supported yet", e.span); },
+                [&](const Range& r) -> Value
+                {
+                    std::array<Value, 3> values;
+                    values[0] = eval(*r.start);
+                    values[1] = eval(*r.end);
+                    values[2] = r.inclusive;
+
+                    return _builtin_functions["range"](values, e.span);
+                },
             }, e.kind);
         }
 

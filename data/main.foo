@@ -26,6 +26,8 @@ fn print_board(board: _)
 
 fn main(): int
 {
+    io::println([1..10, 1..=10, 10..0, 0..=0, 0..0]);
+
     var board = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
     var turn_count = 0;

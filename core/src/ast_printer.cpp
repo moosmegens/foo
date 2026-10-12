@@ -129,6 +129,14 @@ namespace foo
             [](const Member& n)
                 { return std::format("{}.{}", to_string(n.target), n.name); },
 
+            [](const Range& r)
+            {
+                return std::format("({}{}{})",
+                    to_string(*r.start),
+                    r.inclusive ? "..=" : "..",
+                    to_string(*r.end));
+            },
+
             [](const StaticCall& n)
                 { return std::format("@{}.{}({})", to_string(n.target), n.method, list(n.args)); },
 
