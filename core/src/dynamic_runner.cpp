@@ -477,16 +477,7 @@ namespace foo
                 },
                 [&](const Call& n) -> Value     { return eval_call(n, e.span); },
                 [&](const Member&) -> Value     { fail("member access is not supported yet", e.span); },
-                [&](const StaticCall&) -> Value { fail("static calls are not supported yet", e.span); },
-                [&](const Range& r) -> Value
-                {
-                    std::array<Value, 3> values;
-                    values[0] = eval(*r.start);
-                    values[1] = eval(*r.end);
-                    values[2] = r.inclusive;
-
-                    return _builtin_functions["range"](values, e.span);
-                },
+                [&](const StaticCall&) -> Value { fail("static calls are not supported yet", e.span); }
             }, e.kind);
         }
 
@@ -518,6 +509,16 @@ namespace foo
                 Value value = eval(*n.rhs);
                 *place(*n.lhs) = value;
                 return value;
+            }
+
+            if (n.op == BinaryOp::Range || n.op == BinaryOp::RangeInclusive)
+            {
+                std::array<Value, 3> values;
+                values[0] = eval(*n.lhs);
+                values[1] = eval(*n.rhs);
+                values[2] = n.op == BinaryOp::RangeInclusive;
+
+                return _builtin_functions["range"](values, span);
             }
 
             if (n.op == BinaryOp::And)

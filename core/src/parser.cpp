@@ -189,6 +189,8 @@ namespace foo
                 if (token_variant_is<tok::AndOp>(v))          return Op::And;
                 if (token_variant_is<tok::OrOp>(v))           return Op::Or;
                 if (token_variant_is<tok::AssignOp>(v))       return Op::Assign;
+                if (token_variant_is<tok::DotDot>(v))         return Op::Range;
+                if (token_variant_is<tok::DotDotEq>(v))       return Op::RangeInclusive;
 
                 return std::nullopt;
             }
@@ -605,9 +607,7 @@ namespace foo
                         if (bp->left < min_bp)
                             break;
 
-                        left = is_range_op(next)
-                            ? parse_range(std::move(left), bp->right)
-                            : parse_binary(std::move(left), bp->right);
+                        left = parse_binary(std::move(left), bp->right);
                     }
                     else break;
 
@@ -815,27 +815,6 @@ namespace foo
                 }
 
                 return nullptr;
-            }
-
-            ast::ExprPtr parse_range(ast::ExprPtr lhs, int right_bp)
-            {
-                SourceSpan span = lhs->span;
-
-                bool inclusive = check<tok::DotDotEq>();
-                advance();
-
-                auto rhs = parse_expr(right_bp);
-                if (!rhs)
-                    return nullptr;
-
-                if (is_range_op(peek().variant))
-                {
-                    report_error(current(), "Range operators cannot be chained");
-                    return nullptr;
-                }
-
-                finish_span(span);
-                return std::make_unique<ast::Expr>(ast::Range{std::move(lhs), std::move(rhs), inclusive}, span);
             }
 
             ast::ExprPtr parse_binary(ast::ExprPtr lhs, int right_bp)

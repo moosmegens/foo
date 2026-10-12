@@ -34,20 +34,22 @@ namespace foo
     {
         switch (op)
         {
-            case BinaryOp::Add:       return "+";
-            case BinaryOp::Sub:       return "-";
-            case BinaryOp::Mul:       return "*";
-            case BinaryOp::Div:       return "/";
-            case BinaryOp::Mod:       return "%";
-            case BinaryOp::Eq:        return "==";
-            case BinaryOp::NotEq:     return "!=";
-            case BinaryOp::Less:      return "<";
-            case BinaryOp::LessEq:    return "<=";
-            case BinaryOp::Greater:   return ">";
-            case BinaryOp::GreaterEq: return ">=";
-            case BinaryOp::And:       return "&&";
-            case BinaryOp::Or:        return "||";
-            case BinaryOp::Assign:    return "=";
+            case BinaryOp::Add:         return "+";
+            case BinaryOp::Sub:         return "-";
+            case BinaryOp::Mul:         return "*";
+            case BinaryOp::Div:         return "/";
+            case BinaryOp::Mod:         return "%";
+            case BinaryOp::Eq:          return "==";
+            case BinaryOp::NotEq:       return "!=";
+            case BinaryOp::Less:        return "<";
+            case BinaryOp::LessEq:      return "<=";
+            case BinaryOp::Greater:     return ">";
+            case BinaryOp::GreaterEq:   return ">=";
+            case BinaryOp::And:         return "&&";
+            case BinaryOp::Or:          return "||";
+            case BinaryOp::Assign:      return "=";
+            case BinaryOp::Range:               return "..";
+            case BinaryOp::RangeInclusive:      return "..=";
         }
         return "?";
     }
@@ -128,14 +130,6 @@ namespace foo
 
             [](const Member& n)
                 { return std::format("{}.{}", to_string(n.target), n.name); },
-
-            [](const Range& r)
-            {
-                return std::format("({}{}{})",
-                    to_string(*r.start),
-                    r.inclusive ? "..=" : "..",
-                    to_string(*r.end));
-            },
 
             [](const StaticCall& n)
                 { return std::format("@{}.{}({})", to_string(n.target), n.method, list(n.args)); },

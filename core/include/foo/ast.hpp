@@ -52,6 +52,7 @@ namespace foo::ast
         Add, Sub, Mul, Div, Mod,
         Eq, NotEq, Less, LessEq, Greater, GreaterEq,
         And, Or,
+        Range, RangeInclusive,
         Assign
     };
 
@@ -70,7 +71,6 @@ namespace foo::ast
     struct Call             { ExprPtr callee; std::vector<ExprPtr> args; };
     struct Index            { ExprPtr target; ExprPtr indexer; };
     struct Member           { ExprPtr target; std::string name; };
-    struct Range            { ExprPtr start; ExprPtr end; bool inclusive = false; };
 
     struct StaticCall
     {
@@ -84,7 +84,6 @@ namespace foo::ast
         Name,
         Unary, Binary,
         Index, Call, Member,
-        Range,
         StaticCall>;
 
     struct Expr
