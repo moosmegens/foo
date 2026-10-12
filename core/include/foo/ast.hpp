@@ -128,9 +128,17 @@ namespace foo::ast
         StmtPtr body;
     };
 
+    struct Check
+    {
+        ExprPtr expr;
+        std::string variable_name;
+        StmtPtr good_branch;
+        StmtPtr bad_branch; // can be null ofc
+    };
+
     using StmtKind = std::variant<
             Block, VarDecl, Return, If, While, ForIn,
-            ExprStmt>;
+            ExprStmt, Check>;
 
     struct Stmt
     {

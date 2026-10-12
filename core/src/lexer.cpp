@@ -114,6 +114,7 @@ namespace foo
                 {"true", tok::Boolean{true}},
                 {"false", tok::Boolean{false}},
                 {"import", tok::Import{}},
+                {"check", tok::Check{}},
             };
 
             if (auto it = keywords.find(text); it != keywords.end())
@@ -215,7 +216,15 @@ namespace foo
                     case '@': return make(tok::At{}, start, _offset);
                     case '#': return make(tok::Hash{}, start, _offset);
 
-                    case '?': return make(tok::QuestionMark{},   start, _offset);
+                    case '^': return make(tok::Roof{}, start, _offset);
+
+                    case '?':
+                    {
+                        if (match('?'))
+                            return make(tok::QuestionQuestionMark{}, start, _offset);
+                        else
+                            return make(tok::QuestionMark{}, start, _offset);
+                    }
 
                     case ',': return make(tok::Comma{},     start, _offset);
                     case ';': return make(tok::Semicolon{}, start, _offset);
@@ -249,6 +258,8 @@ namespace foo
                     {
                         if (match('='))
                             return make(tok::EqualOp{}, start, _offset);
+                        if (match('>'))
+                            return make(tok::FatForwards{}, start, _offset);
                         else
                             return make(tok::AssignOp{}, start, _offset);
                     }
@@ -265,6 +276,8 @@ namespace foo
                     {
                         if (match('='))
                             return make(tok::LessEqualOp{}, start, _offset);
+                        if (match('<'))
+                            return make(tok::Backwards{}, start, _offset);
                         else
                             return make(tok::LessOp{}, start, _offset);
                     }
@@ -273,6 +286,8 @@ namespace foo
                     {
                         if (match('='))
                             return make(tok::GreaterEqualOp{}, start, _offset);
+                        if (match('>'))
+                            return make(tok::Forwards{}, start, _offset);\
                         else
                             return make(tok::GreaterOp{}, start, _offset);
                     }

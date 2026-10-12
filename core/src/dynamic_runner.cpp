@@ -336,6 +336,7 @@ namespace foo
         bool exec(const Stmt& s)
         {
             return std::visit(overload{
+                [&](const Check&) -> bool { fail("check is not yet supported", s.span); },
                 [&](const Block& n) { return exec_block(n); },
                 [&](const VarDecl& n)
                 {

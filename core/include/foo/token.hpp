@@ -6,6 +6,7 @@
 #include <format>
 #include <string>
 #include <variant>
+#include <string_view>
 
 #include <foo/source.hpp>
 
@@ -48,7 +49,18 @@ namespace foo
         FOO_TOKEN(Pipe, "|");
         FOO_TOKEN(BackTick, "`");
         FOO_TOKEN(CurlyLine, "~");
+
         FOO_TOKEN(QuestionMark, "?");
+        FOO_TOKEN(QuestionQuestionMark, "??");
+
+        FOO_TOKEN(RArrow, "->");
+        FOO_TOKEN(LArrow, "<-");
+
+        FOO_TOKEN(FatForwards, "=>");
+
+        FOO_TOKEN(Forwards, ">>");
+        FOO_TOKEN(Backwards, "<<");
+
 
 
         FOO_TOKEN(PlusOp, "+");
@@ -76,12 +88,12 @@ namespace foo
         FOO_TOKEN(Function, "fn");
         FOO_TOKEN(Struct, "struct");
         FOO_TOKEN(Ref, "ref");
-
         FOO_TOKEN(If, "if");
         FOO_TOKEN(Else, "else");
         FOO_TOKEN(While, "while");
         FOO_TOKEN(For, "for");
         FOO_TOKEN(In, "in");
+        FOO_TOKEN(Check, "check");
 
         FOO_TOKEN(Return, "return");
 
@@ -120,15 +132,17 @@ namespace foo
         tok::LBracket, tok::RBracket,
         tok::LBrace, tok::RBrace,
 
-        tok::Comma, tok::Semicolon, tok::Colon, tok::ColonColon, tok::Dot,
+        tok::Comma, tok::Semicolon, tok::Colon, tok::ColonColon,
+        tok::Dot, tok::DotDot, tok::DotDotEq,
 
-        tok::DotDot, tok::DotDotEq,
+        tok::Roof, tok::Hash, tok::At, tok::Pipe, tok::BackTick,
+        tok::CurlyLine, tok::QuestionMark, tok::QuestionQuestionMark,
 
-        tok::Roof, tok::Hash, tok::At, tok::Pipe, tok::BackTick, tok::CurlyLine, tok::QuestionMark,
+        tok::RArrow, tok::LArrow,
+        tok::FatForwards, tok::Forwards, tok::Backwards,
 
-        tok::Identifier, tok::String, tok::Integer, tok::Float, tok::Boolean,
-
-        tok::PlusOp, tok::MinusOp, tok::MultiplyOp, tok::ModuloOp, tok::DivideOp,
+        tok::PlusOp, tok::MinusOp, tok::MultiplyOp, tok::DivideOp,
+        tok::ModuloOp,
 
         tok::EqualOp, tok::NotEqualOp,
         tok::LessOp, tok::LessEqualOp,
@@ -140,11 +154,12 @@ namespace foo
 
         tok::Var, tok::Function, tok::Struct, tok::Ref,
         tok::If, tok::Else, tok::While, tok::For, tok::In,
-        tok::Return,
+        tok::Check, tok::Return,
 
-        tok::Import,
+        tok::String, tok::Integer, tok::Float, tok::Boolean,
+        tok::Identifier,
 
-        tok::Doc, tok::End
+        tok::Import, tok::Doc, tok::End
     >;
 
     template <class... Ts>

@@ -3,8 +3,15 @@
 #include <optional>
 
 #include <foo/parser.hpp>
+
 #include <foo/ast.hpp>
 #include <foo/ast_printer.hpp>
+#include <source_location>
+
+#define FOO_TRACE()  \
+    std::cout << std::source_location::current().file_name() << ':' \
+              << std::source_location::current().line() << " in " \
+              << std::source_location::current().function_name() << '\n'
 
 namespace foo
 {
@@ -437,16 +444,58 @@ namespace foo
 
             ast::StmtPtr parse_stmt()
             {
+                FOO_TRACE();
                 SourceSpan span = current().source;
 
-                if (match<tok::Var>())    return parse_var_stmt(span);
-                if (match<tok::Return>()) return parse_return_stmt(span);
-                if (match<tok::If>())     return parse_if_stmt(span);
-                if (match<tok::While>())  return parse_while_stmt(span);
-                if (match<tok::For>())    return parse_for_stmt(span);
-                if (check<tok::LBrace>()) return parse_block_stmt(span);
+                if (match<tok::Var>())      return parse_var_stmt(span);
+                if (match<tok::Return>())   return parse_return_stmt(span);
+                if (match<tok::If>())       return parse_if_stmt(span);
+                if (match<tok::While>())    return parse_while_stmt(span);
+                if (match<tok::For>())      return parse_for_stmt(span);
+                if (match<tok::Check>())    return parse_check_stmt(span);
+
+                if (check<tok::LBrace>())   return parse_block_stmt(span);
+
 
                 return parse_expr_stmt();
+            }
+
+            ast::StmtPtr parse_check_stmt(SourceSpan span)
+            {
+                FOO_TRACE();
+                ast::ExprPtr expr = parse_expr();
+                expect<tok::FatForwards>();
+
+                if (!check<tok::Identifier>())
+                {
+                    report_error(current(), "Expected variable name");
+                    return nullptr;
+                }
+
+                const Token& name_token = current();
+                std::string name = std::get<tok::Identifier>(name_token.variant).value;
+                advance();
+
+                auto good_branch = parse_block_stmt(current().source);
+                if (!good_branch)
+                    return nullptr;
+
+                ast::StmtPtr bad_branch;
+                if (check<tok::Else>())
+                {
+                    SourceSpan else_span = current().source;
+                    advance();
+
+                    bad_branch = parse_block_stmt(else_span);
+
+                    if (!bad_branch)
+                        return nullptr;
+                }
+
+                finish_span(span);
+                return std::make_unique<ast::Stmt>(
+                    ast::Check{std::move(expr), name, std::move(good_branch), std::move(bad_branch)},
+                    span);
             }
 
             ast::StmtPtr parse_var_stmt(SourceSpan span)

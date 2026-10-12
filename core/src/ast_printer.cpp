@@ -181,6 +181,16 @@ namespace foo
                 }
                 return out;
             },
+            [&](const Check& n)
+            {
+                std::string out = "check " + to_string(n.expr) + " => " + n.variable_name +body(n.good_branch, indent);
+                if (n.bad_branch)
+                {
+                    out += "\n" + pad(indent) + "else";
+                    body(n.bad_branch, indent);
+                }
+                return out;
+            },
             [&](const While& n) { return "while " + to_string(n.cond) + body(n.body, indent); },
             [&](const ForIn& n)
             {
