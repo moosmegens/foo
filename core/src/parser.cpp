@@ -8,10 +8,14 @@
 #include <foo/ast_printer.hpp>
 #include <source_location>
 
-#define FOO_TRACE()  \
-    std::cout << std::source_location::current().file_name() << ':' \
-              << std::source_location::current().line() << " in " \
-              << std::source_location::current().function_name() << '\n'
+#ifndef NDEBUG
+    #define FOO_TRACE()  \
+        std::cout << std::source_location::current().file_name() << ':' \
+                  << std::source_location::current().line() << " in " \
+                  << std::source_location::current().function_name() << '\n'
+#else
+    #define FOO_TRACE()
+#endif
 
 namespace foo
 {

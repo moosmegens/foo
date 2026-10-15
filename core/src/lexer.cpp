@@ -16,6 +16,20 @@ namespace foo
         return c >= '0' && c <= '9';
     }
 
+    static int hex_value(char c)
+    {
+        if (c >= '0' && c <= '9')
+            return c - '0';
+
+        if (c >= 'a' && c <= 'f')
+            return c - 'a' + 10;
+
+        if (c >= 'A' && c <= 'F')
+            return c - 'A' + 10;
+
+        return -1;
+    }
+
     static bool is_ident_part(char c)
     {
         return is_ident_start(c) || is_digit(c);
@@ -151,6 +165,17 @@ namespace foo
                     case 't':  value += '\t'; break;
                     case '\\': value += '\\'; break;
                     case '"':  value += '"';  break;
+                    case 'x':
+                    {
+                        const int hi = hex_value(peek());
+                        const int lo = hex_value(peek(1));
+                        if (hi < 0 || lo < 0)
+                            return std::unexpected<LexError>{{SourceSpan::between(start, _offset), "'\\x' must be followed by two hex digits"}};
+
+                        _offset += 2;
+                        value += static_cast<char>(hi * 16 + lo);
+                        break;
+                    }
                     default:
                         return std::unexpected<LexError>{{SourceSpan::between(start, _offset), std::format("invalid escape: '{}'", e)}};
                 }
