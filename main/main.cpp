@@ -99,10 +99,10 @@ void run()
 
     if (ast_result.errors.empty())
     {
-        // for (const auto& d : ast_result.decls)
-        // {
-        //     std::cout << foo::to_string(d) << std::endl;
-        // }
+        for (const auto& d : ast_result.decls)
+        {
+            std::cout << foo::to_string(d) << std::endl;
+        }
 
         auto error = foo::run(ast_result.decls);
         if (error)

@@ -251,6 +251,19 @@ fn main(): int
 }
 */
 
+
+struct MyStruct
+{
+    a: int;
+    b: int;
+
+    fn my_method(ref self, a: int)
+    {
+        self.a = 0;
+        self.b = 0;
+    }
+}
+
 fn test_fn(ref this: object)
 {
 

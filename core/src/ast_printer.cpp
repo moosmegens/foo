@@ -210,7 +210,7 @@ namespace foo
         for (size_t i = 0; i < f.params.size(); i++)
         {
             if (i) out += ", ";
-            out += f.params[i].name + ": " + (f.params[i].reffed ? "ref " : "") + to_string(f.params[i].type);
+            out += (f.params[i].reffed ? "ref " : "") + f.params[i].name + ": " + to_string(f.params[i].type);
         }
         out += ")";
         if (f.return_type) out += ": " + to_string(f.return_type);

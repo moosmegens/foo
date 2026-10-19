@@ -1,3 +1,4 @@
+#include <expected>
 #include <iostream>
 #include <ostream>
 #include <optional>
@@ -334,12 +335,79 @@ namespace foo
 
                 if (match<tok::Struct>())
                 {
-                    auto decl = std::make_unique<ast::Decl>();
+                    auto strukt = parse_struct_decl();
+                    if (!strukt)
+                        return nullptr;
 
+                    auto decl = std::make_unique<ast::Decl>();
+                    decl->kind = std::move(*strukt);
+                    finish_span(span);
+                    decl->span = span;
+
+                    return decl;
                 }
 
                 report_error(current(), "Expected declaration");
                 return nullptr;
+            }
+
+            std::optional<ast::StructDecl> parse_struct_decl()
+            {
+                std::string name;
+
+                if (!check<tok::Identifier>())
+                {
+                    report_error(current(), "Expected struct name");
+                    return std::nullopt;
+                }
+                name = std::get<tok::Identifier>(current().variant).value;
+                advance();
+
+                if (!check<tok::LBrace>())
+                {
+                    report_error(current(), "Expected open brace");
+                    return std::nullopt;
+                }
+                advance();
+
+                std::vector<ast::StructField> fields;
+                std::vector<ast::FnDecl> fns;
+
+                while (!check<tok::RBrace>() && !is_at_end())
+                {
+                    if (check<tok::Identifier>())
+                    {
+                        SourceSpan inner_span{current().source.start, 0};
+
+                        std::string field_name = std::get<tok::Identifier>(current().variant).value;
+                        std::cout << field_name << std::endl;
+                        advance();
+                        expect<tok::Colon>();
+                        auto type = parse_type();
+                        if (type)
+                        {
+                            finish_span(inner_span);
+                            fields.push_back({std::move(field_name), std::move(type), inner_span});
+                        }
+                        expect<tok::Semicolon>();
+                    }
+
+                    if (check<tok::Function>())
+                    {
+                        advance();
+
+                        auto fn = parse_fn_decl();
+                        if (fn)
+                        {
+                            fns.push_back(std::move(*fn));
+                        }
+                    }
+                }
+
+                advance();
+                return ast::StructDecl{
+                    std::move(name), std::move(fields), std::move(fns)
+                };
             }
 
             std::optional<ast::FnDecl> parse_fn_decl()
@@ -404,17 +472,21 @@ namespace foo
 
                 advance();
 
-                if (!expect<tok::Colon>())
-                    return std::nullopt;
+                ast::TypeExprPtr type;
 
-                auto type = parse_type();
+                if (match<tok::Colon>())
+                {
+                    type = parse_type();
 
-                if (!type)
-                    return std::nullopt;
+                    if (!type)
+                        return std::nullopt;
 
-                span.add(type->span);
+                    span.add(type->span);
+                }
 
-                return ast::Param{std::move(name), std::move(type), is_ref, span};
+                return ast::Param{
+                    std::move(name), std::move(type), is_ref, span
+                };
             }
 
 
