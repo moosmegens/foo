@@ -272,5 +272,20 @@ fn test_fn(ref this: object)
 
 fn main() -> void
 {
-    io::println("Hello, World!");
+    for i in 0 .. 10
+    {
+        var str = "";
+        for j in 0 .. 10
+        {
+            str = str + to_string(i) + " ";
+        }
+
+        io::println(str);
+    }
+
+    var hello_world = "Hello, World!";
+
+    io::println(hello_world + "\n" + hello_world);
+
+    return "ok";
 }

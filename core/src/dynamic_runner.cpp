@@ -154,6 +154,17 @@ namespace foo
                 return Value{};
             };
 
+            _builtin_functions["to_string"] = [](std::span<Value> args, SourceSpan)
+            {
+                std::string out;
+
+                for (size_t i = 0; i < args.size(); i++)
+                    out += (i ? " " : "") + display(args[i]);
+
+
+                return Value{out};
+            };
+
             _builtin_functions["to_int"] = [](std::span<Value> args, SourceSpan span)
             {
                 if (args.size() != 1)
@@ -259,7 +270,10 @@ namespace foo
 
             try
             {
-                call_function(*it->second, {}, {});
+                Value return_value = call_function(*it->second, {}, {});
+
+                if (!holds_alternative<std::monostate>(return_value.data))
+                    std::cout << "main returned: (" << display(return_value) << ')' << std::endl;
             }
             catch (RuntimeError& e)
             {
