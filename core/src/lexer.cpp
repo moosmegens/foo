@@ -275,7 +275,13 @@ namespace foo
                     }
 
                     case '+': return make(tok::PlusOp{},     start, _offset);
-                    case '-': return make(tok::MinusOp{},    start, _offset);
+                    case '-':
+                    {
+                        if (match('>'))
+                            return make(tok::RArrow{}, start, _offset);
+
+                        return make(tok::MinusOp{},    start, _offset);
+                    }
                     case '*': return make(tok::MultiplyOp{}, start, _offset);
                     case '%': return make(tok::ModuloOp{},   start, _offset);
 

@@ -258,7 +258,7 @@ struct MyStruct
     a: int;
     b: int;
 
-    fn my_method(ref self, a: int)
+    fn my_method(ref self, a: int) -> _
     {
         self.a = 0;
         self.b = 0;
@@ -270,7 +270,7 @@ fn test_fn(ref this: object)
 
 }
 
-fn main(): _
+fn main() -> void
 {
     io::println("Hello, World!");
 }

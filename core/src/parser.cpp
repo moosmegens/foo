@@ -465,7 +465,7 @@ namespace foo
                     return std::nullopt;
 
                 ast::TypeExprPtr return_type = nullptr;
-                if (match<tok::Colon>())
+                if (match<tok::RArrow>())
                 {
                     return_type = parse_type();
                     if (!return_type)

@@ -213,7 +213,7 @@ namespace foo
             out += (f.params[i].reffed ? "ref " : "") + f.params[i].name + ": " + to_string(f.params[i].type);
         }
         out += ")";
-        if (f.return_type) out += ": " + to_string(f.return_type);
+        if (f.return_type) out += " -> " + to_string(f.return_type);
 
         return out + "\n" + pad(indent) + print(f.body, indent);
     }
