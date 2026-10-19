@@ -1,3 +1,4 @@
+/*
 fn print_board(board: _)
 {
     var reset = "\x1b[0m";
@@ -247,4 +248,15 @@ fn main(): int
     }
 
     return 0;
+}
+*/
+
+fn test_fn(ref this: object)
+{
+
+}
+
+fn main(): _
+{
+    io::println("Hello, World!");
 }

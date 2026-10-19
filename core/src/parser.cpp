@@ -391,6 +391,8 @@ namespace foo
 
             std::optional<ast::Param> parse_param()
             {
+                bool is_ref = match<tok::Ref>();
+
                 if (!check<tok::Identifier>())
                 {
                     report_error(current(), "Expected parameter name");
@@ -404,8 +406,6 @@ namespace foo
 
                 if (!expect<tok::Colon>())
                     return std::nullopt;
-
-                bool is_ref = match<tok::Ref>();
 
                 auto type = parse_type();
 
