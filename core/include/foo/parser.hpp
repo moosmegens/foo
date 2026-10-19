@@ -20,6 +20,7 @@ namespace foo
     struct ParseOutput
     {
         std::vector<ast::DeclPtr> decls;
+        std::vector<ast::ImportDecl> imports;
 
         std::vector<ParseError> errors;
     };

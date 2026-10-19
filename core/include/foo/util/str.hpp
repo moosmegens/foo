@@ -26,6 +26,21 @@ namespace foo
         str = right_trim(str, pattern);
         return str;
     }
+
+    inline std::string join(std::span<const std::string> strs, std::string_view separator = ", ")
+    {
+        std::string result;
+
+        for (const auto& s : strs)
+        {
+            if (!result.empty())
+                result += separator;
+
+            result += s;
+        }
+
+        return result;
+    }
 }
 
 #endif //FOO_STR_UTIL_HPP

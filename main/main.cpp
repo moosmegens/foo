@@ -16,6 +16,8 @@
 
 #include <foo/debug/log.hpp>
 
+#include "foo/util/str.hpp"
+
 void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span)
 {
     #define CLR_RED "\033[1;31m"
@@ -99,6 +101,16 @@ void run()
 
     if (ast_result.errors.empty())
     {
+
+        std::vector<std::string> imports;
+
+        for (const auto& item : ast_result.imports)
+        {
+            imports.push_back(item.name);
+        }
+
+        std::cout << "imports: " << foo::join(imports) << std::endl;
+
         for (const auto& d : ast_result.decls)
         {
             std::cout << foo::to_string(d) << std::endl;

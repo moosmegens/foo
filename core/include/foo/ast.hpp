@@ -185,6 +185,12 @@ namespace foo::ast
         std::vector<DeclPtr> decls;
     };
 
+    struct ImportDecl
+    {
+        std::string name;
+        SourceSpan span;
+    };
+
     using DeclKind = std::variant<FnDecl, StructDecl, NamespaceDecl>;
 
     struct Decl

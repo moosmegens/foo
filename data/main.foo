@@ -251,6 +251,7 @@ fn main(): int
 }
 */
 
+import "io";
 
 struct MyStruct
 {

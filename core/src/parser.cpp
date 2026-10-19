@@ -34,6 +34,29 @@ namespace foo
 
                 while (!is_at_end())
                 {
+                    if (match<tok::Import>())
+                    {
+                        if (check<tok::String>())
+                        {
+                            _imports.push_back({std::get<tok::String>(current().variant).value, current().source});
+                            advance();
+                        }
+
+                        while (check<tok::Comma>())
+                        {
+                            advance();
+                            if (check<tok::String>())
+                            {
+                                _imports.push_back({std::get<tok::String>(current().variant).value, current().source});
+                                advance();
+                            }
+                        }
+
+                        expect<tok::Semicolon>();
+
+                        continue;
+                    }
+
                     auto decl = parse_decl();
 
                     if (decl)
@@ -46,6 +69,7 @@ namespace foo
                 }
 
                 result.errors = std::move(_errors);
+                result.imports = std::move(_imports);
                 return result;
             }
 
@@ -54,6 +78,7 @@ namespace foo
             {
                 _tokens = tokens;
                 _offset = 0;
+                _imports = {};
                 _errors = {};
             }
 
@@ -538,7 +563,6 @@ namespace foo
 
             ast::StmtPtr parse_check_stmt(SourceSpan span)
             {
-                FOO_TRACE();
                 ast::ExprPtr expr = parse_expr();
                 expect<tok::FatForwards>();
 
@@ -984,6 +1008,7 @@ namespace foo
 
 
         private:
+            std::vector<ast::ImportDecl> _imports;
             std::vector<ParseError> _errors;
             std::span<Token> _tokens;
             size_t _offset{};

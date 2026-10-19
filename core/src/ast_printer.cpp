@@ -237,7 +237,7 @@ namespace foo
                 for (const auto& child : n.decls)
                     out += pad(indent + 1) + (child ? print(*child, indent + 1) : "<null>") + "\n";
                 return out + pad(indent) + "}";
-            },
+            }
         }, d.kind);
     }
 
