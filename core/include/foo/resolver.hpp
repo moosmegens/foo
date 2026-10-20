@@ -36,12 +36,10 @@ namespace foo
 
     struct ResolveOutput
     {
-        //
-
         std::vector<ResolveError> errors;
     };
 
-    ResolveOutput resolve(ResolverInput input);
+    ResolveOutput resolve(const ResolverInput& input);
 }
 
 #endif //FOO_RESOLVER_HPP
