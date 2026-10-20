@@ -14,6 +14,8 @@ namespace foo
         size_t start = 0;
         size_t size = 0;
 
+        bool operator==(const SourceSpan&) const = default;
+
 
         size_t end() const { return start + size; }
 

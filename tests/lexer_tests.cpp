@@ -1,6 +1,7 @@
 #include <iostream>
 #include <ostream>
 #include <sstream>
+#include <span>
 
 #include "doctest.hpp"
 
@@ -80,9 +81,8 @@ TEST_SUITE("lexer")
         lex_test(r.tokens, {
             tok::EqualOp{},
             tok::NotEqualOp{},
-            tok::LessOp{},
-            tok::LessEqualOp{},
-            tok::GreaterOp{},
+            tok::Backwards{},
+            tok::FatForwards{},
             tok::GreaterEqualOp{},
             tok::End{},
         });
@@ -186,9 +186,8 @@ TEST_SUITE("lexer")
             tok::EqualOp{},
             tok::Identifier{"name"},
             tok::NotEqualOp{},
-            tok::LessOp{},
-            tok::LessEqualOp{},
-            tok::GreaterOp{},
+            tok::Backwards{},
+            tok::FatForwards{},
             tok::GreaterEqualOp{},
             tok::String{"this is a string\\"},
             tok::AndOp{},
