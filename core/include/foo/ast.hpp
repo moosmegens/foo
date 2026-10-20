@@ -68,7 +68,7 @@ namespace foo::ast
     struct TypeExpr
     {
         TypeExprKind type;
-        SourceSpan span;
+        SourceSpan span = {};
 
         bool operator==(const TypeExpr& other) const
         {
@@ -207,7 +207,7 @@ namespace foo::ast
     struct Expr
     {
         ExprKind kind;
-        SourceSpan span;
+        SourceSpan span = {};
 
         bool operator==(const Expr& other) const
         {
@@ -232,7 +232,7 @@ namespace foo::ast
     {
         std::string name;
         TypeExprPtr type;
-        ExprPtr init; // can be null
+        ExprPtr init{}; // can be null
 
         bool operator==(const VarDecl& other) const
         {
@@ -253,7 +253,7 @@ namespace foo::ast
     };
     struct Return
     {
-        ExprPtr value; /* can be null */
+        ExprPtr value{}; /* can be null */
 
         bool operator==(const Return& other) const
         {
@@ -265,7 +265,7 @@ namespace foo::ast
     {
         ExprPtr cond;
         StmtPtr then_branch;
-        StmtPtr else_branch; // nullptr if no else
+        StmtPtr else_branch{}; // nullptr if no else
 
 
         bool operator==(const If& other) const
@@ -307,7 +307,7 @@ namespace foo::ast
         ExprPtr expr;
         std::string variable_name;
         StmtPtr good_branch;
-        StmtPtr bad_branch; // can be null ofc
+        StmtPtr bad_branch{}; // can be null ofc
 
 
         bool operator==(const Check& other) const
@@ -326,7 +326,7 @@ namespace foo::ast
     struct Stmt
     {
         StmtKind kind;
-        SourceSpan span;
+        SourceSpan span = {};
 
         bool operator==(const Stmt& other) const
         {
@@ -342,7 +342,7 @@ namespace foo::ast
         std::string name;
         TypeExprPtr type;
         bool reffed = false;
-        SourceSpan span;
+        SourceSpan span = {};
 
         bool operator==(const Param& other) const
         {
@@ -372,7 +372,7 @@ namespace foo::ast
     {
         std::string name;
         TypeExprPtr type;
-        SourceSpan span;
+        SourceSpan span = {};
 
         bool operator==(const StructField& other) const
         {
@@ -405,7 +405,7 @@ namespace foo::ast
     struct ImportDecl
     {
         std::string name;
-        SourceSpan span;
+        SourceSpan span = {};
 
         bool operator==(const ImportDecl& other) const
         {
@@ -417,8 +417,8 @@ namespace foo::ast
 
     struct Decl
     {
-        SourceSpan span;
         DeclKind kind;
+        SourceSpan span = {};
 
         bool operator==(const Decl& other) const
         {
