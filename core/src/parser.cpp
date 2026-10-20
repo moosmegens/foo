@@ -414,6 +414,8 @@ namespace foo
                             fields.push_back({std::move(field_name), std::move(type), inner_span});
                         }
                         expect<tok::Semicolon>();
+
+                        continue;
                     }
 
                     if (check<tok::Function>())
@@ -425,7 +427,11 @@ namespace foo
                         {
                             fns.push_back(std::move(*fn));
                         }
+
+                        continue;
                     }
+
+                    advance();
                 }
 
                 advance();
