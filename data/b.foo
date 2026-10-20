@@ -1,0 +1,4 @@
+fn function_in_file_b() -> _
+{
+    return "I am inside b.foo";
+}

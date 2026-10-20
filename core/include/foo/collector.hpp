@@ -13,7 +13,8 @@ namespace foo
 {
     struct CollectError
     {
-        std::string file;
+        int file_id = -1;
+
         SourceSpan span;
         std::string message;
     };
@@ -21,12 +22,11 @@ namespace foo
     struct CollectorOutput
     {
         ResolverInput resolver_input;
+
         std::vector<CollectError> errors;
     };
 
-
-    CollectorOutput collect(const std::filesystem::path& root, std::string_view entry);
-
+    CollectorOutput collect(const std::filesystem::path& root, const std::string& entry);
 }
 
 

@@ -1,0 +1,6 @@
+import "b";
+
+fn function_in_file_a() -> _
+{
+    return ["I am in file a.foo", function_in_file_b()];
+}

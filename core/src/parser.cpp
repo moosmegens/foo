@@ -405,7 +405,6 @@ namespace foo
                         SourceSpan inner_span{current().source.start, 0};
 
                         std::string field_name = std::get<tok::Identifier>(current().variant).value;
-                        std::cout << field_name << std::endl;
                         advance();
                         expect<tok::Colon>();
                         auto type = parse_type();
@@ -545,7 +544,6 @@ namespace foo
 
             ast::StmtPtr parse_stmt()
             {
-                FOO_TRACE();
                 SourceSpan span = current().source;
 
                 if (match<tok::Var>())      return parse_var_stmt(span);

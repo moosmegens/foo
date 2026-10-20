@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <ostream>
+#include <ranges>
 
 #include <foo/lexer.hpp>
 
@@ -16,6 +17,7 @@
 
 #include <foo/debug/log.hpp>
 
+#include "foo/collector.hpp"
 #include "foo/util/str.hpp"
 
 void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span)
@@ -83,43 +85,75 @@ std::string load_file(const std::filesystem::path& path)
 
 void run()
 {
-    std::string str = load_file(foo_root() / "data" / "main.foo");
+    // std::string str = load_file(foo_root() / "data" / "main.foo");
+    //
+    // auto lex_result = foo::tokenize(str);
+    //
+    // for (const auto& error : lex_result.errors)
+    // {
+    //     print_diagnostics(error.error, str, error.source);
+    // }
+    //
+    // auto ast_result = foo::parse(lex_result.tokens);
+    //
+    // for (const auto& error : ast_result.errors)
+    // {
+    //     print_diagnostics(error.error, str, error.source);
+    // }
+    //
+    // if (ast_result.errors.empty())
+    // {
+    //
+    //     std::vector<std::string> imports;
+    //
+    //     for (const auto& item : ast_result.imports)
+    //     {
+    //         imports.push_back(item.name);
+    //     }
+    //
+    //     std::cout << "imports: " << foo::join(imports) << std::endl;
+    //
+    //     for (const auto& d : ast_result.decls)
+    //     {
+    //         std::cout << foo::to_string(d) << std::endl;
+    //     }
+    //
+    //     auto error = foo::run(ast_result.decls);
+    //     if (error)
+    //     {
+    //         print_diagnostics(error->message, str, error->span);
+    //     }
+    // }
 
-    auto lex_result = foo::tokenize(str);
-
-    for (const auto& error : lex_result.errors)
+    auto r = foo::collect(foo_root() / "data", "main");
+    for (const auto& err : r.errors)
     {
-        print_diagnostics(error.error, str, error.source);
-    }
-
-    auto ast_result = foo::parse(lex_result.tokens);
-
-    for (const auto& error : ast_result.errors)
-    {
-        print_diagnostics(error.error, str, error.source);
-    }
-
-    if (ast_result.errors.empty())
-    {
-
-        std::vector<std::string> imports;
-
-        for (const auto& item : ast_result.imports)
+        if (err.file_id < 0)
         {
-            imports.push_back(item.name);
+            std::cerr << "error: " << err.message << '\n';
+            continue;
         }
 
-        std::cout << "imports: " << foo::join(imports) << std::endl;
+        const auto& file = r.resolver_input.sources[static_cast<size_t>(err.file_id)];
 
-        for (const auto& d : ast_result.decls)
-        {
-            std::cout << foo::to_string(d) << std::endl;
-        }
+        print_diagnostics(
+            std::format("{}: {}", file.path.string(), err.message),
+            file.text,
+            err.span);
+    }
 
-        auto error = foo::run(ast_result.decls);
-        if (error)
+    std::vector<foo::ast::DeclPtr> decls;
+    for (auto& file : r.resolver_input.files)
+    {
+        decls.append_range(file.decls | std::views::as_rvalue);
+    }
+
+    if (r.errors.empty())
+    {
+        auto err = foo::run(decls);
+        if (err)
         {
-            print_diagnostics(error->message, str, error->span);
+            print_diagnostics(err->message, r.resolver_input.sources[0].text, err->span);
         }
     }
 }
