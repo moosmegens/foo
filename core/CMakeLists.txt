@@ -13,3 +13,5 @@ target_include_directories(foo_core
 )
 
 target_link_libraries(foo_core PRIVATE foo_warnings)
+
+# target_compile_options(foo_core PRIVATE -ftime-report)

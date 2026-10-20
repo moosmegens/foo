@@ -18,7 +18,15 @@ namespace foo
     };
 
     template<class T, class E = SimpleError>
-    using Result = std::expected<T, E>;
+    struct Result : std::expected<T, E>
+    {
+        using std::expected<T, E>::expected;
+        bool is_ok()  const { return this->has_value(); }
+        bool is_err() const { return !this->has_value(); }
+    };
+
+    template<class E = SimpleError>
+    using PossibleError = Result<void, E>;
 }
 
 

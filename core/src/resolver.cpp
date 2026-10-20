@@ -11,6 +11,8 @@ namespace foo
 
     ResolveOutput resolve(const ResolverInput& input)
     {
+        (void)input;
+
         return {};
     }
 }

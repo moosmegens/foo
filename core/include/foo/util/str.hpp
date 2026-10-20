@@ -1,8 +1,11 @@
 #ifndef FOO_STR_UTIL_HPP
 #define FOO_STR_UTIL_HPP
 
+
 #include <algorithm>
 #include <string_view>
+#include <span>
+
 
 namespace foo
 {

@@ -5,6 +5,8 @@
 #include <foo/ast.hpp>
 
 #include <string>
+#include <optional>
+#include <span>
 
 
 namespace foo
