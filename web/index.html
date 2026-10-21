@@ -327,7 +327,6 @@ fn main() -> int
     const escapeHtml = (s) =>
         s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-    // The C++ side reports UTF-8 byte offsets; the textarea uses UTF-16 indices.
     function byteToIndexMap(text) {
         const map = [];
         let index = 0;
@@ -341,12 +340,23 @@ fn main() -> int
         return map;
     }
 
-    // Embind vectors are not arrays: they have size()/get(i)/delete().
+    // Robust Embind vector-to-array converter
     function toArray(vec) {
+        if (!vec) return [];
         if (Array.isArray(vec)) return vec;
+
         const out = [];
-        if (vec && typeof vec.size === "function") {
-            for (let i = 0; i < vec.size(); i++) out.push(vec.get(i));
+        try {
+            if (typeof vec.size === "function" && typeof vec.get === "function") {
+                for (let i = 0; i < vec.size(); i++) out.push(vec.get(i));
+            } else if (typeof vec.length === "number" && typeof vec.get === "function") {
+                for (let i = 0; i < vec.length; i++) out.push(vec.get(i));
+            } else if (typeof vec[Symbol.iterator] === "function") {
+                for (const item of vec) out.push(item);
+            } else if (typeof vec === "object" && ("message" in vec || "start" in vec)) {
+                out.push(vec); // Fallback for single diagnostic object
+            }
+        } finally {
             if (typeof vec.delete === "function") vec.delete();
         }
         return out;
@@ -362,11 +372,11 @@ fn main() -> int
     // ---- syntax highlighting ----
     const TOKEN_RE = new RegExp(
         [
-            String.raw`(\/\/[^\n]*)`,                                   // 1 comment
-            String.raw`("(?:\\.|[^"\\\n])*"?)`,                         // 2 string
-            String.raw`(\d+\.\d+|\d+)`,                                 // 3 number
-            String.raw`([A-Za-z_][A-Za-z0-9_]*)`,                       // 4 identifier
-            String.raw`(\.\.=|\.\.|::|->|<-|=>|>>|<<|\?\?|[=!<>]=|&&|\|\||[+\-]=|[+\-*\/%^#@|~?!<>=:.,;])` // 5 operator
+            String.raw`(\/\/[^\n]*)`,
+            String.raw`("(?:\\.|[^"\\\n])*"?)`,
+            String.raw`(\d+\.\d+|\d+)`,
+            String.raw`([A-Za-z_][A-Za-z0-9_]*)`,
+            String.raw`(\.\.=|\.\.|::|->|<-|=>|>>|<<|\?\?|[=!<>]=|&&|\|\||[+\-]=|[+\-*\/%^#@|~?!<>=:.,;])`
         ].join("|"),
         "g"
     );
@@ -399,8 +409,6 @@ fn main() -> int
         const cls = classify(text);
         const err = new Uint8Array(text.length);
 
-        // Newlines have no visible glyph, so an underline on them never shows.
-        // Errors that land on a newline get a small marker at the end of the line instead.
         const eol = new Set();
         const isNl = (ch) => ch === "\n" || ch === "\r";
 
@@ -408,14 +416,14 @@ fn main() -> int
             let s = Math.min(e.start, text.length);
             let end = Math.min(Math.max(e.end, s), text.length);
 
-            while (end > s && isNl(text[end - 1])) end--;   // drop trailing newlines from the span
+            while (end > s && isNl(text[end - 1])) end--;
 
             if (end > s) {
                 err.fill(1, s, end);
             } else if (s >= text.length || isNl(text[s])) {
-                eol.add(s);                                  // empty span on a newline / end of file
+                eol.add(s);
             } else {
-                err.fill(1, s, s + 1);                       // zero-width mid-line: underline one char
+                err.fill(1, s, s + 1);
             }
         }
 
@@ -464,7 +472,6 @@ fn main() -> int
         renderGutter();
     }
 
-    // ---- diagnostics ----
     function showDiagnostics() {
         diagnosticsEl.replaceChildren();
         const text = source.value;
@@ -478,8 +485,7 @@ fn main() -> int
             return;
         }
 
-        errorCount.textContent =
-            errors.length + (errors.length === 1 ? " error" : " errors");
+        errorCount.textContent = errors.length + (errors.length === 1 ? " error" : " errors");
 
         for (const e of errors) {
             const { line, col } = lineCol(text, e.start);
@@ -537,7 +543,6 @@ fn main() -> int
 
     // ---- editing behavior ----
     function insertText(text) {
-        // execCommand keeps the browser's undo stack intact
         if (!document.execCommand("insertText", false, text)) {
             source.setRangeText(text, source.selectionStart, source.selectionEnd, "end");
             onInput();
@@ -596,8 +601,7 @@ fn main() -> int
         if (typeof interpreter.checkCode === "function") {
             runCheck();
         } else {
-            diagnosticsEl.innerHTML =
-                '<div class="muted">Live diagnostics unavailable (checkCode not exported).</div>';
+            diagnosticsEl.innerHTML = '<div class="muted">Live diagnostics unavailable (checkCode not exported).</div>';
         }
     } catch (error) {
         status.textContent = "Load failed";
@@ -605,24 +609,77 @@ fn main() -> int
         console.error(error);
     }
 
+    // ---- RUN BUTTON HANDLER (FIXED) ----
     runButton.addEventListener("click", () => {
         if (!interpreter) return;
+
+        clearTimeout(checkTimeout);
+        checkTimeout = null;
 
         runButton.disabled = true;
         status.textContent = "Running...";
         output.textContent = "";
+        errors = [];
+        errorCount.textContent = "";
+        render();
 
-        // let the UI paint "Running..." before the interpreter blocks the thread
         setTimeout(() => {
             const t0 = performance.now();
             try {
                 const result = interpreter.runCode(source.value);
-                output.textContent = result ?? "";
-                status.textContent =
-                    `Finished in ${(performance.now() - t0).toFixed(0)} ms`;
+                console.log("🔍 [DEBUG] 1. Raw result from C++:", result);
+
+                let out = result?.output;
+                if (typeof out !== 'string') {
+                    out = String(out ?? "");
+                }
+                output.textContent = out;
+
+                const rawErrors = result?.errors ?? result?.runtime_errors;
+                console.log("🔍 [DEBUG] 2. Raw errors object:", rawErrors);
+
+                const runtimeErrors = toArray(rawErrors);
+                console.log("🔍 [DEBUG] 3. Processed runtimeErrors array:", runtimeErrors);
+
+                if (runtimeErrors.length > 0) {
+                    const text = source.value;
+                    const map = byteToIndexMap(text);
+                    const maxByteOffset = map.length - 1;
+                    const at = (value) => {
+                        const n = Number(value);
+                        if (!Number.isFinite(n)) return 0;
+                        const byteOffset = Math.max(0, Math.min(Math.trunc(n), maxByteOffset));
+                        return map[byteOffset] ?? text.length;
+                    };
+
+                    errors = runtimeErrors.map((e) => {
+                        console.log("🔍 [DEBUG] 4. Mapping individual error:", e);
+                        const start = Math.max(0, Math.min(at(e.start), text.length));
+                        const end = Math.max(start, Math.min(at(e.end ?? e.start), text.length));
+                        console.log(`🔍 [DEBUG] 5. Mapped indices -> start: ${start}, end: ${end}`);
+                        return { message: String(e.message ?? "Unknown error"), start, end };
+                    });
+
+                    showDiagnostics();
+                    render();
+                } else {
+                    console.log("🔍 [DEBUG] No runtime errors found, falling back to syntax check.");
+                    errors = [];
+                    runCheck();
+                }
+
+                if (result && typeof result.delete === "function") {
+                    result.delete();
+                }
+
+                status.textContent = `Finished in ${(performance.now() - t0).toFixed(0)} ms`;
             } catch (error) {
+                console.error("🔍 [DEBUG] Run exception:", error);
                 output.textContent = String(error);
                 status.textContent = "Error";
+                errors = [];
+                showDiagnostics();
+                render();
             } finally {
                 runButton.disabled = false;
             }

@@ -10,6 +10,7 @@ if(EMSCRIPTEN)
             "-sMODULARIZE=1"
             "-sEXPORT_ES6=1"
             "-sALLOW_MEMORY_GROWTH=1"
+            "-sNO_DISABLE_EXCEPTION_CATCHING"
     )
 
     set_target_properties(foo_web PROPERTIES
@@ -17,7 +18,7 @@ if(EMSCRIPTEN)
     )
 
     configure_file(
-            index.html
+            ${CMAKE_CURRENT_SOURCE_DIR}/index.html
             ${CMAKE_BINARY_DIR}/index.html
             COPYONLY
     )
