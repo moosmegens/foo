@@ -268,6 +268,40 @@ namespace foo
                 return Value(std::move(line));
             };
 
+            auto sample_string_value = Value{std::string{""}};
+            _builtin_member_functions[sample_string_value.data.index()]["get"] =
+                [](std::span<Value> a, SourceSpan span)
+                {
+                    if (a.size() != 2)
+                        fail("input expects 2 arguments <string, int>", span);
+
+                    std::string str;
+                    int64_t index;
+
+                    if (const auto v = get_if<std::string>(&a[0].data))
+                    {
+                        str = *v;
+                    } else
+                    {
+                        fail("input expects 2 arguments <string, int>", span);
+                    }
+
+                    if (const auto v = get_if<std::int64_t>(&a[1].data))
+                    {
+                        index = *v;
+                    } else
+                    {
+                        fail("input expects 2 arguments <string, int>", span);
+                    }
+
+                    if (index < 0 || static_cast<size_t>(index) >= a.size())
+                    {
+                        return Value{std::string{""}};
+                    }
+
+                    return Value{std::string{str[static_cast<size_t>(index)]}};
+                };
+
             try
             {
                 Value return_value = call_function(*it->second, {}, {});
@@ -499,22 +533,70 @@ namespace foo
         Value eval_call(const Call& n, SourceSpan span)
         {
             auto* name = std::get_if<Name>(&n.callee->kind);
-            if (!name)
-                fail("only named functions can be called", span);
+            if (name)
+            {
+                std::vector<Value> args;
+                for (const auto& a : n.args)
+                    args.push_back(eval(*a));
 
-            std::vector<Value> args;
-            for (const auto& a : n.args)
-                args.push_back(eval(*a));
+                std::string key = join(name->parts);
 
-            std::string key = join(name->parts);
+                if (auto fn = _user_functions.find(key); fn != _user_functions.end())
+                    return call_function(*fn->second, std::move(args), span);
 
-            if (auto fn = _user_functions.find(key); fn != _user_functions.end())
-                return call_function(*fn->second, std::move(args), span);
+                if (auto b = _builtin_functions.find(key); b != _builtin_functions.end())
+                    return b->second(args, span);
 
-            if (auto b = _builtin_functions.find(key); b != _builtin_functions.end())
-                return b->second(args, span);
-            
-            fail("undefined function '" + key + "'", span);
+                fail("undefined function '" + key + "'", span);
+            }
+
+            auto* member = std::get_if<Member>(&n.callee->kind);
+            if (member)
+            {
+                auto* var_name = std::get_if<Name>(&member->target->kind);
+
+                if (!var_name)
+                {
+                    fail("member access is only for variables.", span);
+                }
+
+                if (var_name->parts.size() != 1)
+                {
+                    fail("member access is only for variables.", span);
+                }
+
+                if (Value* v = find_var(var_name->parts[0]))
+                {
+                    if (!_builtin_member_functions.count(v->data.index()))
+                    {
+                        fail("this value has no supported member functions", span);
+                    }
+
+                    auto& map = _builtin_member_functions[v->data.index()];
+
+                    if (!map.contains(member->name))
+                    {
+                        fail("this value doesnt have a member function with that name", span);
+                    }
+
+                    std::vector<Value> args;
+                    args.push_back(*v);
+                    for (const auto& a : n.args)
+                        args.push_back(eval(*a));
+
+                    return map[member->name](args, span);
+                } else
+                {
+                    fail("undefined variable '" + join(var_name->parts) + "'", span);
+                }
+
+
+                fail("e", span);
+            }
+
+
+
+            fail("illegal op", span);
         }
 
         Value eval_binary(const Binary& n, SourceSpan span)
@@ -662,7 +744,9 @@ namespace foo
 
         using BuiltinFunc = std::function<Value(std::span<Value> args, SourceSpan caller)>;
 
-        std::unordered_map<std::string, BuiltinFunc> _builtin_functions;
+        std::unordered_map<size_t, std::unordered_map<std::string, BuiltinFunc>> _builtin_member_functions{};
+        std::unordered_map<std::string, BuiltinFunc> _builtin_functions{};
+
         std::unordered_map<std::string, const FnDecl*> _user_functions;
         std::vector<Scope> _scopes;
         Value _return;
