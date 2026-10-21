@@ -130,11 +130,15 @@ namespace foo
                 if (!_files.try_emplace(logical, file_path).second)
                     return;
 
-                auto text = read_entire_file(file_path);
-                if (!text)
+                auto possible_text = read_entire_file(file_path);
+                std::string text;
+                if (!possible_text.has_value())
                 {
-                    error(importer, span, std::format("cannot open '{}'", file_path.string()));
+                    error(importer, span, std::format("cannot open '{}': {}", file_path.string(), possible_text.error()));
                     return;
+                } else
+                {
+                    text = possible_text.value();
                 }
 
                 for (const auto& [other_name, other_path] : _files)
@@ -162,7 +166,7 @@ namespace foo
                 }
 
                 const int id = static_cast<int>(_out.resolver_input.sources.size());
-                _out.resolver_input.sources.push_back({logical, file_path, std::move(*text)});
+                _out.resolver_input.sources.push_back({logical, file_path, std::move(text)});
                 std::string_view source = _out.resolver_input.sources[static_cast<size_t>(id)].text;
 
                 LexOutput lexed = tokenize(source);

@@ -10,6 +10,8 @@
 #include <iostream>
 #include <ranges>
 
+#include "foo/util/file.hpp"
+
 namespace foo
 {
     using namespace ast;
@@ -268,6 +270,120 @@ namespace foo
                 return Value(std::move(line));
             };
 
+            _builtin_functions["io::read_file"] = [this](std::span<Value> a, SourceSpan span) -> Value
+            {
+                if (a.size() != 1)
+                {
+                    fail("read_file expects 1 argument <string>", span);
+                }
+
+                if (auto* v = std::get_if<std::string>(&a[0].data))
+                {
+                    auto possible_string = read_entire_file(*v);
+                    if (possible_string.has_value())
+                    {
+                        return Value(std::move(*possible_string));
+                    } else
+                    {
+                        _last_error = possible_string.error();
+                        return Value{};
+                    }
+                } else
+                {
+                    fail("read_file expects 1 argument <string>", span);
+                }
+
+                return Value{};
+            };
+
+            _builtin_functions["io::create_file"] = [this](std::span<Value> a, SourceSpan span) -> Value
+            {
+                if (a.size() != 1)
+                {
+                    fail("create_file expects 1 argument <string>", span);
+                }
+
+                if (auto* v = std::get_if<std::string>(&a[0].data))
+                {
+                    auto ok = create_file(*v);
+                    if (ok.has_value())
+                    {
+                        return Value{true};
+                    } else
+                    {
+                        _last_error = ok.error();
+                        return Value{};
+                    }
+                } else
+                {
+                    fail("create_file expects 1 argument <string>", span);
+                }
+
+                return Value{};
+            };
+
+            _builtin_functions["io::file_append"] = [this](std::span<Value> a, SourceSpan span) -> Value
+            {
+                if (a.size() != 2)
+                {
+                    fail("file_append expects 2 arguments <string, string> a", span);
+                }
+
+                if (auto* v1 = std::get_if<std::string>(&a[0].data))
+                {
+                    if (auto* v2 = std::get_if<std::string>(&a[1].data))
+                    {
+                        auto ok = write_to_file(*v1, *v2);
+                        if (ok.has_value())
+                        {
+                            return Value{true};
+                        } else
+                        {
+                            _last_error = ok.error();
+                            return Value{};
+                        }
+                    } else
+                    {
+                        fail("file_append expects 2 argument <string, string> b", span);
+                    }
+                } else
+                {
+                    fail("file_append expects 2 argument <string, string> c", span);
+                }
+            };
+
+            _builtin_functions["io::create_path"] = [this](std::span<Value> a, SourceSpan span) -> Value
+            {
+                if (a.size() != 1)
+                {
+                    fail("create_path expects 1 argument <string>", span);
+                }
+
+
+                if (auto* v = std::get_if<std::string>(&a[0].data))
+                {
+                    auto ok = create_dir(*v);
+                    if (ok.has_value())
+                    {
+                        return Value{true};
+                    } else
+                    {
+                        _last_error = ok.error();
+                        return Value{};
+                    }
+                } else
+                {
+                    fail("create_path expects 1 argument <string>", span);
+                }
+
+                return Value{};
+            };
+
+            _builtin_functions["get_error"] = [this](std::span<Value>, SourceSpan) -> Value
+            {
+                return Value{_last_error};
+            };
+
             auto sample_string_value = Value{std::string{""}};
             _builtin_member_functions[sample_string_value.data.index()]["get"] =
                 [](std::span<Value> a, SourceSpan span)
@@ -372,6 +488,11 @@ namespace foo
             throw RuntimeError{std::move(msg), span};
         }
 
+        void safe_fail(std::string msg)
+        {
+            _last_error = std::move(msg);
+        }
+
         Value* find_var(const std::string& name)
         {
             for (auto & _scope : std::views::reverse(_scopes))
@@ -430,7 +551,28 @@ namespace foo
         bool exec(const Stmt& s)
         {
             return std::visit(overload{
-                [&](const Check&) -> bool { fail("check is not yet supported", s.span); },
+                [&](const Check& n) -> bool
+                {
+                    Value v = eval(*n.expr);
+                    if (holds_alternative<std::monostate>(v.data))
+                    {
+                        exec(*n.bad_branch);
+                    } else
+                    {
+                        _scopes.emplace_back();
+                        _scopes.emplace_back();
+                        _scopes.back()[n.variable_name] = v;
+                        bool returned = exec(*n.good_branch);
+                        _scopes.pop_back();
+
+                        if (returned)
+                        {
+                            return true;
+                        }
+                    }
+
+                    return false;
+                },
                 [&](const Block& n) { return exec_block(n); },
                 [&](const VarDecl& n)
                 {
@@ -788,10 +930,14 @@ namespace foo
             fail("unsupported operator for these operands", span);
         }
 
+
         using BuiltinFunc = std::function<Value(std::span<Value> args, SourceSpan caller)>;
+
 
         std::unordered_map<size_t, std::unordered_map<std::string, BuiltinFunc>> _builtin_member_functions{};
         std::unordered_map<std::string, BuiltinFunc> _builtin_functions{};
+
+        std::string _last_error = "";
 
         std::unordered_map<std::string, const FnDecl*> _user_functions;
         std::vector<Scope> _scopes;
