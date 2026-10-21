@@ -273,7 +273,7 @@ namespace foo
                 [](std::span<Value> a, SourceSpan span)
                 {
                     if (a.size() != 2)
-                        fail("input expects 2 arguments <string, int>", span);
+                        fail("input expects 1 argument <int>", span);
 
                     std::string str;
                     int64_t index;
@@ -283,7 +283,7 @@ namespace foo
                         str = *v;
                     } else
                     {
-                        fail("input expects 2 arguments <string, int>", span);
+                        fail("input expects 1 argument <int>", span);
                     }
 
                     if (const auto v = get_if<std::int64_t>(&a[1].data))
@@ -291,7 +291,7 @@ namespace foo
                         index = *v;
                     } else
                     {
-                        fail("input expects 2 arguments <string, int>", span);
+                        fail("input expects 1 argument <int>", span);
                     }
 
                     if (index < 0 || static_cast<size_t>(index) >= a.size())
@@ -300,6 +300,52 @@ namespace foo
                     }
 
                     return Value{std::string{str[static_cast<size_t>(index)]}};
+                };
+
+            _builtin_member_functions[sample_string_value.data.index()]["range"] =
+                [](std::span<Value> a, SourceSpan span)
+                {
+                    if (a.size() != 3)
+                        fail("input expects 2 arguments <int, int>", span);
+
+                    std::string str;
+                    int64_t Aindex;
+                    int64_t Bindex;
+
+                    if (const auto v = get_if<std::string>(&a[0].data))
+                    {
+                        str = *v;
+                    } else
+                    {
+                        fail("input expects 2 arguments <int, int>", span);
+                    }
+
+                    if (const auto v = get_if<std::int64_t>(&a[1].data))
+                    {
+                        Aindex = *v;
+                    } else
+                    {
+                        fail("input expects 2 arguments <int, int>", span);
+                    }
+
+                    if (const auto v = get_if<std::int64_t>(&a[2].data))
+                    {
+                        Bindex = *v;
+                    } else
+                    {
+                        fail("input expects 2 arguments <int, int>", span);
+                    }
+
+                    const auto size = static_cast<int64_t>(str.size());
+
+                    if (Aindex < 0 || Aindex >= size || Bindex <= Aindex)
+                    {
+                        return Value{std::string{""}};
+                    }
+
+                    auto last = std::min(Bindex, size);
+
+                    return Value{str.substr(static_cast<size_t>(Aindex), static_cast<size_t>(last - Aindex))};
                 };
 
             try
