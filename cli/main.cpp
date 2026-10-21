@@ -107,7 +107,8 @@ int main(int argc, char** argv)
 
     std::filesystem::path path = script;
 
-    auto r = foo::collect(path.root_directory(), path.filename().string());
+    auto r = foo::collect(path.parent_path(), path.filename().string());
+
     for (const auto& err : r.errors)
     {
         if (err.file_id < 0)
