@@ -144,7 +144,7 @@ namespace foo
                     report_error(
                         span,
                         std::format("Invalid token! After '{}' expected '{}' ",
-                            name(current()),
+                            name(peek(-1)),
                             T::name));
                 } else
                 {
@@ -975,7 +975,9 @@ namespace foo
                     return std::make_unique<ast::Expr>(ast::StaticCall{std::move(type_expr), name, std::move(args)}, span);
                 }
 
-                report_error(current(), "Expected expression");
+                report_error_after(current(), "Expected expression", false);
+                advance();
+
                 return nullptr;
             }
 
