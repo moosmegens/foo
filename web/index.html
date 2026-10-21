@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>foo — Interpreter IDE</title>
+
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: system-ui, sans-serif;
+            background: #111114;
+            color: #e4e4e7;
+
+            --code-font: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+            --line-h: 22px;
+            --pad: 12px;
+
+            --c-keyword: #c792ea;
+            --c-type: #4fc1b0;
+            --c-fn: #82aaff;
+            --c-string: #c3e88d;
+            --c-number: #f78c6c;
+            --c-bool: #ff9cac;
+            --c-comment: #6b7280;
+            --c-op: #89a4c7;
+        }
+
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            background: #19191e;
+            border-bottom: 1px solid #303038;
+        }
+        header h1 { margin: 0; font-size: 20px; }
+        header span { color: #a1a1aa; font-size: 13px; }
+
+        main { max-width: 1100px; margin: auto; padding: 24px; }
+
+        .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+
+        button {
+            padding: 9px 16px;
+            border: 1px solid #3f3f46;
+            border-radius: 7px;
+            background: #27272a;
+            color: #fafafa;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        button:hover:not(:disabled) { background: #3f3f46; }
+        button:disabled { cursor: not-allowed; opacity: .5; }
+        button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+        #run { background: #2563eb; border-color: #2563eb; }
+        #run:hover:not(:disabled) { background: #1d4ed8; }
+
+        .hint { color: #71717a; font-size: 12px; }
+        .status { margin-left: auto; color: #a1a1aa; font-size: 13px; }
+
+        .panel {
+            overflow: hidden;
+            margin-bottom: 20px;
+            border: 1px solid #303038;
+            border-radius: 10px;
+            background: #18181b;
+        }
+        .panel-title {
+            padding: 11px 14px;
+            border-bottom: 1px solid #303038;
+            color: #a1a1aa;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+
+        /* ---- editor ---- */
+        .editor {
+            display: flex;
+            height: 380px;
+            min-height: 160px;
+            resize: vertical;
+            overflow: hidden;
+            background: #111114;
+        }
+
+        .gutter {
+            flex: none;
+            width: 52px;
+            overflow: hidden;
+            border-right: 1px solid #26262c;
+            background: #151519;
+            color: #52525b;
+            font: 13px/var(--line-h) var(--code-font);
+            text-align: right;
+            user-select: none;
+        }
+        .gutter-inner { padding: var(--pad) 10px var(--pad) 0; }
+        .gutter div.err { color: #f87171; font-weight: 700; }
+        .gutter div.cur { color: #d4d4d8; }
+
+        .code { position: relative; flex: 1; min-width: 0; }
+
+        #highlight, #source {
+            position: absolute;
+            inset: 0;
+            margin: 0;
+            border: 0;
+            padding: var(--pad) 14px;
+            font: 14px/var(--line-h) var(--code-font);
+            letter-spacing: 0;
+            tab-size: 4;
+            white-space: pre;
+            word-wrap: normal;
+        }
+
+        #highlight {
+            overflow: hidden;
+            pointer-events: none;
+            color: #e4e4e7;
+        }
+        #highlight code { font: inherit; padding-bottom: 40px; display: block; }
+
+        #source {
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            resize: none;
+            outline: none;
+            background: transparent;
+            color: transparent;
+            caret-color: #fafafa;
+        }
+        #source::selection { background: rgba(96, 165, 250, .35); }
+
+        .k { color: var(--c-keyword); }
+        .t { color: var(--c-type); }
+        .f { color: var(--c-fn); }
+        .s { color: var(--c-string); }
+        .n { color: var(--c-number); }
+        .b { color: var(--c-bool); }
+        .c { color: var(--c-comment); font-style: italic; }
+        .o { color: var(--c-op); }
+        .e {
+            text-decoration: underline wavy #f87171;
+            text-decoration-skip-ink: none;
+            text-underline-offset: 3px;
+            background: rgba(248, 113, 113, .12);
+        }
+
+        .e.eol {
+            text-decoration: none;
+            box-shadow: inset 0 -2px #f87171;
+        }
+
+        /* ---- diagnostics ---- */
+        #diagnostics {
+            border-top: 1px solid #303038;
+            font: 13px/1.6 var(--code-font);
+            max-height: 150px;
+            overflow: auto;
+        }
+        #diagnostics .ok { padding: 8px 14px; color: #4ade80; }
+        #diagnostics .muted { padding: 8px 14px; color: #a1a1aa; }
+        #diagnostics button {
+            display: block;
+            width: 100%;
+            padding: 5px 14px;
+            border: 0;
+            border-radius: 0;
+            background: none;
+            color: #f87171;
+            font: inherit;
+            text-align: left;
+        }
+        #diagnostics button:hover { background: #222228; }
+        #diagnostics .pos { color: #a1a1aa; margin-right: 10px; }
+
+        .statusbar {
+            display: flex;
+            gap: 18px;
+            padding: 6px 14px;
+            border-top: 1px solid #303038;
+            color: #71717a;
+            font: 12px var(--code-font);
+        }
+
+        #output {
+            min-height: 120px;
+            max-height: 400px;
+            overflow: auto;
+            margin: 0;
+            padding: 16px;
+            color: #d4d4d8;
+            font: 14px/1.6 var(--code-font);
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        footer { padding: 0 24px 24px; color: #71717a; text-align: center; font-size: 12px; }
+
+        @media (max-width: 600px) {
+            main { padding: 14px; }
+            header { padding: 14px; }
+            .toolbar { flex-wrap: wrap; }
+            .hint { display: none; }
+        }
+    </style>
+</head>
+
+<body>
+<header>
+    <h1>foo <span>Interpreter IDE</span></h1>
+    <span>WebAssembly</span>
+</header>
+
+<main>
+    <div class="toolbar">
+        <button id="run" disabled>Loading...</button>
+        <button id="clear">Clear output</button>
+        <span class="hint">Ctrl+Enter to run</span>
+        <span class="status" id="status">Initializing...</span>
+    </div>
+
+    <section class="panel">
+        <div class="panel-title">Source code</div>
+
+        <div class="editor">
+            <div class="gutter" id="gutter"><div class="gutter-inner" id="gutterInner"></div></div>
+            <div class="code">
+                <pre id="highlight" aria-hidden="true"><code id="highlightCode"></code></pre>
+                <textarea
+                        id="source"
+                        wrap="off"
+                        spellcheck="false"
+                        autocapitalize="off"
+                        autocomplete="off"
+                        autocorrect="off"
+                        aria-label="foo source code"
+                ></textarea>
+            </div>
+        </div>
+
+        <div class="statusbar">
+            <span id="cursorPos">Ln 1, Col 1</span>
+            <span id="errorCount"></span>
+        </div>
+        <div id="diagnostics"><div class="muted">Diagnostics will appear here.</div></div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-title">Output</div>
+        <pre id="output">Waiting for WebAssembly...</pre>
+    </section>
+</main>
+
+<footer>foo interpreter · Runs locally in your browser</footer>
+
+<script type="module">
+    import createFoo from "./web/foo_web.js";
+
+    // ---- language definition (edit these as foo grows) ----
+    const KEYWORDS = new Set([
+        "var", "fn", "struct", "ref", "if", "else", "while",
+        "for", "in", "check", "return", "import"
+    ]);
+    const TYPES = new Set(["int", "float", "bool", "string", "str"]);
+    const BOOLS = new Set(["true", "false"]);
+
+    const STORAGE_KEY = "foo-ide-source";
+    const DEFAULT_SOURCE = `// Press Ctrl+Enter to run
+
+fn fib(n: int) -> int
+{
+    var a: int = 0;
+    var b: int = 1;
+
+    for i in 0..n
+    {
+        var next: int = a + b;
+        a = b;
+        b = next;
+    }
+
+    return a;
+}
+
+fn main() -> int
+{
+    io::println("Hello, World!");
+
+    for i in 0..=10
+    {
+        io::println(fib(i));
+    }
+
+    return 0;
+}
+`;
+
+    // ---- elements ----
+    const $ = (id) => document.getElementById(id);
+    const source = $("source");
+    const highlightEl = $("highlight");
+    const highlightCode = $("highlightCode");
+    const gutter = $("gutter");
+    const gutterInner = $("gutterInner");
+    const output = $("output");
+    const runButton = $("run");
+    const clearButton = $("clear");
+    const status = $("status");
+    const diagnosticsEl = $("diagnostics");
+    const cursorPos = $("cursorPos");
+    const errorCount = $("errorCount");
+
+    let interpreter = null;
+    let checkTimeout = null;
+    let errors = []; // { message, start, end } in UTF-16 indices
+
+    // ---- helpers ----
+    const escapeHtml = (s) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    // The C++ side reports UTF-8 byte offsets; the textarea uses UTF-16 indices.
+    function byteToIndexMap(text) {
+        const map = [];
+        let index = 0;
+        for (const ch of text) {
+            const cp = ch.codePointAt(0);
+            const bytes = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+            for (let i = 0; i < bytes; i++) map.push(index);
+            index += ch.length;
+        }
+        map.push(index);
+        return map;
+    }
+
+    // Embind vectors are not arrays: they have size()/get(i)/delete().
+    function toArray(vec) {
+        if (Array.isArray(vec)) return vec;
+        const out = [];
+        if (vec && typeof vec.size === "function") {
+            for (let i = 0; i < vec.size(); i++) out.push(vec.get(i));
+            if (typeof vec.delete === "function") vec.delete();
+        }
+        return out;
+    }
+
+    function lineCol(text, index) {
+        const before = text.slice(0, index);
+        const line = before.split("\n").length;
+        const col = index - (before.lastIndexOf("\n") + 1) + 1;
+        return { line, col };
+    }
+
+    // ---- syntax highlighting ----
+    const TOKEN_RE = new RegExp(
+        [
+            String.raw`(\/\/[^\n]*)`,                                   // 1 comment
+            String.raw`("(?:\\.|[^"\\\n])*"?)`,                         // 2 string
+            String.raw`(\d+\.\d+|\d+)`,                                 // 3 number
+            String.raw`([A-Za-z_][A-Za-z0-9_]*)`,                       // 4 identifier
+            String.raw`(\.\.=|\.\.|::|->|<-|=>|>>|<<|\?\?|[=!<>]=|&&|\|\||[+\-]=|[+\-*\/%^#@|~?!<>=:.,;])` // 5 operator
+        ].join("|"),
+        "g"
+    );
+
+    function classify(text) {
+        const cls = new Array(text.length).fill("");
+        let m;
+        TOKEN_RE.lastIndex = 0;
+        while ((m = TOKEN_RE.exec(text)) !== null) {
+            let c = "";
+            if (m[1] !== undefined) c = "c";
+            else if (m[2] !== undefined) c = "s";
+            else if (m[3] !== undefined) c = "n";
+            else if (m[4] !== undefined) {
+                const w = m[4];
+                if (KEYWORDS.has(w)) c = "k";
+                else if (BOOLS.has(w)) c = "b";
+                else if (TYPES.has(w)) c = "t";
+                else if (/^\s*\(/.test(text.slice(m.index + w.length, m.index + w.length + 20))) c = "f";
+            } else if (m[5] !== undefined) c = "o";
+
+            if (c) cls.fill(c, m.index, m.index + m[0].length);
+            if (m[0].length === 0) TOKEN_RE.lastIndex++;
+        }
+        return cls;
+    }
+
+    function render() {
+        const text = source.value;
+        const cls = classify(text);
+        const err = new Uint8Array(text.length);
+
+        // Newlines have no visible glyph, so an underline on them never shows.
+        // Errors that land on a newline get a small marker at the end of the line instead.
+        const eol = new Set();
+        const isNl = (ch) => ch === "\n" || ch === "\r";
+
+        for (const e of errors) {
+            let s = Math.min(e.start, text.length);
+            let end = Math.min(Math.max(e.end, s), text.length);
+
+            while (end > s && isNl(text[end - 1])) end--;   // drop trailing newlines from the span
+
+            if (end > s) {
+                err.fill(1, s, end);
+            } else if (s >= text.length || isNl(text[s])) {
+                eol.add(s);                                  // empty span on a newline / end of file
+            } else {
+                err.fill(1, s, s + 1);                       // zero-width mid-line: underline one char
+            }
+        }
+
+        const marker = '<span class="e eol"> </span>';
+        let html = "";
+        let i = 0;
+        while (i < text.length) {
+            if (eol.has(i)) html += marker;
+            let j = i + 1;
+            while (j < text.length && cls[j] === cls[i] && err[j] === err[i] && !eol.has(j)) j++;
+            const chunk = escapeHtml(text.slice(i, j));
+            const c = (cls[i] + (err[i] ? " e" : "")).trim();
+            html += c ? `<span class="${c}">${chunk}</span>` : chunk;
+            i = j;
+        }
+        if (eol.has(text.length)) html += marker;
+        highlightCode.innerHTML = html + "\n";
+
+        renderGutter();
+        syncScroll();
+    }
+
+    function renderGutter() {
+        const text = source.value;
+        const lineCount = text.split("\n").length;
+        const errLines = new Set(errors.map((e) => lineCol(text, e.start).line));
+        const cur = lineCol(text, source.selectionStart).line;
+
+        let html = "";
+        for (let n = 1; n <= lineCount; n++) {
+            const c = errLines.has(n) ? "err" : n === cur ? "cur" : "";
+            html += `<div class="${c}">${n}</div>`;
+        }
+        gutterInner.innerHTML = html;
+    }
+
+    function syncScroll() {
+        highlightEl.scrollTop = source.scrollTop;
+        highlightEl.scrollLeft = source.scrollLeft;
+        gutterInner.style.transform = `translateY(${-source.scrollTop}px)`;
+    }
+
+    function updateCursor() {
+        const { line, col } = lineCol(source.value, source.selectionStart);
+        cursorPos.textContent = `Ln ${line}, Col ${col}`;
+        renderGutter();
+    }
+
+    // ---- diagnostics ----
+    function showDiagnostics() {
+        diagnosticsEl.replaceChildren();
+        const text = source.value;
+
+        if (errors.length === 0) {
+            const ok = document.createElement("div");
+            ok.className = "ok";
+            ok.textContent = "✓ No syntax errors";
+            diagnosticsEl.appendChild(ok);
+            errorCount.textContent = "";
+            return;
+        }
+
+        errorCount.textContent =
+            errors.length + (errors.length === 1 ? " error" : " errors");
+
+        for (const e of errors) {
+            const { line, col } = lineCol(text, e.start);
+            const btn = document.createElement("button");
+            btn.type = "button";
+
+            const pos = document.createElement("span");
+            pos.className = "pos";
+            pos.textContent = `${line}:${col}`;
+
+            btn.append(pos, document.createTextNode(e.message));
+            btn.addEventListener("click", () => {
+                source.focus();
+                source.setSelectionRange(e.start, Math.max(e.end, e.start));
+                const target = (line - 1) * 22 - source.clientHeight / 2;
+                source.scrollTop = Math.max(0, target);
+                updateCursor();
+            });
+            diagnosticsEl.appendChild(btn);
+        }
+    }
+
+    function runCheck() {
+        if (!interpreter || typeof interpreter.checkCode !== "function") return;
+
+        const text = source.value;
+        try {
+            const raw = toArray(interpreter.checkCode(text));
+            const map = byteToIndexMap(text);
+            const at = (b) => map[Math.min(b, map.length - 1)];
+
+            errors = raw.map((e) => ({
+                message: e.message ?? String(e),
+                start: at(e.start ?? 0),
+                end: at(e.end ?? e.start ?? 0)
+            }));
+            showDiagnostics();
+        } catch (error) {
+            errors = [];
+            diagnosticsEl.textContent = "Diagnostic error: " + String(error);
+        }
+        render();
+    }
+
+    function onInput() {
+        try { localStorage.setItem(STORAGE_KEY, source.value); } catch {}
+        render();
+        updateCursor();
+
+        if (interpreter && typeof interpreter.checkCode === "function") {
+            clearTimeout(checkTimeout);
+            checkTimeout = setTimeout(runCheck, 200);
+        }
+    }
+
+    // ---- editing behavior ----
+    function insertText(text) {
+        // execCommand keeps the browser's undo stack intact
+        if (!document.execCommand("insertText", false, text)) {
+            source.setRangeText(text, source.selectionStart, source.selectionEnd, "end");
+            onInput();
+        }
+    }
+
+    source.addEventListener("keydown", (event) => {
+        if (event.key === "Tab" && !event.shiftKey) {
+            event.preventDefault();
+            insertText("    ");
+            return;
+        }
+
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            if (!runButton.disabled) runButton.click();
+            return;
+        }
+
+        if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+            const pos = source.selectionStart;
+            const before = source.value.slice(0, pos);
+            const lineStart = before.lastIndexOf("\n") + 1;
+            const line = before.slice(lineStart);
+            let indent = line.match(/^[ \t]*/)[0];
+            if (/\{\s*$/.test(line)) indent += "    ";
+            event.preventDefault();
+            insertText("\n" + indent);
+        }
+    });
+
+    source.addEventListener("input", onInput);
+    source.addEventListener("scroll", syncScroll);
+    source.addEventListener("keyup", updateCursor);
+    source.addEventListener("click", updateCursor);
+    source.addEventListener("focus", updateCursor);
+
+    // ---- initial content ----
+    try {
+        source.value = localStorage.getItem(STORAGE_KEY) ?? DEFAULT_SOURCE;
+    } catch {
+        source.value = DEFAULT_SOURCE;
+    }
+    render();
+    updateCursor();
+
+    // ---- interpreter ----
+    try {
+        interpreter = await createFoo();
+
+        runButton.disabled = false;
+        runButton.textContent = "▶ Run";
+        status.textContent = "Ready";
+        output.textContent = "Interpreter loaded successfully.";
+
+        if (typeof interpreter.checkCode === "function") {
+            runCheck();
+        } else {
+            diagnosticsEl.innerHTML =
+                '<div class="muted">Live diagnostics unavailable (checkCode not exported).</div>';
+        }
+    } catch (error) {
+        status.textContent = "Load failed";
+        output.textContent = "Could not load WebAssembly:\n" + String(error);
+        console.error(error);
+    }
+
+    runButton.addEventListener("click", () => {
+        if (!interpreter) return;
+
+        runButton.disabled = true;
+        status.textContent = "Running...";
+        output.textContent = "";
+
+        // let the UI paint "Running..." before the interpreter blocks the thread
+        setTimeout(() => {
+            const t0 = performance.now();
+            try {
+                const result = interpreter.runCode(source.value);
+                output.textContent = result ?? "";
+                status.textContent =
+                    `Finished in ${(performance.now() - t0).toFixed(0)} ms`;
+            } catch (error) {
+                output.textContent = String(error);
+                status.textContent = "Error";
+            } finally {
+                runButton.disabled = false;
+            }
+        }, 0);
+    });
+
+    clearButton.addEventListener("click", () => {
+        output.textContent = "";
+        status.textContent = interpreter ? "Ready" : "Not loaded";
+    });
+</script>
+</body>
+</html>

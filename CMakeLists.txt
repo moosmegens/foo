@@ -15,8 +15,14 @@ if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
             -Wno-error=unused-function)
 endif()
 
-
 add_subdirectory(core)
-add_subdirectory(main)
-add_subdirectory(tests)
-add_subdirectory(cli)
+
+if(NOT EMSCRIPTEN)
+    add_subdirectory(main)
+    add_subdirectory(tests)
+    add_subdirectory(cli)
+endif()
+
+if (EMSCRIPTEN)
+    add_subdirectory(web)
+endif()
