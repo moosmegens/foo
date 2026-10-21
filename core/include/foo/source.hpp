@@ -32,6 +32,18 @@ namespace foo
             return between(begin, end);
         }
 
+        void add(size_t a)
+        {
+            size += a;
+        }
+
+        void eat_up_front(size_t a)
+        {
+            a = std::min(a, size);
+            size -= a;
+            start += a;
+        }
+
         void add(SourceSpan b)
         {
             *this = combine(*this, b);

@@ -135,7 +135,21 @@ namespace foo
                     return true;
                 }
 
-                report_error(current(), std::format("Invalid token! Expected '{}'", T::name));
+                if (_offset > 1)
+                {
+                    auto span = peek(-1).source;
+                    span.add(1);
+                    span.eat_up_front(peek(-1).source.size);
+
+                    report_error(
+                        span,
+                        std::format("Invalid token! After '{}' expected '{}' ",
+                            name(current()),
+                            T::name));
+                } else
+                {
+                    report_error(current(), std::format("Invalid token! Expected '{}'", T::name));
+                }
 
                 return false;
             }
@@ -163,6 +177,44 @@ namespace foo
 
                 _errors.push_back(err);
             }
+
+            void report_error_after(const Token& invalid_token, std::string_view msg, bool after_msg = true)
+            {
+                ParseError err;
+
+                err.error = std::string(msg);
+
+                if (_offset > 1)
+                {
+                    auto span = peek(-1).source;
+                    span.add(1);
+                    span.eat_up_front(peek(-1).source.size);
+                    err.source = span;
+
+                    if (after_msg)
+                    {
+                        err.error += " after ";
+                        err.error += name(peek(-1));
+                    }
+                } else
+                {
+                    err.source = invalid_token.source;
+                }
+
+                _errors.push_back(err);
+            }
+
+            void report_error(const SourceSpan& invalid_span, std::string_view msg)
+            {
+                ParseError err;
+                err.error = std::string(msg);
+                err.source = invalid_span;
+
+                _errors.push_back(err);
+            }
+
+
+
 
             struct BindingPower { int left; int right; };
 
@@ -306,7 +358,7 @@ namespace foo
                 }
                 else
                 {
-                    report_error(current(), "Expected type name or '['");
+                    report_error_after(current(), "Expected type name or '['");
                     return nullptr;
                 }
 
