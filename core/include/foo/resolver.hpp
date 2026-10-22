@@ -67,8 +67,8 @@ namespace foo
         TypeId add_native(std::string full_name);
 
 
-        TypeKind get_kind(TypeId t) const;
-        Id get_meta_id(TypeId t) const;
+        TypeKind get_kind(TypeId t) const   { return _types[static_cast<size_t>(t)].kind; }
+        Id get_meta_id(TypeId t) const      { return _types[static_cast<size_t>(t)].meta_id; }
 
 
         std::string to_string(TypeKind t) const;
