@@ -113,12 +113,25 @@ namespace foo
         }
     }
 
+    class Resolver
+    {
+    public:
+        explicit Resolver(const ResolverInput& input) : _input(input) {}
+
+        ResolveOutput resolve()
+        {
+            return std::move(_output);
+        }
+
+    private:
+        [[maybe_unused]] const ResolverInput& _input;
+        ResolveOutput _output;
+    };
 
 
     ResolveOutput resolve(const ResolverInput& input)
     {
-        (void)input;
-
-        return {};
+        Resolver resolver{input};
+        return resolver.resolve();
     }
 }

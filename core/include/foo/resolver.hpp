@@ -100,6 +100,25 @@ namespace foo
     };
 
 
+    struct ParamSig
+    {
+        TypeId type = EmptyType;
+        bool by_ref = false;
+    };
+
+    struct FunctionSig
+    {
+        // when method:
+        //  params is without self.
+        std::vector<ParamSig> params;
+
+        // for methods
+        bool self_by_ref = false;
+
+        TypeId ret = BaseTypes::Void;
+    };
+
+
     struct ResolverFile
     {
         std::string path;
@@ -115,6 +134,48 @@ namespace foo
         std::vector<ResolverFile> files;
     };
 
+
+
+
+
+    struct DeclInfo
+    {
+        // name with path:
+        //  io::filesystem::dir
+        std::string name;
+
+        int file_index = -1;
+        SourceSpan span = {};
+    };
+
+    struct FieldInfo
+    {
+        std::string name;
+        TypeId type = EmptyType;
+    };
+
+    struct StructInfo : DeclInfo
+    {
+        const ast::StructDecl* decl = nullptr;
+
+        TypeId type = EmptyType;
+
+        std::vector<FieldInfo> fields;
+        std::unordered_map<std::string, FunctionId> methods;
+    };
+
+    struct FunctionInfo : DeclInfo
+    {
+        const ast::FnDecl* decl = nullptr;
+
+        TypeId owner_type = EmptyType; // for methods on types
+        bool has_self = false; // has_self == true, is method
+
+        FunctionSig sig;
+    };
+
+
+
     struct ResolveError
     {
         std::string message;
@@ -124,7 +185,6 @@ namespace foo
 
     struct ResolveOutput
     {
-
 
         std::vector<ResolveError> errors;
     };
