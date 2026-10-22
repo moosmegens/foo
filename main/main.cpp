@@ -165,20 +165,34 @@ int main()
         foo::TypeTable table{};
 
         auto nativeid = table.add_native("io::file");
-        std::cout << nativeid << "\n";
-        std::cout << table.to_string(nativeid) << std::endl;
 
-        auto id = table.array_of(nativeid);
-        std::cout << id << "\n";
-        std::cout << table.to_string(id) << std::endl;
+        auto optionalnativeid = table.optional_of(nativeid);
 
-        auto mapid = table.map_of(foo::BaseTypes::Int, id);
-        std::cout << mapid << "\n";
-        std::cout << table.to_string(mapid) << std::endl;
+        foo::NativeRegistry registry;
 
-        id = table.range_of(nativeid);
-        std::cout << id << "\n";
-        std::cout << table.to_string(id) << std::endl;
+        registry.add_method("to_array",
+        [](const foo::TypeTable&, foo::TypeId)
+        {
+            return true;
+        },
+        [](foo::TypeTable& t, foo::TypeId self)
+        {
+            return foo::FunctionSig{.ret = t.array_of(self)};
+        });
+
+        auto m = registry.find_method(table, foo::BaseTypes::Any, "to_array");
+        if (m != foo::EmptyId)
+        {
+            std::cout << table.to_string(registry.signature(m, table, nativeid).ret) << std::endl;
+        }
+
+        m = registry.find_method(table, foo::BaseTypes::Any, "to_array");
+        if (m != foo::EmptyId)
+        {
+            std::cout << table.to_string(registry.signature(m, table, optionalnativeid).ret) << std::endl;
+        }
+
+
 
 
         //run();

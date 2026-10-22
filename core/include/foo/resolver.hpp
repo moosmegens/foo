@@ -2,6 +2,7 @@
 #define FOO_RESOLVER_HPP
 
 
+#include <functional>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -121,6 +122,91 @@ namespace foo
     };
 
 
+    // this can generate functions for specific types, like generating a .push(T) for T[]
+    using SignatureGenerator = std::function<FunctionSig(TypeTable&, TypeId receiver)>;
+
+    // if this function should bind to a type, so you can add .clear() to T[], [K, V], string
+    using TypePredicate = std::function<bool(const TypeTable&, TypeId)>;
+
+    class NativeRegistry
+    {
+    public:
+        NativeFunctionId add_function(
+            std::string_view name,
+            FunctionSig sig)
+        {
+            return add_function_entry({
+                std::string{name},
+                {},
+                [sig = std::move(sig)](TypeTable&, TypeId) {
+                    return sig;
+                }
+            });
+        }
+
+        NativeFunctionId add_method(std::string_view name, TypePredicate receiver, SignatureGenerator sig)
+        {
+            return add_function_entry({
+                std::string{name},
+                std::move(receiver),
+                std::move(sig)
+            });
+        }
+
+        NativeFunctionId find_function(std::string_view name) const
+        {
+            return find_last_function([&](const FunctionEntry& e)
+            {
+                return !e.receiver && e.name == name;
+            });
+        }
+
+        NativeFunctionId find_method(const TypeTable& types, TypeId receiver, std::string_view name) const
+        {
+            return find_last_function([&](const FunctionEntry& e) {
+                return e.receiver &&
+                       e.name == name &&
+                       (*e.receiver)(types, receiver);
+            });
+        }
+
+        FunctionSig signature(NativeFunctionId id, TypeTable& types, TypeId receiver = EmptyType) const
+        {
+            return _function_entries[static_cast<size_t>(id)].sig(types, receiver);
+        }
+
+
+    private:
+        struct FunctionEntry
+        {
+            std::string name;
+
+            std::optional<TypePredicate> receiver;
+            SignatureGenerator sig;
+        };
+
+
+        NativeFunctionId add_function_entry(FunctionEntry e)
+        {
+            _function_entries.push_back(std::move(e));
+            return static_cast<NativeFunctionId>(_function_entries.size() - 1);
+        }
+
+        template <class Pred>
+        NativeFunctionId find_last_function(Pred pred) const
+        {
+            for (auto i = static_cast<NativeFunctionId>(_function_entries.size()); i-- > 0;)
+                if (pred(_function_entries[static_cast<size_t>(i)]))
+                    return i;
+
+            return EmptyId;
+        }
+
+
+        std::vector<FunctionEntry> _function_entries;
+    };
+
+
     struct ResolverFile
     {
         std::string path;
@@ -134,6 +220,8 @@ namespace foo
     {
         std::vector<SourceFile> sources;
         std::vector<ResolverFile> files;
+
+        std::vector<std::string> native_types;
     };
 
 
