@@ -185,6 +185,11 @@ namespace foo
             SignatureGenerator sig;
         };
 
+        struct TypeInfo
+        {
+            std::string name;
+        };
+
 
         NativeFunctionId add_function_entry(FunctionEntry e)
         {
@@ -221,7 +226,8 @@ namespace foo
         std::vector<SourceFile> sources;
         std::vector<ResolverFile> files;
 
-        std::vector<std::string> native_types;
+        TypeTable types{};
+        const NativeRegistry* natives = nullptr;
     };
 
 

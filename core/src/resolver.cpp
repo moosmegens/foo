@@ -120,12 +120,26 @@ namespace foo
 
         ResolveOutput resolve()
         {
+            declare_files();
+
             return std::move(_output);
         }
 
     private:
         [[maybe_unused]] const ResolverInput& _input;
         ResolveOutput _output;
+
+        // per file
+        [[maybe_unused]] int _file_id = -1;
+
+
+        void declare_files()
+        {
+            for (size_t i = 0; i < _input.files.size(); ++i)
+            {
+                _file_id = static_cast<int>(i);
+            }
+        }
     };
 
 
