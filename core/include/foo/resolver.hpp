@@ -12,6 +12,9 @@
 
 namespace foo
 {
+
+
+
     struct ResolverFile
     {
         std::string path;
