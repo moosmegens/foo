@@ -137,6 +137,19 @@ namespace foo
             [](const StaticCall& n)
                 { return std::format("@{}.{}({})", to_string(n.target), n.method, list(n.args)); },
 
+            [](const StructLit& n)
+                {
+                    std::string out = "#" + to_string(n.type) + "{";
+                    for (size_t i = 0; i < n.fields.size(); ++i)
+                    {
+                        if (i)
+                            out += ", ";
+
+                        out += n.fields[i].name + " = " + to_string(n.fields[i].value);
+                    }
+                    return out + "}";
+                },
+
         }, e.kind);
     }
 

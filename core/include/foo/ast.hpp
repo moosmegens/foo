@@ -126,6 +126,28 @@ namespace foo::ast
         }
     };
 
+    struct FieldInit
+    {
+        std::string name;
+        ExprPtr value;
+        SourceSpan span = {};
+
+        bool operator==(const FieldInit& other) const
+        {
+            return name == other.name && ptr_equal(value, other.value);
+        }
+    };
+    struct StructLit
+    {
+        TypeExprPtr type;
+        std::vector<FieldInit> fields;
+
+        bool operator==(const StructLit& other) const
+        {
+            return ptr_equal(type, other.type) && fields == other.fields;
+        }
+    };
+
     struct Name
     {
         std::vector<std::string> parts;
@@ -199,6 +221,7 @@ namespace foo::ast
 
     using ExprKind = std::variant<
         IntLit, FloatLit, StringLit, BoolLit, ArrayLit,
+        StructLit,
         Name,
         Unary, Binary,
         Index, Call, Member,

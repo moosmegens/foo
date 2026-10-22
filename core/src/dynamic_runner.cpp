@@ -714,7 +714,9 @@ namespace foo
                 },
                 [&](const Call& n) -> Value     { return eval_call(n, e.span); },
                 [&](const Member&) -> Value     { fail("member access is not supported yet", e.span); },
-                [&](const StaticCall&) -> Value { fail("static calls are not supported yet", e.span); }
+                [&](const StaticCall&) -> Value { fail("static calls are not supported yet", e.span); },
+
+                [&](const StructLit&) -> Value   { fail("struct literals are not supported yet", e.span); },
             }, e.kind);
         }
 

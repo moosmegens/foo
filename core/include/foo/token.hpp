@@ -95,6 +95,8 @@ namespace foo
         FOO_TOKEN(In, "in");
         FOO_TOKEN(Check, "check");
 
+        FOO_TOKEN(Nil, "nil");
+
         FOO_TOKEN(Return, "return");
 
         FOO_TOKEN(String, "\"" + value + "\"",
@@ -154,7 +156,11 @@ namespace foo
 
         tok::Var, tok::Function, tok::Struct, tok::Ref,
         tok::If, tok::Else, tok::While, tok::For, tok::In,
-        tok::Check, tok::Return,
+        tok::Check,
+
+        tok::Nil,
+
+        tok::Return,
 
         tok::String, tok::Integer, tok::Float, tok::Boolean,
         tok::Identifier,

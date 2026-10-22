@@ -220,11 +220,12 @@ namespace foo
 
             static const int unary_bp = 19;
             static const int postfix_bp = 21;
+            static const int assign_l_bp = 2;
 
             static std::optional<BindingPower> binary_bp(TokenVariant v)
             {
                 if (token_variant_is<tok::AssignOp>(v))
-                    return BindingPower{2, 1};
+                    return BindingPower{assign_l_bp, 1};
 
                 if (token_variant_is<tok::DotDot, tok::DotDotEq>(v))
                     return BindingPower{4, 5};
@@ -861,6 +862,61 @@ namespace foo
                     advance();
                     return std::make_unique<ast::Expr>(ast::BoolLit{value}, span);
                 }
+                if (auto* _ = std::get_if<tok::Hash>(&v))
+                {
+                    advance();
+
+                    ast::TypeExprPtr type = parse_type();
+
+                    if (!type)
+                        return nullptr;
+
+                    if (!match<tok::LBrace>())
+                    {
+                        report_error_after(current(), "Expected '{' after type in struct literal");
+                        return nullptr;
+                    }
+
+                    std::vector<ast::FieldInit> fields;
+                    while (!check<tok::RBrace>() && !check<tok::End>())
+                    {
+                        SourceSpan field_span = current().source;
+
+                        if (!check<tok::Identifier>())
+                        {
+                            report_error(current(), "Expected field name in struct literal");
+                            return nullptr;
+                        }
+                        std::string name = std::get<tok::Identifier>(current().variant).value;
+                        advance();
+
+                        if (!match<tok::AssignOp>())
+                        {
+                            report_error(current(), "Expected '=' after field name");
+                            return nullptr;
+                        }
+
+                        ast::ExprPtr value = parse_expr(assign_l_bp + 1);
+                        if (!value)
+                            return nullptr;
+
+                        finish_span(field_span);
+                        fields.push_back({std::move(name), std::move(value), field_span});
+
+                        if (!match<tok::Comma>())
+                            break;
+                    }
+
+                    if (!match<tok::RBrace>())
+                    {
+                        report_error(current(), "Expected '}' to close struct literal");
+                        return nullptr;
+                    }
+
+                    finish_span(span);
+                    return std::make_unique<ast::Expr>(ast::StructLit{std::move(type), std::move(fields)}, span);
+                }
+
 
                 if (auto* t = std::get_if<tok::Identifier>(&v))
                 {
