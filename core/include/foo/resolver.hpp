@@ -26,6 +26,8 @@ namespace foo
     using FunctionId        = Id;
     using NativeFunctionId  = Id;
 
+    using SlotId            = Id;
+
 
     enum class TypeKind
     {
@@ -168,12 +170,38 @@ namespace foo
     {
         const ast::FnDecl* decl = nullptr;
 
-        TypeId owner_type = EmptyType; // for methods on types
-        bool has_self = false; // has_self == true, is method
+        TypeId owner_type = EmptyType; // for methods
+        bool is_method = false;
 
         FunctionSig sig;
     };
 
+    enum class RefKind
+    {
+        None,
+        Local,          // index = slot
+        Field,          // index = field index
+        Function,       // index = FunctionId (function or static)
+        Method,         // index = FunctionId
+        Native,         // index = NativeId
+        NativeMethod,   // index = NativeId
+        StructLit       // StructLit: index = StructId
+    };
+
+    struct ExprInfo
+    {
+        TypeId type = EmptyType;
+        RefKind ref = RefKind::None;
+
+        Id index = -1;
+    };
+
+    struct LocalInfo
+    {
+        TypeId type = EmptyType;
+
+        SlotId slot = -1;
+    };
 
 
     struct ResolveError
@@ -185,8 +213,18 @@ namespace foo
 
     struct ResolveOutput
     {
-
         std::vector<ResolveError> errors;
+
+        TypeTable type_table;
+        std::vector<StructInfo> structs;
+        std::vector<FunctionInfo> functions;
+
+        std::unordered_map<const ast::Expr*, ExprInfo> exprs;
+        std::unordered_map<const ast::VarDecl*, LocalInfo> var_decls;
+        std::unordered_map<const ast::ForIn*, LocalInfo> for_vars;
+        std::unordered_map<const ast::Check*, LocalInfo> check_vars;
+
+        std::unordered_map<const void*, int> to_file_index;
     };
 
     ResolveOutput resolve(const ResolverInput& input);
