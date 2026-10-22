@@ -176,7 +176,7 @@ int main()
         std::cout << mapid << "\n";
         std::cout << table.to_string(mapid) << std::endl;
 
-        id = table.array_of(nativeid);
+        id = table.range_of(nativeid);
         std::cout << id << "\n";
         std::cout << table.to_string(id) << std::endl;
 

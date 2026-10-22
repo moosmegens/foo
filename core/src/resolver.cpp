@@ -38,6 +38,11 @@ namespace foo
         return lookup(Type{TypeKind::Optional, e});
     }
 
+    TypeId TypeTable::range_of(TypeId e)
+    {
+        return lookup(Type{TypeKind::Range, e});
+    }
+
     TypeId TypeTable::add_struct(std::string qualified_name)
     {
         auto mid = static_cast<StructId>(_struct_names.size());
@@ -95,7 +100,7 @@ namespace foo
             case TypeKind::Float:       return "float";
             case TypeKind::String:      return "string";
             case TypeKind::Any:         return "any";
-            case TypeKind::Range:       return "range";
+            case TypeKind::Range:       return "range(" + to_string(element(t)) + ")";
             case TypeKind::Array:       return to_string(element(t)) + "[]";
             case TypeKind::Map:         return "[" + to_string(key(t)) + ", " + to_string(value(t)) + "]";
             case TypeKind::Optional:    return to_string(element(t)) + "?";

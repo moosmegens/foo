@@ -58,6 +58,7 @@ namespace foo
         TypeId array_of(TypeId element);
         TypeId map_of(TypeId key, TypeId value);
         TypeId optional_of(TypeId element);
+        TypeId range_of(TypeId element);
 
         // full name is with path aswell, lib::name
         TypeId add_struct(std::string full_name);
