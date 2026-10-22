@@ -162,8 +162,26 @@ int main()
 {
     try
     {
+        foo::TypeTable table{};
 
-        run();
+        auto nativeid = table.add_native("io::file");
+        std::cout << nativeid << "\n";
+        std::cout << table.to_string(nativeid) << std::endl;
+
+        auto id = table.array_of(nativeid);
+        std::cout << id << "\n";
+        std::cout << table.to_string(id) << std::endl;
+
+        auto mapid = table.map_of(foo::BaseTypes::Int, id);
+        std::cout << mapid << "\n";
+        std::cout << table.to_string(mapid) << std::endl;
+
+        id = table.array_of(nativeid);
+        std::cout << id << "\n";
+        std::cout << table.to_string(id) << std::endl;
+
+
+        //run();
 
     } catch (std::exception& e)
     {
@@ -172,11 +190,6 @@ int main()
     {
         std::cerr << "exception" << std::endl;
     }
-
-    foo::trace("test");
-    foo::info("idk bro", "heeeeelp");
-    foo::error("idk bro", "heeeeelp\nerror in blah blah blah\nQIUIHOIQUWDH");
-    foo::trace();
 
     return 0;
 }
