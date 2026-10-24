@@ -1,15 +1,14 @@
 #ifndef FOO_FILE_UTIL_HPP
 #define FOO_FILE_UTIL_HPP
 
-
-#include <expected>
-#include <sstream>
-#include <fstream>
-#include <string>
-#include <optional>
-#include <filesystem>
 #include <cerrno>
-
+#include <cstring>
+#include <expected>
+#include <filesystem>
+#include <fstream>
+#include <optional>
+#include <sstream>
+#include <string>
 
 namespace foo
 {

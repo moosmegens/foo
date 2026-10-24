@@ -1,7 +1,7 @@
 #ifndef FOO_RESOLVER_HPP
 #define FOO_RESOLVER_HPP
 
-
+#include <assert.h>
 #include <functional>
 #include <map>
 #include <string>
@@ -29,27 +29,46 @@ namespace foo
 
     using SlotId            = Id;
 
+    constexpr TypeId EmptyType = -1;
+
 
     enum class TypeKind
     {
-        Error, Void, Bool, Int, Float, String, Any, Range,
-        Array, Map, Optional, Struct, Native,
+        Error, Void, Bool, Int, Float, String, Any,
 
-        COUNT
+        Range,Array, Map, Optional, Struct, Native
     };
+
+    constexpr std::array BaseKinds =
+    {
+        TypeKind::Error,
+        TypeKind::Void,
+        TypeKind::Bool,
+        TypeKind::Int,
+        TypeKind::Float,
+        TypeKind::String,
+        TypeKind::Any
+    };
+
+    constexpr TypeId base_id(TypeKind k)
+    {
+        for (size_t i = 0; i < BaseKinds.size(); ++i)
+            if (BaseKinds[i] == k)
+                return static_cast<TypeId>(i);
+
+        throw "not a base kind";
+    }
 
     namespace BaseTypes
     {
-        constexpr TypeId Error  = 0;
-        constexpr TypeId Void   = 1;
-        constexpr TypeId Bool   = 2;
-        constexpr TypeId Int    = 3;
-        constexpr TypeId Float  = 4;
-        constexpr TypeId String = 5;
-        constexpr TypeId Any    = 6;
+        constexpr TypeId Error  = base_id(TypeKind::Error);
+        constexpr TypeId Void   = base_id(TypeKind::Void);
+        constexpr TypeId Bool   = base_id(TypeKind::Bool);
+        constexpr TypeId Int    = base_id(TypeKind::Int);
+        constexpr TypeId Float  = base_id(TypeKind::Float);
+        constexpr TypeId String = base_id(TypeKind::String);
+        constexpr TypeId Any    = base_id(TypeKind::Any);
     }
-
-    constexpr TypeId EmptyType = -1;
 
 
     class TypeTable
@@ -58,48 +77,44 @@ namespace foo
         TypeTable();
 
 
-        TypeId array_of(TypeId element);
-        TypeId map_of(TypeId key, TypeId value);
-        TypeId optional_of(TypeId element);
-        TypeId range_of(TypeId element);
-
-        // full name is with path aswell, lib::name
-        TypeId add_struct(std::string full_name);
-        TypeId add_native(std::string full_name);
+        TypeId array_of(TypeId e)           { return intern(TypeKind::Array, e); }
+        TypeId map_of(TypeId k, TypeId v)   { return intern(TypeKind::Map, k, v); }
+        TypeId optional_of(TypeId e)        { return intern(TypeKind::Optional, e); }
+        TypeId range_of(TypeId e)           { return intern(TypeKind::Range, e); }
+        TypeId struct_of(StructId s)        { return intern(TypeKind::Struct, s); }
+        TypeId native_of(NativeTypeId n)    { return intern(TypeKind::Native, n); }
 
 
-        TypeKind get_kind(TypeId t) const   { return _types[static_cast<size_t>(t)].kind; }
-        Id get_meta_id(TypeId t) const      { return _types[static_cast<size_t>(t)].meta_id; }
+        TypeKind kind(TypeId t) const           { return at(t).kind; }
 
-
-        std::string to_string(TypeKind t) const;
-        std::string to_string(TypeId t) const;
-
-
-        TypeId element(TypeId t) const { return _types[static_cast<size_t>(t)].a; }
-        TypeId key(TypeId t) const     { return _types[static_cast<size_t>(t)].a; }
-        TypeId value(TypeId t) const   { return _types[static_cast<size_t>(t)].b; }
+        TypeId element(TypeId t) const          { return at(t).a; }
+        TypeId key(TypeId t) const              { return at(t).a; }
+        TypeId value(TypeId t) const            { return at(t).b; }
+        StructId struct_id(TypeId t) const      { return at(t).a; }
+        NativeTypeId native_id(TypeId t) const  { return at(t).a; }
 
     private:
         struct Type
         {
             TypeKind kind;
-            TypeId a = EmptyId;
-            TypeId b = EmptyId;
+            Id a = EmptyId;
+            Id b = EmptyId;
 
-            Id meta_id = -1;
+            auto operator<=>(const Type&) const = default;
         };
 
-        TypeId lookup(Type t);
+        const Type& at(TypeId t) const
+        {
+            assert(static_cast<size_t>(t) < _types.size());
+            return _types[static_cast<size_t>(t)];
+        }
+
+        TypeId intern(TypeKind kind, Id a = EmptyId, Id b = EmptyId);
 
         // indexed by TypeID.
         std::vector<Type> _types;
 
-        // indexed by meta.
-        std::vector<std::string> _struct_names;
-        std::vector<std::string> _native_names;
-
-        std::map<std::tuple<int, TypeId, TypeId>, TypeId> _type_to_id;
+        std::map<Type, TypeId> _ids;
     };
 
 
@@ -114,6 +129,9 @@ namespace foo
         // when method:
         //  params is without self.
         std::vector<ParamSig> params;
+        
+        // for last param
+        bool variadic = false;
 
         // for methods
         bool self_by_ref = false;
@@ -122,93 +140,58 @@ namespace foo
     };
 
 
-    // this can generate functions for specific types, like generating a .push(T) for T[]
-    using SignatureGenerator = std::function<FunctionSig(TypeTable&, TypeId receiver)>;
+    using NativeResolver = std::function<std::optional<FunctionSig>(TypeTable&, TypeId receiver)>;
 
-    // if this function should bind to a type, so you can add .clear() to T[], [K, V], string
-    using TypePredicate = std::function<bool(const TypeTable&, TypeId)>;
 
     class NativeRegistry
     {
     public:
-        NativeFunctionId add_function(
-            std::string_view name,
-            FunctionSig sig)
+        struct Match
         {
-            return add_function_entry({
-                std::string{name},
-                {},
-                [sig = std::move(sig)](TypeTable&, TypeId) {
-                    return sig;
-                }
-            });
+            NativeFunctionId id;
+            FunctionSig sig;
+        };
+
+        TypeId type(TypeTable& types, std::string_view full_name);
+
+        TypeId find_type(TypeTable& types, std::string_view full_name) const;
+
+        const std::vector<std::string>& type_names() const { return _type_names; }
+
+
+        NativeFunctionId add_function(std::string name, FunctionSig sig);
+
+        NativeFunctionId add_method(std::string name, TypeId receiver, FunctionSig sig);
+
+        NativeFunctionId add_method(std::string name, NativeResolver resolve);
+
+
+        std::optional<Match> find_function(TypeTable& types, std::string_view name) const
+        {
+            return find(false, types, EmptyType, name);
         }
 
-        NativeFunctionId add_method(std::string_view name, TypePredicate receiver, SignatureGenerator sig)
+        std::optional<Match> find_method(TypeTable& types, TypeId receiver, std::string_view name) const
         {
-            return add_function_entry({
-                std::string{name},
-                std::move(receiver),
-                std::move(sig)
-            });
+            return find(true, types, receiver, name);
         }
-
-        NativeFunctionId find_function(std::string_view name) const
-        {
-            return find_last_function([&](const FunctionEntry& e)
-            {
-                return !e.receiver && e.name == name;
-            });
-        }
-
-        NativeFunctionId find_method(const TypeTable& types, TypeId receiver, std::string_view name) const
-        {
-            return find_last_function([&](const FunctionEntry& e) {
-                return e.receiver &&
-                       e.name == name &&
-                       (*e.receiver)(types, receiver);
-            });
-        }
-
-        FunctionSig signature(NativeFunctionId id, TypeTable& types, TypeId receiver = EmptyType) const
-        {
-            return _function_entries[static_cast<size_t>(id)].sig(types, receiver);
-        }
-
 
     private:
-        struct FunctionEntry
+        struct Entry
         {
             std::string name;
-
-            std::optional<TypePredicate> receiver;
-            SignatureGenerator sig;
+            bool is_method;
+            NativeResolver resolve;
         };
 
-        struct TypeInfo
-        {
-            std::string name;
-        };
+        NativeFunctionId add(std::string name, bool is_method, NativeResolver resolve);
 
+        std::optional<Match> find(
+            bool is_method, TypeTable& types, TypeId receiver, std::string_view name) const;
 
-        NativeFunctionId add_function_entry(FunctionEntry e)
-        {
-            _function_entries.push_back(std::move(e));
-            return static_cast<NativeFunctionId>(_function_entries.size() - 1);
-        }
-
-        template <class Pred>
-        NativeFunctionId find_last_function(Pred pred) const
-        {
-            for (auto i = static_cast<NativeFunctionId>(_function_entries.size()); i-- > 0;)
-                if (pred(_function_entries[static_cast<size_t>(i)]))
-                    return i;
-
-            return EmptyId;
-        }
-
-
-        std::vector<FunctionEntry> _function_entries;
+        std::vector<std::string> _type_names;
+        std::unordered_map<std::string, NativeTypeId> _type_ids;
+        std::vector<Entry> _entries;
     };
 
 

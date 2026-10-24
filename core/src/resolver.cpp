@@ -3,115 +3,99 @@
 
 namespace foo
 {
+// type table
     TypeTable::TypeTable()
     {
-        for (int k = 0; k < static_cast<int>(TypeKind::COUNT); k++)
+        for (TypeKind k : BaseKinds)
+            intern(k);
+    }
+
+    TypeId TypeTable::intern(TypeKind kind, Id a, Id b)
+    {
+        Type t{kind, a, b};
+
+        auto [it, inserted] = _ids.try_emplace(t, static_cast<TypeId>(_types.size()));
+        if (inserted)
+            _types.push_back(t);
+
+        return it->second;
+    }
+
+// native reg
+    TypeId NativeRegistry::type(TypeTable& types, std::string_view full_name)
+    {
+        std::string key{full_name};
+
+        auto [it, inserted] = _type_ids.try_emplace(key, static_cast<NativeTypeId>(_type_names.size()));
+
+        if (inserted)
+            _type_names.push_back(std::move(key));
+
+        return types.native_of(it->second);
+    }
+
+    TypeId NativeRegistry::find_type(TypeTable& types, std::string_view full_name) const
+    {
+        auto it = _type_ids.find(std::string{full_name});
+        if (it == _type_ids.end())
+            return EmptyType;
+
+        return types.native_of(it->second);
+    }
+
+    NativeFunctionId NativeRegistry::add_function(std::string name, FunctionSig sig)
+    {
+        return add(std::move(name), false,
+            [sig = std::move(sig)](TypeTable&, TypeId) -> std::optional<FunctionSig>
+            {
+                return sig;
+            });
+    }
+
+    NativeFunctionId NativeRegistry::add_method(std::string name, TypeId receiver, FunctionSig sig)
+    {
+        return add(std::move(name), true,
+            [receiver, sig = std::move(sig)](TypeTable&, TypeId r) -> std::optional<FunctionSig>
+            {
+                if (r != receiver)
+                    return std::nullopt;
+
+                return sig;
+            });
+    }
+
+    NativeFunctionId NativeRegistry::add_method(std::string name, NativeResolver resolve)
+    {
+        return add(std::move(name), true, std::move(resolve));
+    }
+
+    NativeFunctionId NativeRegistry::add(std::string name, bool is_method, NativeResolver resolve)
+    {
+        _entries.push_back({std::move(name), is_method, std::move(resolve)});
+
+        return static_cast<NativeFunctionId>(_entries.size() - 1);
+    }
+
+    std::optional<NativeRegistry::Match> NativeRegistry::find(
+        bool is_method,
+        TypeTable& types,
+        TypeId receiver,
+        std::string_view name) const
+    {
+        for (auto i = _entries.size(); i-- > 0;)
         {
-            _types.push_back(Type{static_cast<TypeKind>(k)});
+            const Entry& e = _entries[i];
+
+            if (e.is_method != is_method || e.name != name)
+                continue;
+
+            if (auto sig = e.resolve(types, receiver))
+                return Match{static_cast<NativeFunctionId>(i), std::move(*sig)};
         }
+
+        return std::nullopt;
     }
 
-    TypeId TypeTable::lookup(Type t)
-    {
-        auto key = std::tuple{static_cast<int>(t.kind), t.a, t.b};
-        if (auto it = _type_to_id.find(key); it != _type_to_id.end())
-            return it->second;
-
-        auto id = static_cast<TypeId>(_types.size());
-        _types.push_back(t);
-        _type_to_id.emplace(key, id);
-        return id;
-    }
-
-    TypeId TypeTable::array_of(TypeId e)
-    {
-        return lookup(Type{TypeKind::Array, e});
-    }
-
-    TypeId TypeTable::map_of(TypeId k, TypeId v)
-    {
-        return lookup(Type{TypeKind::Map, k, v});
-    }
-
-    TypeId TypeTable::optional_of(TypeId e)
-    {
-        return lookup(Type{TypeKind::Optional, e});
-    }
-
-    TypeId TypeTable::range_of(TypeId e)
-    {
-        return lookup(Type{TypeKind::Range, e});
-    }
-
-    TypeId TypeTable::add_struct(std::string qualified_name)
-    {
-        auto mid = static_cast<StructId>(_struct_names.size());
-        _struct_names.push_back(std::move(qualified_name));
-
-        auto id = static_cast<TypeId>(_types.size());
-        _types.push_back(Type{TypeKind::Struct, EmptyType, EmptyType, mid});
-        return id;
-    }
-
-    TypeId TypeTable::add_native(std::string qualified_name)
-    {
-        auto mid = static_cast<NativeTypeId>(_native_names.size());
-        _native_names.push_back(std::move(qualified_name));
-
-        auto id = static_cast<TypeId>(_types.size());
-        _types.push_back(Type{TypeKind::Native, EmptyType, EmptyType, mid});
-        return id;
-    }
-
-    std::string TypeTable::to_string(TypeKind k) const
-    {
-        switch (k)
-        {
-            case TypeKind::Error:       return "<error>";
-            case TypeKind::Void:        return "void";
-            case TypeKind::Bool:        return "bool";
-            case TypeKind::Int:         return "int";
-            case TypeKind::Float:       return "float";
-            case TypeKind::String:      return "string";
-            case TypeKind::Any:         return "any";
-            case TypeKind::Range:       return "range";
-            case TypeKind::Array:       return "array";
-            case TypeKind::Map:         return "map";
-            case TypeKind::Optional:    return "optional";
-            case TypeKind::Struct:      return "struct";
-            case TypeKind::Native:      return "native";
-
-            default:
-                return "<?>";
-        }
-    }
-
-    std::string TypeTable::to_string(TypeId t) const
-    {
-        if (t == EmptyId)
-            return "<none>";
-
-        switch (_types[static_cast<size_t>(t)].kind)
-        {
-            case TypeKind::Error:       return "<error>";
-            case TypeKind::Void:        return "void";
-            case TypeKind::Bool:        return "bool";
-            case TypeKind::Int:         return "int";
-            case TypeKind::Float:       return "float";
-            case TypeKind::String:      return "string";
-            case TypeKind::Any:         return "any";
-            case TypeKind::Range:       return "range(" + to_string(element(t)) + ")";
-            case TypeKind::Array:       return to_string(element(t)) + "[]";
-            case TypeKind::Map:         return "[" + to_string(key(t)) + ", " + to_string(value(t)) + "]";
-            case TypeKind::Optional:    return to_string(element(t)) + "?";
-            case TypeKind::Struct:      return _struct_names[static_cast<size_t>(_types[static_cast<size_t>(t)].meta_id)];
-            case TypeKind::Native:      return _native_names[static_cast<size_t>(_types[static_cast<size_t>(t)].meta_id)];
-
-
-            default:
-                return "<?>";
-        }
-    }
 
     class Resolver
     {

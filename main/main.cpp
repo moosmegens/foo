@@ -158,39 +158,12 @@ void run()
     }
 }
 
+#define FASSERT(cond) if (!(cond)) { std::cout << #cond << std::endl; }
+
 int main()
 {
     try
     {
-        foo::TypeTable table{};
-
-        auto nativeid = table.add_native("io::file");
-
-        auto optionalnativeid = table.optional_of(nativeid);
-
-        foo::NativeRegistry registry;
-
-        registry.add_method("to_array",
-        [](const foo::TypeTable&, foo::TypeId)
-        {
-            return true;
-        },
-        [](foo::TypeTable& t, foo::TypeId self)
-        {
-            return foo::FunctionSig{.ret = t.array_of(self)};
-        });
-
-        auto m = registry.find_method(table, foo::BaseTypes::Any, "to_array");
-        if (m != foo::EmptyId)
-        {
-            std::cout << table.to_string(registry.signature(m, table, nativeid).ret) << std::endl;
-        }
-
-        m = registry.find_method(table, foo::BaseTypes::Any, "to_array");
-        if (m != foo::EmptyId)
-        {
-            std::cout << table.to_string(registry.signature(m, table, optionalnativeid).ret) << std::endl;
-        }
 
 
 
