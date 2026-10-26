@@ -218,10 +218,10 @@ namespace foo
 
 
     struct DeclInfo
-    {
+    {1
         // name with path:
         //  io::filesystem::dir
-        std::string name;
+        Path path;
 
         int file_index = -1;
         SourceSpan span = {};
@@ -251,6 +251,8 @@ namespace foo
         bool is_method = false;
 
         FunctionSig sig;
+
+        int slot_count = 0;
     };
 
     enum class RefKind
