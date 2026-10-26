@@ -85,48 +85,8 @@ std::string load_file(const std::filesystem::path& path)
 }
 
 
-void run()
+void main2()
 {
-    // std::string str = load_file(foo_root() / "data" / "main.foo");
-    //
-    // auto lex_result = foo::tokenize(str);
-    //
-    // for (const auto& error : lex_result.errors)
-    // {
-    //     print_diagnostics(error.error, str, error.source);
-    // }
-    //
-    // auto ast_result = foo::parse(lex_result.tokens);
-    //
-    // for (const auto& error : ast_result.errors)
-    // {
-    //     print_diagnostics(error.error, str, error.source);
-    // }
-    //
-    // if (ast_result.errors.empty())
-    // {
-    //
-    //     std::vector<std::string> imports;
-    //
-    //     for (const auto& item : ast_result.imports)
-    //     {
-    //         imports.push_back(item.name);
-    //     }
-    //
-    //     std::cout << "imports: " << foo::join(imports) << std::endl;
-    //
-    //     for (const auto& d : ast_result.decls)
-    //     {
-    //         std::cout << foo::to_string(d) << std::endl;
-    //     }
-    //
-    //     auto error = foo::run(ast_result.decls);
-    //     if (error)
-    //     {
-    //         print_diagnostics(error->message, str, error->span);
-    //     }
-    // }
-
     auto r = foo::collect(foo_root() / "data", "main");
     for (const auto& err : r.errors)
     {
@@ -158,6 +118,20 @@ void run()
             print_diagnostics(err->message, r.resolver_input.sources[0].text, err->span);
         }
     }
+
+    foo::resolve(r.resolver_input);
+    if (r.errors.empty())
+    {
+
+
+
+    } else
+    {
+        for (const auto& err : r.errors)
+        {
+            print_diagnostics(err.message, r.resolver_input.sources[err.file_id].text, err.span);
+        }
+    }
 }
 
 #define FASSERT(cond) if (!(cond)) { std::cout << #cond << std::endl; }
@@ -166,10 +140,7 @@ int main()
 {
     try
     {
-
-        foo::Path p = {"io", "println"};
-
-        std::cout << foo::to_string(p) << std::endl;
+        main2();
 
 
         //run();

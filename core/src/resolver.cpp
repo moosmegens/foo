@@ -1,5 +1,7 @@
 #include <foo/resolver.hpp>
 
+#include "foo/util/overloaded.hpp"
+
 
 namespace foo
 {
@@ -104,27 +106,113 @@ namespace foo
 
         ResolveOutput resolve()
         {
-            declare_files();
+            discover_decls();
 
             return std::move(_output);
         }
 
     private:
-        [[maybe_unused]] const ResolverInput& _input;
+        const ResolverInput& _input;
         ResolveOutput _output;
 
+        std::map<Path, StructId> _struct_map;
+        std::map<Path, FunctionId> _function_map;
+
         // per file
-        [[maybe_unused]] int _file_id = -1;
+        int _file_id = -1;
 
+        // files imports
+        std::vector<std::vector<Path>> _imports;
 
-        void declare_files()
+        void error(const SourceSpan& span, std::string message)
+        {
+            _output.errors.push_back({std::move(message), _file_id, span});
+        }
+
+        void discover_decls()
         {
             for (size_t i = 0; i < _input.files.size(); ++i)
             {
                 _file_id = static_cast<int>(i);
+                const ResolverFile& f = _input.files[i];
+
+                std::vector<Path> imports;
+                imports.reserve(f.imports.size());
+
+                for (const ast::ImportDecl& imp : f.imports)
+                    imports.push_back(from_file_path(imp.name));
+
+                _imports.push_back(std::move(imports));
+
+                discover_decl(f.decls, from_file_path(f.path));
             }
         }
-    };
+
+        void discover_decl(const std::vector<ast::DeclPtr>& decls, const Path& scope)
+        {
+            for (const ast::DeclPtr& d : decls)
+            {
+                if (!d)
+                {
+                    return;
+                }
+
+                std::visit(overload{
+                    [&](const ast::FnDecl& fn)
+                    {
+                        discover_function(fn, d->span, scope);
+                    },
+                    [&](const ast::StructDecl&)
+                    {
+                        //find_struct(s, d->span, scope);
+                    },
+                    [&](const ast::NamespaceDecl&)
+                    {
+                        //find_in(n.decls, child(scope, n.name));
+                    }
+                }, d->kind);
+            }
+        }
+
+        void discover_function(const ast::FnDecl& fn, const SourceSpan& span, const Path& scope)
+        {
+            const FunctionId id = static_cast<FunctionId>(_output.functions.size());
+
+            FunctionInfo info;
+            info.path = path_child(scope, fn.name);
+            info.file_index = _file_id;
+            info.span = span;
+            info.decl = &fn;
+
+
+            if (add_function(info.path, id, span))
+                return;
+
+            _output.to_file_index[&fn] = _file_id;
+            _output.functions.push_back(std::move(info));
+        }
+
+        bool add_struct(const Path& path, StructId id, const SourceSpan& span)
+        {
+            if (_struct_map.emplace(path, id).second)
+                return true;
+
+            error(span, "'" + to_string(path) + "' is already declared");
+            return false;
+        }
+
+        bool add_function(const Path& path, FunctionId id, const SourceSpan& span)
+        {
+            if (_function_map.emplace(path, id).second)
+                return true;
+
+            error(span, "'" + to_string(path) + "' is already declared");
+            return false;
+        }
+
+
+    }; // class
+
 
 
     ResolveOutput resolve(const ResolverInput& input)

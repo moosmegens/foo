@@ -24,6 +24,14 @@ namespace foo
         return a;
     }
 
+    inline Path path_child(const Path& a, std::string name)
+    {
+        Path out = a;
+        out.push_back(name);
+
+        return out;
+    }
+
     inline std::string item_from_path(const Path& p)
     {
         if (p.empty())
@@ -32,7 +40,7 @@ namespace foo
         return p.back();
     }
 
-    inline Path from_import(const std::string& s)
+    inline Path from_file_path(const std::string& s)
     {
         Path out(1);
         for (char c : s)
