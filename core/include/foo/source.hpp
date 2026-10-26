@@ -91,34 +91,48 @@ namespace foo
     inline std::vector<DiagnosticLine> get_diagnostic_lines(std::string_view source, const SourceSpan& span)
     {
         std::vector<DiagnosticLine> lines;
-        if (span.size == 0)
-            return lines;
 
-        size_t span_end = std::min(span.end(), source.size());
+        const size_t start = std::min(span.start, source.size());
+        const size_t end   = std::min(span.end(), source.size());
 
-        size_t current = source.rfind('\n', span.start);
-        current = (current == std::string_view::npos) ? 0 : current + 1;
+        size_t current = 0;
+        if (start > 0)
+        {
+            size_t nl = source.rfind('\n', start - 1);
+            current = (nl == std::string_view::npos) ? 0 : nl + 1;
+        }
 
         int line_num = SourceSpan::get_line(source, current);
 
-        while (current < span_end)
+        while (true)
         {
             size_t line_end = source.find('\n', current);
             if (line_end == std::string_view::npos)
                 line_end = source.size();
 
-            size_t u_start = std::max(current, span.start);
-            size_t u_end = std::min(line_end, span_end);
+            size_t text_end = line_end;
+            if (text_end > current && source[text_end - 1] == '\r')
+                --text_end;
+
+            size_t u_start = std::min(std::max(current, start), text_end);
+            size_t u_end   = std::min(text_end, end);
+            size_t u_len   = u_end > u_start ? u_end - u_start : 0;
+
+            if (u_len == 0 && lines.empty())
+                u_len = 1;
 
             lines.push_back({
                 line_num,
-                source.substr(current, line_end - current),
+                source.substr(current, text_end - current),
                 u_start - current,
-                u_end - u_start
+                u_len
             });
 
+            if (line_end + 1 >= end || line_end >= source.size())
+                break;
+
             current = line_end + 1;
-            line_num++;
+            ++line_num;
         }
 
         return lines;
