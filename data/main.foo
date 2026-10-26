@@ -253,5 +253,5 @@ fn main(): int
 
 fn main()
 {
-    io::println("hello, world)
+    io::println("hello, world")
 }
