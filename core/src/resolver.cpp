@@ -151,6 +151,8 @@ namespace foo
 
         void discover_decl(const std::vector<ast::DeclPtr>& decls, const Path& scope)
         {
+            std::cout << "discover_decl" << std::endl;
+
             for (const ast::DeclPtr& d : decls)
             {
                 if (!d)
@@ -178,6 +180,7 @@ namespace foo
 
         void discover_function(const ast::FnDecl& fn, const SourceSpan& span, const Path& scope)
         {
+            std::cout << "discover_function" << std::endl;
             const FunctionId id = static_cast<FunctionId>(_output.functions.size());
 
             FunctionInfo info;
@@ -187,11 +190,12 @@ namespace foo
             info.decl = &fn;
 
 
-            if (add_function(info.path, id, span))
+            if (add_function(info.path, id, span) == false)
                 return;
 
             _output.to_file_index[&fn] = _file_id;
             _output.functions.push_back(std::move(info));
+            std::cout << "_output" << std::endl;
         }
 
         bool add_struct(const Path& path, StructId id, const SourceSpan& span)

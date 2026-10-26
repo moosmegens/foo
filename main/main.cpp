@@ -104,13 +104,18 @@ void main2()
             err.span);
     }
 
-    auto resolvero = foo::resolve(r.resolver_input);
+    auto o = foo::resolve(r.resolver_input);
     if (r.errors.empty())
     {
+        for (const auto& f : o.functions)
+        {
+            std::cout << foo::to_string(f.path) << '\n';
+        }
+
 
     } else
     {
-        for (const auto& err : resolvero.errors)
+        for (const auto& err : o.errors)
         {
             print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span);
         }
