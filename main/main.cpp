@@ -20,6 +20,8 @@
 #include "foo/collector.hpp"
 #include "foo/util/str.hpp"
 
+#include <foo/path.hpp>
+
 void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span)
 {
     #define CLR_RED "\033[1;31m"
@@ -165,7 +167,9 @@ int main()
     try
     {
 
+        foo::Path p = {"io", "println"};
 
+        std::cout << foo::to_string(p) << std::endl;
 
 
         //run();

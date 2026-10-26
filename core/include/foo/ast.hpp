@@ -10,6 +10,8 @@
 
 #include <foo/source.hpp>
 
+#include <foo/path.hpp>
+
 #include <foo/util/ptr_eq.hpp>
 
 
@@ -31,7 +33,7 @@ namespace foo::ast
 
     struct NamedType
     {
-        std::vector<std::string> parts;
+        Path path;
 
         bool operator==(const NamedType&) const = default;
     };
@@ -150,7 +152,7 @@ namespace foo::ast
 
     struct Name
     {
-        std::vector<std::string> parts;
+        Path path;
         bool operator==(const Name&) const = default;
     };
     struct Unary

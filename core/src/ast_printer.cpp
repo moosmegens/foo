@@ -84,7 +84,7 @@ namespace foo
     {
         return std::visit(overload{
             [](const NamedType& n)
-                { return join(n.parts, "::"); },
+                { return join(n.path, "::"); },
 
             [](const ArrayType& n)
                 { return to_string(n.element_type) + "[]"; },
@@ -117,7 +117,7 @@ namespace foo
                 { return "[" + list(n.elements) + "]"; },
 
             [](const Name& n)
-                { return join(n.parts, "::"); },
+                { return join(n.path, "::"); },
 
             [](const Unary& n)
                 { return std::format("({}{})", op_str(n.op), to_string(n.operant)); },

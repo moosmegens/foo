@@ -634,11 +634,11 @@ namespace foo
         {
             if (auto* n = std::get_if<Name>(&e.kind))
             {
-                if (n->parts.size() == 1)
-                    if (Value* v = find_var(n->parts[0]))
+                if (n->path.size() == 1)
+                    if (Value* v = find_var(n->path[0]))
                         return v;
 
-                fail("cannot assign to '" + join(n->parts) + "'", e.span);
+                fail("cannot assign to '" + join(n->path) + "'", e.span);
             }
 
             if (auto* n = std::get_if<Index>(&e.kind))
@@ -684,11 +684,11 @@ namespace foo
                 },
                 [&](const Name& n) -> Value
                 {
-                    if (n.parts.size() == 1)
-                        if (Value* v = find_var(n.parts[0]))
+                    if (n.path.size() == 1)
+                        if (Value* v = find_var(n.path[0]))
                             return *v;
 
-                    fail("undefined variable '" + join(n.parts) + "'", e.span);
+                    fail("undefined variable '" + join(n.path) + "'", e.span);
                 },
                 [&](const Unary& n) -> Value
                 {
@@ -729,7 +729,7 @@ namespace foo
                 for (const auto& a : n.args)
                     args.push_back(eval(*a));
 
-                std::string key = join(name->parts);
+                std::string key = join(name->path);
 
                 if (auto fn = _user_functions.find(key); fn != _user_functions.end())
                     return call_function(*fn->second, std::move(args), span);
@@ -750,12 +750,12 @@ namespace foo
                     fail("member access is only for variables.", span);
                 }
 
-                if (var_name->parts.size() != 1)
+                if (var_name->path.size() != 1)
                 {
                     fail("member access is only for variables.", span);
                 }
 
-                if (Value* v = find_var(var_name->parts[0]))
+                if (Value* v = find_var(var_name->path[0]))
                 {
                     if (!_builtin_member_functions.count(v->data.index()))
                     {
@@ -777,7 +777,7 @@ namespace foo
                     return map[member->name](args, span);
                 } else
                 {
-                    fail("undefined variable '" + join(var_name->parts) + "'", span);
+                    fail("undefined variable '" + join(var_name->path) + "'", span);
                 }
 
 
