@@ -1,3 +1,4 @@
+#include <iostream>
 #include <foo/resolver.hpp>
 
 #include "foo/util/overloaded.hpp"
@@ -154,6 +155,7 @@ namespace foo
             {
                 if (!d)
                 {
+                    std::cout << "NO declaration found\n";
                     return;
                 }
 

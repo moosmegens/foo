@@ -104,32 +104,15 @@ void main2()
             err.span);
     }
 
-    std::vector<foo::ast::DeclPtr> decls;
-    for (auto& file : r.resolver_input.files)
-    {
-        decls.append_range(file.decls | std::views::as_rvalue);
-    }
-
+    auto resolvero = foo::resolve(r.resolver_input);
     if (r.errors.empty())
     {
-        auto err = foo::run(decls);
-        if (err)
-        {
-            print_diagnostics(err->message, r.resolver_input.sources[0].text, err->span);
-        }
-    }
-
-    foo::resolve(r.resolver_input);
-    if (r.errors.empty())
-    {
-
-
 
     } else
     {
-        for (const auto& err : r.errors)
+        for (const auto& err : resolvero.errors)
         {
-            print_diagnostics(err.message, r.resolver_input.sources[err.file_id].text, err.span);
+            print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span);
         }
     }
 }
