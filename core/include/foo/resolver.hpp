@@ -218,7 +218,7 @@ namespace foo
 
 
     struct DeclInfo
-    {1
+    {
         // name with path:
         //  io::filesystem::dir
         Path path;
