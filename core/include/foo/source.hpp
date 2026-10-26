@@ -93,7 +93,7 @@ namespace foo
         std::vector<DiagnosticLine> lines;
 
         const size_t start = std::min(span.start, source.size());
-        const size_t end   = std::min(span.end(), source.size());
+        const size_t end = std::min(span.end(), source.size());
 
         size_t current = 0;
         if (start > 0)
@@ -115,8 +115,8 @@ namespace foo
                 --text_end;
 
             size_t u_start = std::min(std::max(current, start), text_end);
-            size_t u_end   = std::min(text_end, end);
-            size_t u_len   = u_end > u_start ? u_end - u_start : 0;
+            size_t u_end = std::min(text_end, end);
+            size_t u_len = u_end > u_start ? u_end - u_start : 0;
 
             if (u_len == 0 && lines.empty())
                 u_len = 1;
@@ -132,7 +132,7 @@ namespace foo
                 break;
 
             current = line_end + 1;
-            ++line_num;
+            line_num++;
         }
 
         return lines;
