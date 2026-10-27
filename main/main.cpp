@@ -24,13 +24,27 @@
 
 #include "foo/debug/debug_out.hpp"
 
+#define CLR_BLACK   "\033[1;30m"
+#define CLR_RED     "\033[1;31m"
+#define CLR_GREEN   "\033[1;32m"
+#define CLR_YELLOW  "\033[1;33m"
+#define CLR_BLUE    "\033[1;34m"
+#define CLR_MAGENTA "\033[1;35m"
+#define CLR_CYAN    "\033[1;36m"
+#define CLR_WHITE   "\033[1;37m"
+#define CLR_RESET   "\033[0m"
+
+#define CLR_BRIGHT_BLACK   "\033[1;90m"
+#define CLR_BRIGHT_RED     "\033[1;91m"
+#define CLR_BRIGHT_GREEN   "\033[1;92m"
+#define CLR_BRIGHT_YELLOW  "\033[1;93m"
+#define CLR_BRIGHT_BLUE    "\033[1;94m"
+#define CLR_BRIGHT_MAGENTA "\033[1;95m"
+#define CLR_BRIGHT_CYAN    "\033[1;96m"
+#define CLR_BRIGHT_WHITE   "\033[1;97m"
+
 void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span)
 {
-    #define CLR_RED "\033[1;31m"
-    #define CLR_CYAN "\033[1;36m"
-    #define CLR_BLUE "\033[1;34m"
-    #define CLR_RESET "\033[0m"
-
     auto lines = foo::get_diagnostic_lines(src, span);
 
     std::cout << CLR_RED << "error" << CLR_RESET << ": " << error << "\n";
@@ -104,6 +118,18 @@ void main2()
             std::format("{}: {}", file.path.string(), err.message),
             file.text,
             err.span);
+    }
+
+    for (const auto& file : r.resolver_input.files)
+    {
+        std::cout << CLR_YELLOW << "[" << file.path << "]" << CLR_RESET <<'\n';
+
+        std::cout << CLR_GREEN;
+        for (const auto& decl : file.decls)
+        {
+            std::cout << foo::to_string(decl, 1) << '\n';
+        }
+        std::cout << CLR_RESET;
     }
 
     foo::NativeRegistry natives;

@@ -1,4 +1,4 @@
-fn function_in_file_b() -> _
+fn function_in_file_b() -> string
 {
     return "I am inside b.foo";
 }

@@ -1,0 +1,252 @@
+/*
+fn print_board(board: _)
+{
+    var reset = "\x1b[0m";
+    var red = "\x1b[1;31m";
+    var cyan = "\x1b[1;36m";
+    var gray = "\x1b[90m";
+
+    for y in range(0, 3)
+    {
+        io::print("|");
+        for x in range(0, 4)
+        {
+            var i = y * 4 + x;
+            var value = board[i];
+            if value == 0
+            {
+                io::print(gray);
+                if i < 9
+                {
+                    io::print(" ");
+                }
+                io::print(i + 1);
+                io::print(reset);
+            }
+            if value == 1
+            {
+                io::print(red);
+                io::print(" X");
+                io::print(reset);
+            }
+            if value == 2
+            {
+                io::print(cyan);
+                io::print(" O");
+                io::print(reset);
+            }
+            io::print("|");
+        }
+        io::println("");
+    }
+}
+
+// are there three p's in a row starting at (x,y) going in direction (dx,dy)?
+fn line3(board: _, x: int, y: int, dx: int, dy: int, p: int): bool
+{
+    for i in range(0, 3)
+    {
+        var cx = x + dx * i;
+        var cy = y + dy * i;
+        if (cx < 0 || cx >= 4 || cy < 0 || cy >= 3)
+        {
+            return false;
+        }
+        if board[cy * 4 + cx] != p
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn makes_three(board: _, p: int): bool
+{
+    for y in range(0, 3)
+    {
+        for x in range(0, 4)
+        {
+            if line3(board, x, y, 1, 0, p)
+            {
+                return true;
+            }
+            if line3(board, x, y, 0, 1, p)
+            {
+                return true;
+            }
+            if line3(board, x, y, 1, 1, p)
+            {
+                return true;
+            }
+            if line3(board, x, y, 1, -1, p)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+fn is_full(board: _): bool
+{
+    for i in range(0, 12)
+    {
+        if board[i] == 0
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// score from the point of view of p, the player about to move.
+// misere rules: whoever makes three in a row LOSES.
+fn negamax(board: _, p: int, depth: int, alpha: int, beta: int): int
+{
+    var o = 3 - p;
+
+    if makes_three(board, o)
+    {
+        return 100 - depth;   // the opponent just made three, so p wins (sooner is better)
+    }
+    if is_full(board)
+    {
+        return 0;
+    }
+
+    var a = alpha;
+    var best = -1000000;
+    var cut = false;
+
+    for i in range(0, 12)
+    {
+        if cut == false
+        {
+            if board[i] == 0
+            {
+                var next = board;      // value copy
+                next[i] = p;
+                var s = 0 - negamax(next, o, depth + 1, 0 - beta, 0 - a);
+                if s > best
+                {
+                    best = s;
+                }
+                if best > a
+                {
+                    a = best;
+                }
+                if a >= beta
+                {
+                    cut = true;
+                }
+            }
+        }
+    }
+    return best;
+}
+
+fn best_move(board: _, p: int): int
+{
+    var o = 3 - p;
+    var alpha = -1000000;
+    var best_score = -1000000;
+    var best_i = -1;
+
+    for i in range(0, 12)
+    {
+        if board[i] == 0
+        {
+            var next = board;
+            next[i] = p;
+            var s = 0 - negamax(next, o, 1, -1000000, 0 - alpha);
+            if s > best_score
+            {
+                best_score = s;
+                best_i = i;
+            }
+            if s > alpha
+            {
+                alpha = s;
+            }
+        }
+    }
+
+    if best_score > 0
+    {
+        io::println("AI: I have a forced win!");
+    }
+    return best_i;
+}
+
+fn main(): int
+{
+    var board = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    io::println("MISERE TIC-TAC-TOE (4x3) - you are X, the AI is O.");
+    io::println("whoever makes three in a row LOSES. enter 1-12 or 'quit'.");
+
+    while true
+    {
+        print_board(board);
+
+        // human turn
+        var moved = false;
+        while moved == false
+        {
+            var user_input = io::input("> ");
+            if user_input == "quit"
+            {
+                return 0;
+            }
+
+            var move = to_int(user_input) - 1;
+            if (move < 0 || move > 11)
+            {
+                io::println("pick a square from 1 to 12");
+            } else {
+                if board[move] != 0
+                {
+                    io::println("there is already a piece here");
+                } else {
+                    board[move] = 1;
+                    moved = true;
+                }
+            }
+        }
+
+        if makes_three(board, 1)
+        {
+            print_board(board);
+            io::println("you made three in a row, you lose!");
+            return 0;
+        }
+        if is_full(board)
+        {
+            print_board(board);
+            io::println("draw!");
+            return 0;
+        }
+
+        // ai turn
+        var ai_i = best_move(board, 2);
+        io::println("AI plays", ai_i + 1);
+        board[ai_i] = 2;
+        io::println();
+
+        if makes_three(board, 2)
+        {
+            print_board(board);
+            io::println("the AI made three in a row, you win!");
+            return 0;
+        }
+        if is_full(board)
+        {
+            print_board(board);
+            io::println("draw!");
+            return 0;
+        }
+    }
+
+    return 0;
+}
+*/

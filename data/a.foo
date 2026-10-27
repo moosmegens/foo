@@ -1,6 +1,14 @@
 import "b";
 
-fn function_in_file_a() -> _
+fn function_in_file_a() -> string[]
 {
     return ["I am in file a.foo", function_in_file_b()];
+}
+
+struct my_struct
+{
+    fn should_be_method(ref self: my_struct)
+    {
+        io::println("");
+    }
 }

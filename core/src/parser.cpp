@@ -52,7 +52,7 @@ namespace foo
                             }
                         }
 
-                        expect<tok::Semicolon>();
+                        expect<tok::Semicolon>(true);
 
                         continue;
                     }
@@ -126,7 +126,7 @@ namespace foo
             }
 
             template <class T>
-            bool expect()
+            bool expect(bool phantom = false)
             {
                 if (check<T>())
                 {
@@ -135,20 +135,23 @@ namespace foo
                     return true;
                 }
 
-                if (_offset > 1)
+                if (!phantom)
                 {
-                    auto span = peek(-1).source;
-                    span.add(1);
-                    span.eat_up_front(peek(-1).source.size);
+                    if (_offset > 1)
+                    {
+                        auto span = peek(-1).source;
+                        span.add(1);
+                        span.eat_up_front(peek(-1).source.size);
 
-                    report_error(
-                        span,
-                        std::format("Invalid token! After '{}' expected '{}' ",
-                            name(peek(-1)),
-                            T::name));
-                } else
-                {
-                    report_error(current(), std::format("Invalid token! Expected '{}'", T::name));
+                        report_error(
+                            span,
+                            std::format("Invalid token! After '{}' expected '{}' ",
+                                name(peek(-1)),
+                                T::name));
+                    } else
+                    {
+                        report_error(current(), std::format("Invalid token! Expected '{}'", T::name));
+                    }
                 }
 
                 return false;
@@ -363,28 +366,47 @@ namespace foo
                     return nullptr;
                 }
 
-                while (match<tok::LBracket>())
+                bool last_was_optional = false;
+                while (true)
                 {
-                    if (!expect<tok::RBracket>())
+                    if (match<tok::LBracket>())
+                    {
+                        if (!expect<tok::RBracket>())
+                            break;
+
+                        finish_span(span);
+
+                        auto arr = std::make_unique<ast::TypeExpr>();
+                        arr->type = ast::ArrayType{std::move(base)};
+                        arr->span = span;
+                        base = std::move(arr);
+
+                        last_was_optional = false;
+                    }
+                    else
+                    if (match<tok::QuestionMark>())
+                    {
+                        if (last_was_optional)
+                        {
+                            report_error(peek(-1), "You can't have an optional of an optional");
+                            continue;
+                        }
+
+                        finish_span(span);
+
+                        auto optional = std::make_unique<ast::TypeExpr>();
+                        optional->type = ast::OptionalType{std::move(base)};
+                        optional->span = span;
+                        base = std::move(optional);
+
+                        last_was_optional = true;
+                    }
+                    else
+                    {
                         break;
-
-                    finish_span(span);
-
-                    auto arr = std::make_unique<ast::TypeExpr>();
-                    arr->type = ast::ArrayType{std::move(base)};
-                    arr->span = span;
-                    base = std::move(arr);
+                    }
                 }
 
-                if (match<tok::QuestionMark>())
-                {
-                    finish_span(span);
-
-                    auto optional = std::make_unique<ast::TypeExpr>();
-                    optional->type = ast::OptionalType{std::move(base)};
-                    optional->span = span;
-                    base = std::move(optional);
-                }
 
                 return base;
             }
@@ -466,7 +488,7 @@ namespace foo
                             finish_span(inner_span);
                             fields.push_back({std::move(field_name), std::move(type), inner_span});
                         }
-                        expect<tok::Semicolon>();
+                        expect<tok::Semicolon>(true);
 
                         continue;
                     }
@@ -683,7 +705,7 @@ namespace foo
                 if (!type && !init)
                     report_error(name_token, "Variable needs a type or an initializer");
 
-                expect<tok::Semicolon>();
+                expect<tok::Semicolon>(true);
                 finish_span(span);
                 return std::make_unique<ast::Stmt>(ast::VarDecl{std::move(name), std::move(type), std::move(init)}, span);
             }
@@ -697,7 +719,7 @@ namespace foo
                     if (!value) return nullptr;
                 }
 
-                expect<tok::Semicolon>();
+                expect<tok::Semicolon>(true);
                 finish_span(span);
                 return std::make_unique<ast::Stmt>(ast::Return{std::move(value)}, span);
             }
@@ -786,8 +808,7 @@ namespace foo
                 if (!expr)
                     return nullptr;
 
-                if (!expect<tok::Semicolon>())
-                    return nullptr;
+                expect<tok::Semicolon>(true);
 
                 finish_span(span);
 

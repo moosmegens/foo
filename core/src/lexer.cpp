@@ -246,9 +246,9 @@ namespace foo
 
                     case '?':
                     {
-                        if (match('?'))
-                            return make(tok::QuestionQuestionMark{}, start, _offset);
-                        else
+                        //if (match('?'))
+                            //return make(tok::QuestionQuestionMark{}, start, _offset);
+                        //else
                             return make(tok::QuestionMark{}, start, _offset);
                     }
 

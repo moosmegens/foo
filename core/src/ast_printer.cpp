@@ -256,11 +256,12 @@ namespace foo
 
 
 
-    std::string to_string(const Stmt& s) { return print(s, 0); }
-    std::string to_string(const Decl& d) { return print(d, 0); }
+    std::string to_string(const Stmt& s, int i) { return pad(i) + print(s, i); }
+    std::string to_string(const Decl& d, int i) { return pad(i) + print(d, i); }
 
     std::string to_string(const TypeExprPtr& t) { return t ? to_string(*t) : "<null>"; }
     std::string to_string(const ExprPtr& e)     { return e ? to_string(*e) : "<null>"; }
-    std::string to_string(const StmtPtr& s)     { return s ? to_string(*s) : "<null>"; }
-    std::string to_string(const DeclPtr& d)     { return d ? to_string(*d) : "<null>"; }
+
+    std::string to_string(const StmtPtr& s, int i) { return s ? to_string(*s, i) : pad(i) + "<null>"; }
+    std::string to_string(const DeclPtr& d, int i) { return d ? to_string(*d, i) : pad(i) + "<null>"; }
 }
