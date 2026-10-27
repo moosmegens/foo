@@ -556,7 +556,7 @@ namespace foo
                     Value v = eval(*n.expr);
                     if (holds_alternative<std::monostate>(v.data))
                     {
-                        exec(*n.bad_branch);
+                        return exec(*n.bad_branch);
                     } else
                     {
                         _scopes.emplace_back();
