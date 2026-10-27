@@ -8,6 +8,21 @@ struct other_struct
     b: u?
 }
 
+struct proxy
+{
+    a: test;
+}
+
+struct test
+{
+    a: proxy;
+}
+
+struct SHOULDERROR
+{
+    a: SHOULDERROR;
+}
+
 struct my_struct
 {
     a: int[][]

@@ -181,6 +181,17 @@ namespace foo
         std::vector<std::vector<Path>> _imports;
 
 
+
+        // ------------------------------------------
+
+        enum class StructVisitState
+        {
+            NotVisited,
+            Visiting,
+            Done
+        };
+
+
         // ------------------------------------------
 
         void error(const SourceSpan& span, std::string message)
@@ -448,6 +459,37 @@ namespace foo
                     info.fields.push_back({field.name, type});
                 }
             }
+
+            std::vector states(_output.structs.size(), StructVisitState::NotVisited);
+
+            for (size_t i = 0; i < _output.structs.size(); i++)
+                check_struct_contains_itself(static_cast<StructId>(i), states);
+        }
+
+        void check_struct_contains_itself(StructId id, std::vector<StructVisitState>& states)
+        {
+            const size_t index = static_cast<size_t>(id);
+            StructInfo& info = struct_at(id);
+
+            if (states[index] == StructVisitState::Done)
+                return;
+
+            if (states[index] == StructVisitState::Visiting)
+            {
+                enter(info);
+                error(info.span, "struct '" + to_string(info.path) + "' contains itself by value");
+                return;
+            }
+
+            states[index] = StructVisitState::Visiting;
+
+            for (const FieldInfo& field : info.fields)
+            {
+                if (types().kind(field.type) == TypeKind::Struct)
+                    check_struct_contains_itself(types().struct_id(field.type), states);
+            }
+
+            states[index] = StructVisitState::Done;
         }
 
         TypeId resolve_type(const ast::TypeExprPtr& te)

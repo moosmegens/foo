@@ -97,7 +97,10 @@ int main(int argc, char** argv)
 
         file << "fn main() -> void" << std::endl;
         file << "{" << std::endl;
-        file << "    io::println(\"Hello, World!\");" << std::endl;
+        file << "    // this prints hello world" << std::endl;
+        file << "    io::println(\"Hello, World!\")" << std::endl;
+        file << "    " << std::endl;
+        file << "    return \"ok\" " << std::endl;
         file << "}" << std::endl;
 
         file.close();

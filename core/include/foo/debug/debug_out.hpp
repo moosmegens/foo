@@ -38,7 +38,7 @@ namespace foo
     }
 
     template <typename... Args>
-    inline void println(const Args&... args)
+    inline void println([[maybe_unused]] const Args&... args)
     {
 #ifndef NDEBUG
         std::cerr << detail::join(args...) << '\n';
