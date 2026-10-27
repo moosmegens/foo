@@ -106,6 +106,11 @@ void main2()
             err.span);
     }
 
+    foo::NativeRegistry natives;
+    natives.type(r.resolver_input.types, "io::file");
+
+    r.resolver_input.natives = &natives;
+
     auto o = foo::resolve(r.resolver_input);
     if (o.errors.empty())
     {

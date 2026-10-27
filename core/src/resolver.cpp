@@ -188,9 +188,18 @@ namespace foo
             _output.errors.push_back({std::move(message), _file_id, span});
         }
 
+        const std::vector<Path>& imports_of_current_file() const
+        {
+            return _imports[static_cast<size_t>(_file_id)];
+        }
+
         TypeTable& types() { return _output.type_table; }
 
         const NativeRegistry* natives() const { return _input.natives; }
+
+
+        StructInfo& struct_at(StructId id)          { return _output.structs[static_cast<size_t>(id)]; }
+        FunctionInfo& function_at(FunctionId id)    { return _output.functions[static_cast<size_t>(id)]; }
 
 
 
@@ -221,12 +230,44 @@ namespace foo
             return std::nullopt;
         }
 
+        [[nodiscard]] std::vector<Path> candidate_paths(const Path& name) const
+        {
+            std::vector<Path> candidates;
+
+            Path scope = _scope;
+            while (true)
+            {
+                candidates.push_back(path_concat(scope, name));
+
+                if (scope.empty())
+                    break;
+
+                scope.pop_back();
+            }
+
+            for (const Path& import : imports_of_current_file())
+                candidates.push_back(path_concat(import, name));
+
+            return candidates;
+        }
+
         void enter(const StructInfo& info)
         {
             _file_id = info.file_index;
 
             _scope = info.path;
             _scope.pop_back();
+        }
+
+        static int find_field(const StructInfo& info, const std::string& name)
+        {
+            for (size_t i = 0; i < info.fields.size(); i++)
+            {
+                if (info.fields[i].name == name)
+                    return static_cast<int>(i);
+            }
+
+            return -1;
         }
 
         // ------------------------------------------
@@ -359,6 +400,30 @@ namespace foo
 
         // ------------------------------------------
 
+        std::optional<StructId> lookup_struct(const Path& name) const
+        {
+            for (const Path& candidate : candidate_paths(name))
+            {
+                auto found = _struct_map.find(candidate);
+                if (found != _struct_map.end())
+                    return found->second;
+            }
+
+            return std::nullopt;
+        }
+
+        std::optional<FunctionId> lookup_function(const Path& name) const
+        {
+            for (const Path& candidate : candidate_paths(name))
+            {
+                auto found = _function_map.find(candidate);
+                if (found != _function_map.end())
+                    return found->second;
+            }
+
+            return std::nullopt;
+        }
+
         void resolve_types()
         {
             for (StructInfo& info : _output.structs)
@@ -367,6 +432,12 @@ namespace foo
 
                 for (const ast::StructField& field : info.decl->fields)
                 {
+                    if (find_field(info, field.name) >= 0)
+                    {
+                        error(field.span, "duplicate field '" + field.name + "'");
+                        continue;
+                    }
+
                     TypeId type = resolve_type(field.type);
                     if (type == BaseTypes::Void)
                     {
@@ -421,8 +492,9 @@ namespace foo
                 if (s == "void")    return BaseTypes::Void;
             }
 
-            if (auto sid = lookup(_struct_map, parts))
-                return _output.structs[static_cast<size_t>(*sid)].type;
+            std::optional<StructId> found_struct = lookup_struct(parts);
+            if (found_struct.has_value())
+                return struct_at(*found_struct).type;
 
             if (TypeId t = find_native_type(parts); t != EmptyType)
                 return t;
@@ -437,19 +509,6 @@ namespace foo
                 return EmptyType;
 
             TypeId t = natives()->find_type(types(), to_string(parts));
-            if (t != EmptyType)
-            {
-                return t;
-            }
-
-            for (const Path& imp : _imports[static_cast<size_t>(_file_id)])
-            {
-                t = natives()->find_type(types(), to_string(path_concat(imp, parts)));
-
-                if (t != EmptyType)
-                    break;
-            }
-
             return t;
         }
 

@@ -250,10 +250,12 @@ fn main(): int
     return 0;
 }
 */
+struct u {}
 
 struct other_struct
 {
-
+    a: io::file[];
+    b: u[]?;
 }
 
 struct my_struct
