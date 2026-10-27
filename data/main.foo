@@ -1,4 +1,4 @@
-import "a", "b";
+import "a";
 
 struct u {}
 
@@ -24,7 +24,7 @@ fn main()
     var a: int = func() var b: int
 }
 
-fn a(a: int, a: string[]) -> [string, int]
+fn a(a: int, b: string[]) -> [string, int]
 {
 
 }

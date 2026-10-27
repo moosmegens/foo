@@ -152,7 +152,7 @@ void main2()
                 first = false;
                 std::cout << foo::type_name(p.type, o, r.resolver_input.natives);
             }
-            std::cout << ") -> " << foo::type_name(f.sig.ret, o, r.resolver_input.natives) << '\n';
+            std::cout << ") -> " << foo::type_name(f.sig.ret, o, r.resolver_input.natives) << " SLOTS: " << f.slot_count <<'\n';
         }
 
         for (const auto& s : o.structs)
