@@ -1,12 +1,13 @@
 #ifndef FOO_RESOLVER_HPP
 #define FOO_RESOLVER_HPP
 
-#include <assert.h>
+#include <cassert>
 #include <functional>
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <array>
 
 #include <foo/ast.hpp>
 
