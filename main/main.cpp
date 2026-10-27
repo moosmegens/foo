@@ -22,6 +22,8 @@
 
 #include <foo/path.hpp>
 
+#include "foo/debug/debug_out.hpp"
+
 void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span)
 {
     #define CLR_RED "\033[1;31m"
@@ -109,7 +111,12 @@ void main2()
     {
         for (const auto& f : o.functions)
         {
-            std::cout << foo::to_string(f.path) << '\n';
+            std::cout << "fn     " << foo::to_string(f.path) << '\n';
+        }
+
+        for (const auto& s : o.structs)
+        {
+            std::cout << "struct " << foo::to_string(s.path) << '\n';
         }
 
 

@@ -251,6 +251,11 @@ fn main(): int
 }
 */
 
+struct my_struct
+{
+
+}
+
 fn main()
 {
     io::println("hello, world");

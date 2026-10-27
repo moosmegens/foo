@@ -1,6 +1,7 @@
 #include <iostream>
 #include <foo/resolver.hpp>
 
+#include "foo/debug/debug_out.hpp"
 #include "foo/util/overloaded.hpp"
 
 
@@ -151,13 +152,11 @@ namespace foo
 
         void discover_decl(const std::vector<ast::DeclPtr>& decls, const Path& scope)
         {
-            std::cout << "discover_decl" << std::endl;
-
             for (const ast::DeclPtr& d : decls)
             {
                 if (!d)
                 {
-                    std::cout << "NO declaration found\n";
+                    foo::print_trace("DeclPtr is NULL!");
                     return;
                 }
 
@@ -166,9 +165,9 @@ namespace foo
                     {
                         discover_function(fn, d->span, scope);
                     },
-                    [&](const ast::StructDecl&)
+                    [&](const ast::StructDecl& s)
                     {
-                        //find_struct(s, d->span, scope);
+                        discover_struct(s, d->span, scope);
                     },
                     [&](const ast::NamespaceDecl&)
                     {
@@ -180,7 +179,6 @@ namespace foo
 
         void discover_function(const ast::FnDecl& fn, const SourceSpan& span, const Path& scope)
         {
-            std::cout << "discover_function" << std::endl;
             const FunctionId id = static_cast<FunctionId>(_output.functions.size());
 
             FunctionInfo info;
@@ -195,7 +193,23 @@ namespace foo
 
             _output.to_file_index[&fn] = _file_id;
             _output.functions.push_back(std::move(info));
-            std::cout << "_output" << std::endl;
+        }
+
+        void discover_struct(const ast::StructDecl& decl, const SourceSpan& span, const Path& scope)
+        {
+            const StructId id = static_cast<StructId>(_output.structs.size());
+
+            StructInfo info;
+            info.path = path_child(scope, decl.name);
+            info.file_index = _file_id;
+            info.span = span;
+            info.decl = &decl;
+
+            if (add_struct(info.path, id, span) == false)
+                return;
+
+            _output.to_file_index[&decl] = _file_id;
+            _output.structs.push_back(std::move(info));
         }
 
         bool add_struct(const Path& path, StructId id, const SourceSpan& span)
