@@ -6,6 +6,7 @@
 
 namespace foo
 {
+    // is 'c' a valid char to start an indentifier with.
     static bool is_ident_start(char c)
     {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
@@ -16,6 +17,7 @@ namespace foo
         return c >= '0' && c <= '9';
     }
 
+    // hex value or -1 on error
     static int hex_value(char c)
     {
         if (c >= '0' && c <= '9')
@@ -30,6 +32,7 @@ namespace foo
         return -1;
     }
 
+    // is 'c' a valid char to continue a identifier.
     static bool is_ident_part(char c)
     {
         return is_ident_start(c) || is_digit(c);
@@ -107,6 +110,7 @@ namespace foo
             return false;
         }
 
+        // will lex
         Result<Token, LexError> lex_word(size_t start)
         {
             while (is_ident_part(peek()))
@@ -141,6 +145,7 @@ namespace foo
         Result<Token, LexError> lex_string(size_t start)
         {
             std::string value;
+
             while (true)
             {
                 if (_offset >= _source.size() || _source[_offset] == '\n')
@@ -159,7 +164,9 @@ namespace foo
                 if (_offset >= _source.size())
                     return std::unexpected<LexError>{{SourceSpan::between(start, _offset), "unterminated string"}};
 
-                //const size_t esc = _offset - 1;
+
+
+                // this only gets run if c == '\\' passes
                 switch (const char e = _source[_offset++])
                 {
                     case 'n':  value += '\n'; break;
@@ -190,6 +197,7 @@ namespace foo
             while (is_digit(peek()))
                 _offset++;
 
+            // if we see . after it should also be a number so number.number
             if (peek() == '.' && is_digit(peek(1)))
             {
                 is_float = true;
@@ -341,6 +349,7 @@ namespace foo
                         {
                             _offset++;
 
+                            // is doc comment
                             if (peek() == '!')
                             {
                                 _offset++;
@@ -357,12 +366,14 @@ namespace foo
                                 );
                             }
 
+                            // include all until newline
                             while (peek() != '\n' && _offset < _source.size())
                                 _offset++;
 
                             continue;
                         }
 
+                        // /* */ style comments
                         if (peek() == '*')
                         {
                             _offset++;
@@ -386,6 +397,7 @@ namespace foo
                                 );
                             }
 
+                            // only gets closes if */ is matched
                             while (_offset < _source.size() && !(peek() == '*' && peek(1) == '/'))
                                 _offset++;
 
@@ -401,8 +413,8 @@ namespace foo
 
                 if (is_ident_start(c))
                 {
-                    while (is_ident_part(peek()))
-                        _offset++;
+                    // while (is_ident_part(peek()))
+                    //     _offset++;
 
                     return lex_word(start);
                 }
