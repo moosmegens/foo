@@ -1,4 +1,4 @@
-import "a";
+import "a", "fn";
 
 struct u {}
 

@@ -651,6 +651,8 @@ namespace foo
             _next_slot = 0;
             _max_slot = 0;
 
+            std::cout << "RESOLVING fn " << to_string(info.path) << '\n';
+
             push_locals();
 
             size_t first_param = 0;
@@ -668,10 +670,7 @@ namespace foo
                 declare_local(param.name, type, param.span);
             }
 
-            for (const auto& local : _locals[0].names)
-            {
-                std::cout << local.first << " : " << type_name(local.second.type) <<std::endl;
-            }
+            resolve_block(decl.body);
 
             pop_locals();
 
@@ -704,6 +703,8 @@ namespace foo
                 error(span, "'" + name + "' is already declared in this scope");
                 return local;
             }
+
+            std::cout << "  slot " << local.slot << ": " << name << " : " << type_name(type) << "\n";
 
             _next_slot += 1;
             _max_slot = std::max(_max_slot, _next_slot);

@@ -1,0 +1,9 @@
+fn A(a: int, b: float) -> io::file
+{
+    {
+        var b = 10;
+    }
+    {
+        var b = 10;
+    }
+}
