@@ -1,5 +1,6 @@
 #include <iostream>
 #include <foo/resolver.hpp>
+#include <ranges>
 
 #include "foo/debug/debug_out.hpp"
 #include "foo/util/overloaded.hpp"
@@ -163,11 +164,28 @@ namespace foo
             discover_decls_from_files();
             resolve_types();
             resolve_function_sigs();
+            resolve_functions();
 
             return std::move(_output);
         }
 
     private:
+        enum class StructVisitState
+        {
+            NotVisited,
+            Visiting,
+            Done
+        };
+
+        struct LocalScope
+        {
+            std::unordered_map<std::string, LocalInfo> names;
+            SlotId first_slot;
+        };
+
+
+        // ------------------------------------------
+
         const ResolverInput& _input;
         ResolveOutput _output;
 
@@ -182,18 +200,12 @@ namespace foo
         std::vector<std::vector<Path>> _imports;
 
 
-
-        // ------------------------------------------
-
-        enum class StructVisitState
-        {
-            NotVisited,
-            Visiting,
-            Done
-        };
+        std::vector<LocalScope> _locals;
+        SlotId _next_slot = 0;
+        SlotId _max_slot = 0;
+        TypeId _current_return_type = -1;
 
 
-        // ------------------------------------------
 
         void error(const SourceSpan& span, std::string message)
         {
@@ -615,6 +627,101 @@ namespace foo
                 sig.ret = BaseTypes::Void;
 
             return sig;
+        }
+
+
+        // ------------------------------------------
+
+        void resolve_functions()
+        {
+            for (FunctionInfo& info : _output.functions)
+            {
+                enter(info);
+                resolve_function(info);
+            }
+        }
+
+        void resolve_function(FunctionInfo& info)
+        {
+            const ast::FnDecl& decl = *info.decl;
+
+
+            _current_return_type = info.sig.ret;
+            _locals.clear();
+            _next_slot = 0;
+            _max_slot = 0;
+
+            push_locals();
+
+            size_t first_param = 0;
+            if (info.is_method)
+            {
+                declare_local("self", info.owner_type, decl.params[0].span);
+                first_param = 1;
+            }
+
+            for (size_t i = first_param; i < decl.params.size(); ++i)
+            {
+                const ast::Param& param = decl.params[i];
+                TypeId type = info.sig.params[i - first_param].type;
+
+                declare_local(param.name, type, param.span);
+            }
+
+            for (const auto& local : _locals[0].names)
+            {
+                std::cout << local.first << " : " << type_name(local.second.type) <<std::endl;
+            }
+
+            pop_locals();
+
+            info.slot_count = _max_slot;
+        }
+
+        void push_locals()
+        {
+            LocalScope scope;
+            scope.first_slot = _next_slot;
+
+            _locals.push_back(std::move(scope));
+        }
+
+        void pop_locals()
+        {
+            _next_slot = _locals.back().first_slot;
+            _locals.pop_back();
+        }
+
+        LocalInfo declare_local(const std::string& name, TypeId type, const SourceSpan& span)
+        {
+            LocalInfo local;
+            local.type = type;
+            local.slot = _next_slot;
+
+            bool inserted = _locals.back().names.try_emplace(name, local).second;
+            if (inserted == false)
+            {
+                error(span, "'" + name + "' is already declared in this scope");
+                return local;
+            }
+
+            _next_slot += 1;
+            _max_slot = std::max(_max_slot, _next_slot);
+
+            return local;
+        }
+
+        const LocalInfo* find_local(const std::string& name) const
+        {
+            for (const auto & local : std::views::reverse(_locals))
+            {
+                auto found = local.names.find(name);
+
+                if (found != local.names.end())
+                    return &found->second;
+            }
+
+            return nullptr;
         }
 
 
