@@ -142,7 +142,17 @@ void main2()
     {
         for (const auto& f : o.functions)
         {
-            std::cout << "fn     " << foo::to_string(f.path) << " (is method:"<<f.is_method << ")" << '\n';
+            std::cout << "fn     " << foo::to_string(f.path) << " (";
+            bool first = true;
+            for (const auto& p : f.sig.params)
+            {
+                if (!first)
+                    std::cout << ", ";
+
+                first = false;
+                std::cout << foo::type_name(p.type, o, r.resolver_input.natives);
+            }
+            std::cout << ") -> " << foo::type_name(f.sig.ret, o, r.resolver_input.natives) << '\n';
         }
 
         for (const auto& s : o.structs)

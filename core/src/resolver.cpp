@@ -162,6 +162,7 @@ namespace foo
 
             discover_decls_from_files();
             resolve_types();
+            resolve_function_sigs();
 
             return std::move(_output);
         }
@@ -268,6 +269,18 @@ namespace foo
 
             _scope = info.path;
             _scope.pop_back();
+        }
+
+        void enter(const FunctionInfo& info)
+        {
+            _file_id = info.file_index;
+
+            _scope = info.path;
+            _scope.pop_back();
+
+            bool is_in_struct = (info.owner_type != EmptyType);
+            if (is_in_struct)
+                _scope.pop_back();
         }
 
         static int find_field(const StructInfo& info, const std::string& name)
@@ -557,6 +570,51 @@ namespace foo
         [[maybe_unused]] std::string type_name(TypeId type) const
         {
             return foo::type_name(type, _output, natives());
+        }
+
+
+        void resolve_function_sigs()
+        {
+            for (FunctionInfo& info : _output.functions)
+            {
+                enter(info);
+                info.sig = make_signature(info);
+            }
+        }
+
+        FunctionSig make_signature(const FunctionInfo& info)
+        {
+            const ast::FnDecl& decl = *info.decl;
+
+            FunctionSig sig;
+
+            size_t first_param = 0;
+            if (info.is_method)
+            {
+                first_param = 1;
+                sig.self_by_ref = decl.params[0].reffed;
+            }
+
+            for (size_t i = first_param; i < decl.params.size(); ++i)
+            {
+                const ast::Param& param = decl.params[i];
+
+                TypeId type = resolve_type(param.type);
+                if (type == BaseTypes::Void)
+                {
+                    error(param.span, "a parameter cannot be void");
+                    type = BaseTypes::Error;
+                }
+
+                sig.params.push_back({type, param.reffed});
+            }
+
+            if (decl.return_type)
+                sig.ret = resolve_type(decl.return_type);
+            else
+                sig.ret = BaseTypes::Void;
+
+            return sig;
         }
 
 
