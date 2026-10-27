@@ -724,6 +724,92 @@ namespace foo
             return nullptr;
         }
 
+        void resolve_block(const ast::Block& block)
+        {
+            push_locals();
+
+            for (const ast::StmtPtr& stmt : block.statements)
+                resolve_stmt(*stmt);
+
+            pop_locals();
+        }
+
+        void check_stmt_in_own_scope(const ast::StmtPtr& stmt)
+        {
+            push_locals();
+
+            resolve_stmt(*stmt);
+
+            pop_locals();
+        }
+
+        void resolve_stmt(const ast::Stmt& stmt)
+        {
+            const SourceSpan span = stmt.span;
+
+            std::visit(overload{
+                [&](const ast::Block& s)    { resolve_block(s); },
+                [&](const ast::VarDecl& s)  { resolve_var_decl(s, span); },
+                [&](const ast::Return& s)   { resolve_return(s, span); },
+                [&](const ast::If& s)       { resolve_if(s); },
+                [&](const ast::While& s)    { resolve_while(s); },
+                [&](const ast::ForIn& s)    { resolve_for_in(s, span); },
+                [&](const ast::ExprStmt& s) {  },
+                [&](const ast::Check& s)    { resolve_check_stmt(s, span); },
+            }, stmt.kind);
+        }
+
+        void resolve_var_decl(const ast::VarDecl& var, const SourceSpan& span)
+        {
+            TypeId written_type = EmptyType;
+            if (var.type)
+                written_type = resolve_type(var.type);
+
+            _output.var_decls[&var] = declare_local(var.name, written_type, span);
+        }
+
+        void resolve_return(const ast::Return& ret, const SourceSpan& span)
+        {
+
+        }
+
+        void resolve_if(const ast::If& if_stmt)
+        {
+            check_stmt_in_own_scope(if_stmt.then_branch);
+
+            if (if_stmt.else_branch)
+                check_stmt_in_own_scope(if_stmt.else_branch);
+        }
+
+
+        void resolve_while(const ast::While& while_stmt)
+        {
+            check_stmt_in_own_scope(while_stmt.body);
+        }
+
+        void resolve_for_in(const ast::ForIn& for_stmt, const SourceSpan& span)
+        {
+            push_locals();
+
+            _output.for_vars[&for_stmt] = declare_local(for_stmt.variable_name, EmptyType, span);
+            resolve_stmt(*for_stmt.body);
+
+            pop_locals();
+        }
+
+        void resolve_check_stmt(const ast::Check& check, const SourceSpan& span)
+        {
+            push_locals();
+
+            _output.check_vars[&check] = declare_local(check.variable_name, EmptyType, span);
+            resolve_stmt(*check.good_branch);
+
+            pop_locals();
+
+            if (check.bad_branch)
+                check_stmt_in_own_scope(check.bad_branch);
+        }
+
 
     }; // class
 
