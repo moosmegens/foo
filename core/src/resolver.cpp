@@ -100,7 +100,57 @@ namespace foo
         return std::nullopt;
     }
 
+// type name
+    std::string type_name(TypeId type, const ResolveOutput& output, const NativeRegistry* natives)
+    {
+        if (type == EmptyType)
+            return "<none>";
 
+        const TypeTable& types = output.type_table;
+
+        switch (types.kind(type))
+        {
+            case TypeKind::Error:   return "<error>";
+            case TypeKind::Void:    return "void";
+            case TypeKind::Bool:    return "bool";
+            case TypeKind::Int:     return "int";
+            case TypeKind::Float:   return "float";
+            case TypeKind::String:  return "string";
+            case TypeKind::Any:     return "any";
+
+            case TypeKind::Range:
+                return "range<" + type_name(types.element(type), output, natives) + ">";
+
+            case TypeKind::Array:
+                return "array<" + type_name(types.element(type), output, natives) + ">";
+
+            case TypeKind::Optional:
+                return "optional<" + type_name(types.element(type), output, natives) + ">";
+
+            case TypeKind::Map:
+                return "map<" + type_name(types.key(type), output, natives)
+                    + ", " + type_name(types.value(type), output, natives) + ">";
+
+            case TypeKind::Struct:
+            {
+                StructId id = types.struct_id(type);
+                return to_string(output.structs[static_cast<size_t>(id)].path);
+            }
+
+            case TypeKind::Native:
+            {
+                if (natives == nullptr)
+                    return "<native>";
+
+                NativeTypeId id = types.native_id(type);
+                return natives->type_names()[static_cast<size_t>(id)];
+            }
+        }
+
+        return "<unknown>";
+    }
+
+// resolver
     class Resolver
     {
     public:
@@ -125,6 +175,7 @@ namespace foo
 
         // per file
         int _file_id = -1;
+        Path _scope;
 
         // files imports
         std::vector<std::vector<Path>> _imports;
@@ -140,6 +191,43 @@ namespace foo
         TypeTable& types() { return _output.type_table; }
 
         const NativeRegistry* natives() const { return _input.natives; }
+
+
+
+        // ------------------------------------------
+
+        template<class Map>
+        std::optional<typename Map::mapped_type> lookup(const Map& map, const Path& path) const
+        {
+            Path scope = _scope;
+
+            while (true)
+            {
+                if (auto it = map.find(path_concat(scope, path)); it != map.end())
+                    return it->second;
+
+                if (scope.empty())
+                    break;
+
+                scope.pop_back();
+            }
+
+            // import "lib",
+            // a, it can also bind to lib::a
+            for (const Path& imp : _imports[static_cast<size_t>(_file_id)])
+                if (auto it = map.find(path_concat(imp, path)); it != map.end())
+                    return it->second;
+
+            return std::nullopt;
+        }
+
+        void enter(const StructInfo& info)
+        {
+            _file_id = info.file_index;
+
+            _scope = info.path;
+            _scope.pop_back();
+        }
 
         // ------------------------------------------
 
@@ -216,6 +304,7 @@ namespace foo
             info.file_index = _file_id;
             info.span = span;
             info.decl = &decl;
+            info.type = types().struct_of(id);
 
             if (add_struct(info.path, id, span) == false)
                 return;
@@ -272,7 +361,101 @@ namespace foo
 
         void resolve_types()
         {
+            for (StructInfo& info : _output.structs)
+            {
+                enter(info);
 
+                for (const ast::StructField& field : info.decl->fields)
+                {
+                    TypeId type = resolve_type(field.type);
+                    if (type == BaseTypes::Void)
+                    {
+                        error(field.span, "a field cannot be void");
+                        type = BaseTypes::Error;
+                    }
+
+                    info.fields.push_back({field.name, type});
+                }
+            }
+        }
+
+        TypeId resolve_type(const ast::TypeExprPtr& te)
+        {
+            if (!te)
+                return BaseTypes::Error;
+
+            return std::visit(overload{
+                [&](const ast::NamedType& n) -> TypeId
+                {
+                    return resolve_named(n.path, te->span);
+                },
+                [&](const ast::ArrayType& a) -> TypeId
+                {
+                    TypeId e = resolve_type(a.element_type);
+                    return types().array_of(e);
+                },
+                [&](const ast::MapType& m) -> TypeId
+                {
+                    TypeId k = resolve_type(m.key_type);
+                    TypeId v = resolve_type(m.value_type);
+                    return types().map_of(k, v);
+                },
+                [&](const ast::OptionalType& o) -> TypeId
+                {
+                    TypeId e = resolve_type(o.element_type);
+                    return types().optional_of(e);
+                }
+            }, te->type);
+        }
+
+        TypeId resolve_named(const Path& parts, const SourceSpan& span)
+        {
+            if (parts.size() == 1)
+            {
+                const std::string& s = parts[0];
+
+                if (s == "int")     return BaseTypes::Int;
+                if (s == "float")   return BaseTypes::Float;
+                if (s == "bool")    return BaseTypes::Bool;
+                if (s == "string")  return BaseTypes::String;
+                if (s == "void")    return BaseTypes::Void;
+            }
+
+            if (auto sid = lookup(_struct_map, parts))
+                return _output.structs[static_cast<size_t>(*sid)].type;
+
+            if (TypeId t = find_native_type(parts); t != EmptyType)
+                return t;
+
+            error(span, "unknown type '" + to_string(parts) + "'");
+            return BaseTypes::Error;
+        }
+
+        TypeId find_native_type(const Path& parts)
+        {
+            if (!natives())
+                return EmptyType;
+
+            TypeId t = natives()->find_type(types(), to_string(parts));
+            if (t != EmptyType)
+            {
+                return t;
+            }
+
+            for (const Path& imp : _imports[static_cast<size_t>(_file_id)])
+            {
+                t = natives()->find_type(types(), to_string(path_concat(imp, parts)));
+
+                if (t != EmptyType)
+                    break;
+            }
+
+            return t;
+        }
+
+        [[maybe_unused]] std::string type_name(TypeId type) const
+        {
+            return foo::type_name(type, _output, natives());
         }
 
 

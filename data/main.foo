@@ -251,10 +251,16 @@ fn main(): int
 }
 */
 
+struct other_struct
+{
+
+}
+
 struct my_struct
 {
-    a: int;
-    b: int;
+    a: int[][];
+    b: [string, int];
+    c: [string, other_struct];
 
     fn method(ref self: my_struct)  {}
     fn function(a: int)             {}

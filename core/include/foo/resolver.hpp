@@ -307,6 +307,9 @@ namespace foo
     };
 
     ResolveOutput resolve(const ResolverInput& input);
+
+
+    std::string type_name(TypeId type, const ResolveOutput& output, const NativeRegistry* natives);
 }
 
 #endif //FOO_RESOLVER_HPP

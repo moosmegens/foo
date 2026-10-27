@@ -18,7 +18,7 @@ namespace foo
         return out;
     }
 
-    inline Path concat(Path a, const Path& b)
+    inline Path path_concat(Path a, const Path& b)
     {
         a.insert(a.end(), b.begin(), b.end());
         return a;

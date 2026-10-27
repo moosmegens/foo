@@ -117,6 +117,10 @@ void main2()
         for (const auto& s : o.structs)
         {
             std::cout << "struct " << foo::to_string(s.path) << '\n';
+            for (const auto& f : s.fields)
+            {
+                std::cout << "    " << f.name << ": " << foo::type_name(f.type, o, r.resolver_input.natives) << '\n';
+            }
         }
 
     } else
