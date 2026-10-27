@@ -107,18 +107,17 @@ void main2()
     }
 
     auto o = foo::resolve(r.resolver_input);
-    if (r.errors.empty())
+    if (o.errors.empty())
     {
         for (const auto& f : o.functions)
         {
-            std::cout << "fn     " << foo::to_string(f.path) << '\n';
+            std::cout << "fn     " << foo::to_string(f.path) << " (is method:"<<f.is_method << ")" << '\n';
         }
 
         for (const auto& s : o.structs)
         {
             std::cout << "struct " << foo::to_string(s.path) << '\n';
         }
-
 
     } else
     {

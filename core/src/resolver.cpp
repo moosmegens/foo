@@ -108,7 +108,10 @@ namespace foo
 
         ResolveOutput resolve()
         {
-            discover_decls();
+            _output.type_table = _input.types;
+
+            discover_decls_from_files();
+            resolve_types();
 
             return std::move(_output);
         }
@@ -126,12 +129,21 @@ namespace foo
         // files imports
         std::vector<std::vector<Path>> _imports;
 
+
+        // ------------------------------------------
+
         void error(const SourceSpan& span, std::string message)
         {
             _output.errors.push_back({std::move(message), _file_id, span});
         }
 
-        void discover_decls()
+        TypeTable& types() { return _output.type_table; }
+
+        const NativeRegistry* natives() const { return _input.natives; }
+
+        // ------------------------------------------
+
+        void discover_decls_from_files()
         {
             for (size_t i = 0; i < _input.files.size(); ++i)
             {
@@ -146,11 +158,11 @@ namespace foo
 
                 _imports.push_back(std::move(imports));
 
-                discover_decl(f.decls, from_file_path(f.path));
+                discover_decls(f.decls, from_file_path(f.path));
             }
         }
 
-        void discover_decl(const std::vector<ast::DeclPtr>& decls, const Path& scope)
+        void discover_decls(const std::vector<ast::DeclPtr>& decls, const Path& scope)
         {
             for (const ast::DeclPtr& d : decls)
             {
@@ -169,9 +181,9 @@ namespace foo
                     {
                         discover_struct(s, d->span, scope);
                     },
-                    [&](const ast::NamespaceDecl&)
+                    [&](const ast::NamespaceDecl& n)
                     {
-                        //find_in(n.decls, child(scope, n.name));
+                        discover_decls(n.decls, path_child(scope, n.name));
                     }
                 }, d->kind);
             }
@@ -210,6 +222,32 @@ namespace foo
 
             _output.to_file_index[&decl] = _file_id;
             _output.structs.push_back(std::move(info));
+
+            for (const ast::FnDecl& m : decl.methods)
+                discover_method(id, m, span);
+        }
+
+        void discover_method(StructId owner, const ast::FnDecl& m, const SourceSpan& span)
+        {
+            StructInfo& s = _output.structs[static_cast<size_t>(owner)];
+            const FunctionId id = static_cast<FunctionId>(_output.functions.size());
+
+            if (!s.methods.try_emplace(m.name, id).second)
+            {
+                error(span, "'" + to_string(s.path) + "' already has a method '" + m.name + "'");
+                return;
+            }
+
+            FunctionInfo info;
+            info.path = path_child(s.path, m.name);
+            info.file_index = s.file_index;
+            info.span = span;
+            info.decl = &m;
+            info.owner_type = s.type;
+            info.is_method = !m.params.empty() && m.params[0].name == "self";
+
+            _output.to_file_index[&m] = s.file_index;
+            _output.functions.push_back(std::move(info));
         }
 
         bool add_struct(const Path& path, StructId id, const SourceSpan& span)
@@ -228,6 +266,13 @@ namespace foo
 
             error(span, "'" + to_string(path) + "' is already declared");
             return false;
+        }
+
+        // ------------------------------------------
+
+        void resolve_types()
+        {
+
         }
 
 

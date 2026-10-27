@@ -253,7 +253,11 @@ fn main(): int
 
 struct my_struct
 {
+    a: int;
+    b: int;
 
+    fn method(ref self: my_struct)  {}
+    fn function(a: int)             {}
 }
 
 fn main()
