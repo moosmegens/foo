@@ -221,7 +221,7 @@ namespace foo
         std::vector<ResolverFile> files;
 
         TypeTable types{};
-        const NativeRegistry* natives = nullptr;
+        NativeRegistry natives;
     };
 
 
@@ -330,7 +330,7 @@ namespace foo
     ResolveOutput resolve(const ResolverInput& input);
 
 
-    std::string type_name(TypeId type, const ResolveOutput& output, const NativeRegistry* natives);
+    std::string type_name(TypeId type, const ResolveOutput& output, const NativeRegistry& natives);
 }
 
 #endif //FOO_RESOLVER_HPP

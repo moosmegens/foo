@@ -117,7 +117,7 @@ namespace foo
     }
 
 // type name
-    std::string type_name(TypeId type, const ResolveOutput& output, const NativeRegistry* natives)
+    std::string type_name(TypeId type, const ResolveOutput& output, const NativeRegistry& natives)
     {
         if (type == EmptyType)
             return "<none>";
@@ -155,11 +155,8 @@ namespace foo
 
             case TypeKind::Native:
             {
-                if (natives == nullptr)
-                    return "<native>";
-
                 NativeTypeId id = types.native_id(type);
-                return natives->type_names()[static_cast<size_t>(id)];
+                return natives.type_names()[static_cast<size_t>(id)];
             }
         }
 
@@ -248,7 +245,7 @@ namespace foo
 
         TypeTable& types() { return _output.type_table; }
 
-        const NativeRegistry* natives() const { return _input.natives; }
+        const NativeRegistry& natives() const { return _input.natives; }
 
 
         StructInfo& struct_at(StructId id)          { return _output.structs[static_cast<size_t>(id)]; }
@@ -621,10 +618,7 @@ namespace foo
 
         TypeId find_native_type(const Path& parts)
         {
-            if (!natives())
-                return EmptyType;
-
-            TypeId t = natives()->find_type(types(), to_string(parts));
+            TypeId t = natives().find_type(types(), to_string(parts));
             return t;
         }
 
@@ -1360,7 +1354,7 @@ namespace foo
             }
             else
             {
-                auto match = natives()->find_static_function(types(), type, call.method);
+                auto match = natives().find_static_function(types(), type, call.method);
                 if (match.has_value())
                 {
                     callee = make_callee(match->sig, RefKind::Native, match->id);
@@ -1402,12 +1396,11 @@ namespace foo
         {
             std::string full_name = type_name(native_type) + "::" + name;
 
-            if (natives() != nullptr)
-            {
-                auto match = natives()->find_function(types(), full_name);
-                if (match.has_value())
-                    return make_callee(match->sig, RefKind::Native, match->id);
-            }
+
+            auto match = natives().find_function(types(), full_name);
+            if (match.has_value())
+                return make_callee(match->sig, RefKind::Native, match->id);
+
 
             error(span, "unknown native function '" + full_name + "'");
             return std::nullopt;
@@ -1435,12 +1428,11 @@ namespace foo
 
             std::string full_name = to_string(name.path);
 
-            if (natives() != nullptr)
-            {
-                auto match = natives()->find_function(types(), full_name);
-                if (match.has_value())
-                    return make_callee(match->sig, RefKind::Native, match->id);
-            }
+
+            auto match = natives().find_function(types(), full_name);
+            if (match.has_value())
+                return make_callee(match->sig, RefKind::Native, match->id);
+
 
             error(span, "unknown function '" + full_name + "'");
             return std::nullopt;
@@ -1473,12 +1465,11 @@ namespace foo
                 }
             }
 
-            if (natives() != nullptr)
-            {
-                auto match = natives()->find_method(types(), receiver_type, member.name);
-                if (match.has_value())
-                    return make_callee(match->sig, RefKind::NativeMethod, match->id, member.target.get());
-            }
+
+            auto match = natives().find_method(types(), receiver_type, member.name);
+            if (match.has_value())
+                return make_callee(match->sig, RefKind::NativeMethod, match->id, member.target.get());
+
 
             error(span, "'" + type_name(receiver_type) + "' has no method '" + member.name + "'");
             return std::nullopt;

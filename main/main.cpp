@@ -22,6 +22,7 @@
 
 #include <foo/path.hpp>
 
+#include "foo/runtime.hpp"
 #include "foo/debug/debug_out.hpp"
 
 #define CLR_BLACK   "\033[1;30m"
@@ -152,23 +153,9 @@ void main2()
         return sig;
     });
 
-    foo::FunctionSig from_string;
-    from_string.params = { {foo::BaseTypes::String, false} };
-    from_string.ret = foo::BaseTypes::Int;
-    natives.add_static_function("from_string", foo::BaseTypes::Int, from_string);
+    r.resolver_input.natives = std::move(natives);
 
-    natives.add_static_function("new", [](foo::TypeTable& types, foo::TypeId receiver) -> std::optional<foo::FunctionSig>
-    {
-        if (types.kind(receiver) != foo::TypeKind::Map)
-            return std::nullopt;
-
-
-        foo::FunctionSig sig;
-        sig.ret = receiver;
-        return sig;
-    });
-
-    r.resolver_input.natives = &natives;
+    foo::Runtime::inject(r.resolver_input.types, r.resolver_input.natives);
 
     auto o = foo::resolve(r.resolver_input);
     if (o.errors.empty())

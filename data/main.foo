@@ -6,5 +6,5 @@ fn main()
 
     var a: int
 
-
+    print()
 }
