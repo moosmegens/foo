@@ -226,6 +226,16 @@ namespace foo
         FunctionInfo& function_at(FunctionId id)    { return _output.functions[static_cast<size_t>(id)]; }
 
 
+        ExprInfo make_einfo(TypeId type, RefKind ref = RefKind::None, Id index = -1)
+        {
+            ExprInfo info;
+            info.type = type;
+            info.ref = ref;
+            info.index = index;
+            return info;
+        }
+
+
 
         // ------------------------------------------
 
@@ -769,7 +779,24 @@ namespace foo
             if (var.type)
                 written_type = resolve_type(var.type);
 
-            _output.var_decls[&var] = declare_local(var.name, written_type, span);
+            TypeId type = written_type;
+
+            if (var.init)
+            {
+                TypeId init_type = resolve_expr(*var.init, written_type);
+
+                if (written_type == EmptyType)
+                    type = init_type;
+                else
+                    expect_assignable(written_type, init_type, var.init->span);
+            }
+            else if (written_type == EmptyType)
+            {
+                error(span, "variable '" + var.name + "' needs a type or an initializer");
+                type = BaseTypes::Error;
+            }
+
+            _output.var_decls[&var] = declare_local(var.name, type, span);
         }
 
         void resolve_return(const ast::Return& ret, const SourceSpan& span)
@@ -882,6 +909,76 @@ namespace foo
             }, expr.kind);
         }
 
+        bool assignable(TypeId to, TypeId from)
+        {
+            if (to == from)
+                return true;
+
+            if (to == BaseTypes::Any)
+                return from != BaseTypes::Void;
+
+            if (to == BaseTypes::Float && from == BaseTypes::Int)
+                return true;
+
+            if (types().kind(to) == TypeKind::Optional)
+                return assignable(types().element(to), from);
+
+            return false;
+        }
+
+        void expect_assignable(TypeId to, TypeId from, const SourceSpan& span)
+        {
+            if (assignable(to, from))
+                return;
+
+            error(span, "expected '" + type_name(to) + "', found '" + type_name(from) + "'");
+        }
+
+
+        TypeId resolve_expr(const ast::Expr& expr, TypeId expected_type = EmptyType)
+        {
+            const SourceSpan& span = expr.span;
+
+            ExprInfo info = std::visit(overload{
+            [&](const ast::IntLit&)             { return make_einfo(BaseTypes::Int); },
+            [&](const ast::FloatLit&)           { return make_einfo(BaseTypes::Float); },
+            [&](const ast::StringLit&)          { return make_einfo(BaseTypes::String); },
+            [&](const ast::BoolLit&)            { return make_einfo(BaseTypes::Bool); },
+            [&](const ast::ArrayLit& e)         { return resolve_array_expr(e, span, expected_type); },
+                    [&](const auto&)            { return make_einfo(BaseTypes::Error); }
+            }, expr.kind);
+
+            _output.exprs[&expr] = info;
+            return info.type;
+        }
+
+        ExprInfo resolve_array_expr(const ast::ArrayLit& array, const SourceSpan& span, TypeId expected)
+        {
+            if (expected != EmptyType && types().kind(expected) == TypeKind::Optional)
+                expected = types().element(expected);
+
+            TypeId element_type = EmptyType;
+            if (expected != EmptyType && types().kind(expected) == TypeKind::Array)
+                element_type = types().element(expected);
+
+            for (const ast::ExprPtr& element : array.elements)
+            {
+                TypeId type = resolve_expr(*element, element_type);
+
+                if (element_type == EmptyType)
+                    element_type = type;
+                else
+                    expect_assignable(element_type, type, element->span);
+            }
+
+            if (element_type == EmptyType)
+            {
+                error(span, "cannot infer the element type of an empty array, add a type annotation");
+                element_type = BaseTypes::Error;
+            }
+
+            return make_einfo(types().array_of(element_type));
+        }
 
 
 

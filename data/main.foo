@@ -21,10 +21,9 @@ struct my_struct
 
 fn main()
 {
-    var a: int = func() var b: int
 }
 
 fn a(a: int, b: string[]) -> void
 {
-
+    var array = [[],[1]]
 }
