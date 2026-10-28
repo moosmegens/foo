@@ -135,6 +135,18 @@ void main2()
     foo::NativeRegistry natives;
     natives.type(r.resolver_input.types, "io::file");
 
+    natives.add_method("to_string", [](foo::TypeTable& types, foo::TypeId receiver) -> std::optional<foo::FunctionSig>
+    {
+        foo::FunctionSig sig;
+        sig.ret = foo::BaseTypes::String;
+        return sig;
+    });
+
+    foo::FunctionSig from_string;
+    from_string.params = { {foo::BaseTypes::String, false} };
+    from_string.ret = foo::BaseTypes::Int;
+    natives.add_static_function("from_string", foo::BaseTypes::Int, from_string);
+
     r.resolver_input.natives = &natives;
 
     auto o = foo::resolve(r.resolver_input);

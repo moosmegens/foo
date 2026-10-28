@@ -25,7 +25,7 @@ struct A
 {
     a: string[]
 
-    fn clearw(ref self: A)
+    fn clear(ref self: A)
     {
         self.a = [];
     }
@@ -51,7 +51,7 @@ fn function_in_main() -> void
 
     var newa = @A.empty();
 
-
+    var integer = @int.from_string() + 1;
 
     var f: float = 1 + 2
     var i1: int = 2 - 5;

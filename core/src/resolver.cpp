@@ -50,7 +50,7 @@ namespace foo
 
     NativeFunctionId NativeRegistry::add_function(std::string name, FunctionSig sig)
     {
-        return add(std::move(name), false,
+        return add(std::move(name), Kind::Function,
             [sig = std::move(sig)](TypeTable&, TypeId) -> std::optional<FunctionSig>
             {
                 return sig;
@@ -59,7 +59,7 @@ namespace foo
 
     NativeFunctionId NativeRegistry::add_method(std::string name, TypeId receiver, FunctionSig sig)
     {
-        return add(std::move(name), true,
+        return add(std::move(name), Kind::Method,
             [receiver, sig = std::move(sig)](TypeTable&, TypeId r) -> std::optional<FunctionSig>
             {
                 if (r != receiver)
@@ -71,27 +71,42 @@ namespace foo
 
     NativeFunctionId NativeRegistry::add_method(std::string name, NativeResolver resolve)
     {
-        return add(std::move(name), true, std::move(resolve));
+        return add(std::move(name), Kind::Method, std::move(resolve));
     }
 
-    NativeFunctionId NativeRegistry::add(std::string name, bool is_method, NativeResolver resolve)
+    NativeFunctionId NativeRegistry::add_static_function(std::string name, TypeId target, FunctionSig sig)
     {
-        _entries.push_back({std::move(name), is_method, std::move(resolve)});
+        return add(std::move(name), Kind::Static,
+            [target, sig = std::move(sig)](TypeTable&, TypeId t) -> std::optional<FunctionSig>
+            {
+                if (t != target)
+                    return std::nullopt;
+
+                return sig;
+            });
+    }
+
+    NativeFunctionId NativeRegistry::add_static_function(std::string name, NativeResolver resolve)
+    {
+        return add(std::move(name), Kind::Static, std::move(resolve));
+    }
+
+
+    NativeFunctionId NativeRegistry::add(std::string name, Kind kind, NativeResolver resolve)
+    {
+        _entries.push_back({std::move(name), kind, std::move(resolve)});
 
         return static_cast<NativeFunctionId>(_entries.size() - 1);
     }
 
     std::optional<NativeRegistry::Match> NativeRegistry::find(
-        bool is_method,
-        TypeTable& types,
-        TypeId receiver,
-        std::string_view name) const
+        Kind kind, TypeTable& types, TypeId receiver, std::string_view name) const
     {
         for (auto i = _entries.size(); i-- > 0;)
         {
             const Entry& e = _entries[i];
 
-            if (e.is_method != is_method || e.name != name)
+            if (e.kind != kind || e.name != name)
                 continue;
 
             if (auto sig = e.resolve(types, receiver))
@@ -975,7 +990,7 @@ namespace foo
             [&](const ast::Index& e)            { return resolve_index(e, span); },
             [&](const ast::Member& e)           { return resolve_member(e, span); },
             [&](const ast::Call& e)             { return resolve_call(e, span); },
-
+            [&](const ast::StaticCall& e)       { return resolve_static_call(e, span); },
 
             [&](const auto&)                    { return make_einfo(BaseTypes::Error); }
             }, expr.kind);
@@ -1306,6 +1321,76 @@ namespace foo
                 error(callee->receiver->span, "this method takes self by reference, the receiver must be a lvalue");
 
             return make_einfo(callee->sig.ret);
+        }
+
+        ExprInfo resolve_static_call(const ast::StaticCall& call, const SourceSpan& span)
+        {
+            TypeId type = resolve_type(call.target);
+
+            if (type == BaseTypes::Error)
+                return fail_call(call.args);
+
+            std::optional<Callee> callee;
+
+            if (is_struct_type(type))
+            {
+                callee = find_static_function(type, call.method, span);
+            }
+            else if (types().kind(type) == TypeKind::Native)
+            {
+                callee = find_native_static_function(type, call.method, span);
+            }
+            else
+            {
+                auto match = natives()->find_static_function(types(), type, call.method);
+                if (match.has_value())
+                {
+                    callee = make_callee(match->sig, RefKind::Native, match->id);
+                }
+                else
+                    error(span, "'" + type_name(type) + "' has no static function '" + call.method + "'");
+            }
+
+            if (callee.has_value() == false)
+                return fail_call(call.args);
+
+            return make_einfo(callee->sig.ret, callee->ref, callee->index);
+        }
+
+        std::optional<Callee> find_static_function(TypeId struct_type, const std::string& name, const SourceSpan& span)
+        {
+            StructInfo& info = struct_of_type(struct_type);
+
+            auto found = info.methods.find(name);
+            if (found == info.methods.end())
+            {
+                error(span, "'" + to_string(info.path) + "' has no function '" + name + "'");
+                return std::nullopt;
+            }
+
+            FunctionInfo& function = function_at(found->second);
+            if (function.is_method)
+            {
+                error(span, "'" + name + "' is a method, call it on a value");
+                return std::nullopt;
+            }
+
+            return make_callee(function.sig, RefKind::Function, found->second);
+        }
+
+        std::optional<Callee> find_native_static_function(TypeId native_type, const std::string& name, const SourceSpan& span)
+        {
+            std::string full_name = type_name(native_type) + "::" + name;
+
+            if (natives() != nullptr)
+            {
+                auto match = natives()->find_function(types(), full_name);
+                if (match.has_value())
+                    return make_callee(match->sig, RefKind::Native, match->id);
+            }
+
+            error(span, "unknown native function '" + full_name + "'");
+            return std::nullopt;
         }
 
         std::optional<Callee> resolve_callee(const ast::Expr& expr)

@@ -162,33 +162,43 @@ namespace foo
 
         NativeFunctionId add_function(std::string name, FunctionSig sig);
 
-        NativeFunctionId add_method(std::string name, TypeId receiver, FunctionSig sig);
+        NativeFunctionId add_static_function(std::string name, TypeId target, FunctionSig sig);
+
+        NativeFunctionId add_static_function(std::string name, NativeResolver resolve);
+
+        NativeFunctionId add_method(std::string name, TypeId target, FunctionSig sig);
 
         NativeFunctionId add_method(std::string name, NativeResolver resolve);
 
 
         std::optional<Match> find_function(TypeTable& types, std::string_view name) const
         {
-            return find(false, types, EmptyType, name);
+            return find(Kind::Function, types, EmptyType, name);
         }
 
         std::optional<Match> find_method(TypeTable& types, TypeId receiver, std::string_view name) const
         {
-            return find(true, types, receiver, name);
+            return find(Kind::Method, types, receiver, name);
+        }
+
+        std::optional<Match> find_static_function(TypeTable& types, TypeId target, std::string_view name) const
+        {
+            return find(Kind::Static, types, target, name);
         }
 
     private:
+        enum class Kind { Function, Static, Method };
         struct Entry
         {
             std::string name;
-            bool is_method;
+            Kind kind;
             NativeResolver resolve;
         };
 
-        NativeFunctionId add(std::string name, bool is_method, NativeResolver resolve);
+        NativeFunctionId add(std::string name, Kind kind, NativeResolver resolve);
 
         std::optional<Match> find(
-            bool is_method, TypeTable& types, TypeId receiver, std::string_view name) const;
+            Kind kind, TypeTable& types, TypeId receiver, std::string_view name) const;
 
         std::vector<std::string> _type_names;
         std::unordered_map<std::string, NativeTypeId> _type_ids;
