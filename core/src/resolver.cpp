@@ -317,6 +317,16 @@ namespace foo
             return -1;
         }
 
+        StructInfo& struct_of_type(TypeId type)
+        {
+            return struct_at(types().struct_id(type));
+        }
+
+        bool is_struct_type(TypeId type)
+        {
+            return type != EmptyType && types().kind(type) == TypeKind::Struct;
+        }
+
         // ------------------------------------------
 
         void discover_decls_from_files()
@@ -769,7 +779,7 @@ namespace foo
                 [&](const ast::If& s)       { resolve_if(s); },
                 [&](const ast::While& s)    { resolve_while(s); },
                 [&](const ast::ForIn& s)    { resolve_for_in(s, span); },
-                [&](const ast::ExprStmt& s) {  },
+                [&](const ast::ExprStmt& s) { resolve_expr(*s.expr); },
                 [&](const ast::Check& s)    { resolve_check_stmt(s, span); },
             }, stmt.kind);
         }
@@ -950,10 +960,14 @@ namespace foo
             [&](const ast::BoolLit&)            { return make_einfo(BaseTypes::Bool); },
             [&](const ast::ArrayLit& e)         { return resolve_array_expr(e, span, expected_type); },
             [&](const ast::StructLit& e)        { return resolve_struct_lit(e, span); },
-            [&](const ast::Name e)              { return resolve_name(e, span); },
+            [&](const ast::Name &e)             { return resolve_name(e, span); },
+            [&](const ast::Unary& e)            { return resolve_unary(e, span); },
+            [&](const ast::Binary& e)           { return resolve_binary(e, span); },
+            [&](const ast::Index& e)            { return resolve_index(e, span); },
+            [&](const ast::Member& e)           { return resolve_member(e, span); },
 
 
-                    [&](const auto&)            { return make_einfo(BaseTypes::Error); }
+            [&](const auto&)                    { return make_einfo(BaseTypes::Error); }
             }, expr.kind);
 
             _output.exprs[&expr] = info;
@@ -992,7 +1006,7 @@ namespace foo
         {
             TypeId type = resolve_type(lit.type);
 
-            if (type != BaseTypes::Error && types().kind(type) != TypeKind::Struct)
+            if (type != BaseTypes::Error && is_struct_type(type) == false)
             {
                 error(span, "'" + type_name(type) + "' is not a struct");
                 type = BaseTypes::Error;
@@ -1006,7 +1020,7 @@ namespace foo
                 return make_einfo(BaseTypes::Error);
             }
 
-            StructInfo& info = struct_at(types().struct_id(type));
+            StructInfo& info = struct_of_type(type);
             std::vector<bool> field_was_set(info.fields.size(), false);
 
             std::vector<int> field_indices;
@@ -1060,6 +1074,197 @@ namespace foo
             }
 
             error(span, "unknown variable '" + to_string(name.path) + "'");
+            return make_einfo(BaseTypes::Error);
+        }
+
+        static bool is_numeric(TypeId type)
+        {
+            return type == BaseTypes::Int || type == BaseTypes::Float;
+        }
+
+        static TypeId promote_numeric(TypeId lhs, TypeId rhs)
+        {
+            if (lhs == BaseTypes::Float || rhs == BaseTypes::Float)
+                return BaseTypes::Float;
+
+            return BaseTypes::Int;
+        }
+
+        ExprInfo resolve_unary(const ast::Unary& unary, const SourceSpan& span)
+        {
+            TypeId type = resolve_expr(*unary.operant);
+
+            if (type == BaseTypes::Error)
+                return make_einfo(BaseTypes::Error);
+
+            if (unary.op == ast::UnaryOp::Neg && is_numeric(type))
+                return make_einfo(type);
+
+            if (unary.op == ast::UnaryOp::Not && type == BaseTypes::Bool)
+                return make_einfo(BaseTypes::Bool);
+
+            error(span, "operator cannot be applied to '" + type_name(type) + "'");
+            return make_einfo(BaseTypes::Error);
+        }
+
+        ExprInfo resolve_binary(const ast::Binary& binary, const SourceSpan& span)
+        {
+            std::cout << "######## resolve_binary" << std::endl;
+            using Op = ast::BinaryOp;
+
+            if (binary.op == Op::Assign)
+            {
+                std::cout << "######## resolve_binary Assign" << std::endl;
+                return resolve_assign(binary);
+            }
+
+            TypeId lhs = resolve_expr(*binary.lhs);
+            TypeId rhs = resolve_expr(*binary.rhs);
+
+            if (lhs == BaseTypes::Error || rhs == BaseTypes::Error)
+                return make_einfo(BaseTypes::Error);
+
+            bool same_type = lhs == rhs;
+            const bool both_numeric = is_numeric(lhs) && is_numeric(rhs);
+
+            switch (binary.op)
+            {
+                case Op::Add:
+                    if (both_numeric)
+                        return make_einfo(promote_numeric(lhs, rhs));
+
+                    if (lhs == BaseTypes::String && rhs == BaseTypes::String)
+                        return make_einfo(BaseTypes::String);
+
+                    return operator_error(span, lhs, rhs);
+
+                case Op::Sub:
+                case Op::Mul:
+                case Op::Div:
+                    if (both_numeric)
+                        return make_einfo(promote_numeric(lhs, rhs));
+
+                    return operator_error(span, lhs, rhs);
+
+                case Op::Mod:
+                    if (lhs == BaseTypes::Int && rhs == BaseTypes::Int)
+                        return make_einfo(BaseTypes::Int);
+
+                    return operator_error(span, lhs, rhs);
+
+                case Op::Eq:
+                case Op::NotEq:
+                    if (both_numeric || (same_type && lhs != BaseTypes::Void))
+                        return make_einfo(BaseTypes::Bool);
+
+                    return operator_error(span, lhs, rhs);
+
+                case Op::Less:
+                case Op::LessEq:
+                case Op::Greater:
+                case Op::GreaterEq:
+                    if (both_numeric || (same_type && lhs == BaseTypes::String))
+                        return make_einfo(BaseTypes::Bool);
+
+                    return operator_error(span, lhs, rhs);
+
+                case Op::And:
+                case Op::Or:
+                    if (lhs == BaseTypes::Bool && rhs == BaseTypes::Bool)
+                        return make_einfo(BaseTypes::Bool);
+
+                    return operator_error(span, lhs, rhs);
+
+                case Op::Range:
+                case Op::RangeInclusive:
+                    if (lhs == BaseTypes::Int && rhs == BaseTypes::Int)
+                        return make_einfo(types().range_of(BaseTypes::Int));
+
+                    return operator_error(span, lhs, rhs);
+
+                case Op::Assign:
+                    break;
+            }
+
+            return make_einfo(BaseTypes::Error);
+        }
+
+        ExprInfo operator_error(const SourceSpan& span, TypeId lhs, TypeId rhs)
+        {
+            error(span, "operator cannot be applied to '" + type_name(lhs) + "' and '" + type_name(rhs) + "'");
+            return make_einfo(BaseTypes::Error);
+        }
+
+        ExprInfo resolve_assign(const ast::Binary& assign)
+        {
+            std::cout << "######## resolve_assign" << std::endl;
+            TypeId target_type = resolve_expr(*assign.lhs);
+            TypeId value_type = resolve_expr(*assign.rhs, target_type);
+
+            if (is_lvalue(*assign.lhs) == false)
+                error(assign.lhs->span, "the left side of '=' is not an lvalue");
+            else
+                expect_assignable(target_type, value_type, assign.rhs->span);
+
+            return make_einfo(BaseTypes::Void);
+        }
+
+        ExprInfo resolve_index(const ast::Index& index, const SourceSpan& span)
+        {
+            TypeId target_type = resolve_expr(*index.target);
+            TypeId index_type = resolve_expr(*index.indexer);
+
+            if (target_type == BaseTypes::Error)
+                return make_einfo(BaseTypes::Error);
+
+            TypeKind kind = types().kind(target_type);
+
+            if (kind == TypeKind::Array)
+            {
+                expect_assignable(BaseTypes::Int, index_type, index.indexer->span);
+                return make_einfo(types().element(target_type));
+            }
+
+            if (kind == TypeKind::Map)
+            {
+                expect_assignable(types().key(target_type), index_type, index.indexer->span);
+                return make_einfo(types().value(target_type));
+            }
+
+            error(span, "cannot index into '" + type_name(target_type) + "'");
+            return make_einfo(BaseTypes::Error);
+        }
+
+        ExprInfo resolve_member(const ast::Member& member, const SourceSpan& span)
+        {
+            TypeId target_type = resolve_expr(*member.target);
+
+            std::cout << "######## resolve_member" << std::endl;
+
+            if (target_type == BaseTypes::Error)
+                return make_einfo(BaseTypes::Error);
+
+            std::cout << "######## resolve_member no error" << std::endl;
+
+            if (is_struct_type(target_type))
+            {
+                std::cout << "######## resolve_member is struct" << std::endl;
+
+
+                StructInfo& info = struct_of_type(target_type);
+                int field_index = find_field(info, member.name);
+
+                if (field_index >= 0)
+                {
+                    std::cout << "######## resolve_member valid field" << std::endl;
+
+                    TypeId field_type = info.fields[static_cast<size_t>(field_index)].type;
+                    return make_einfo(field_type, RefKind::Field, field_index);
+                }
+                std::cout << "######## resolve_member invalid field" << std::endl;
+            }
+
+            error(span, "'" + type_name(target_type) + "' has no field '" + member.name + "'");
             return make_einfo(BaseTypes::Error);
         }
 

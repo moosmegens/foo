@@ -31,21 +31,22 @@ struct B
     content: string[]
 }
 
-fn a(a: int, b: string[]) -> void
+fn function_in_main() -> void
 {
-    var invalid = 5
-    var good = #B{
-        content = ["hello", "world"]
-    },
+    var s = ["a","b"]
+    var a = [s,s]
 
-    var alit = #A{
-        a = [
-            #B{
-                content = ["hello", "world"]
-            },
-            #B{content = []},
-            good,
-            invalid
-        ]
-    }
+    var blit = #B{ content = a[0] }
+
+    s = blit.a;
+
+    var f: float = 1 + 2
+    var i1: int = 2 - 5;
+    var i2: int = 2 * 5;
+    var i3: int = 2 / 5;
+    var i4: int = 2 + 5;
+    var i5: int = 2 % 5;
+
+
+
 }
