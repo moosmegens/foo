@@ -45,22 +45,6 @@ namespace foo
         std::cerr << detail::join(args...) << '\n';
 #endif
     }
-
-    template <typename... Args>
-    struct print_trace
-    {
-        print_trace(
-            [[maybe_unused]] const Args&... args,
-            [[maybe_unused]] std::source_location loc = std::source_location::current())
-        {
-#ifndef NDEBUG
-            std::println(stderr, "{}: {}", loc.function_name(), detail::join(args...));
-#endif
-        }
-    };
-
-    template <typename... Args>
-    print_trace(const Args&...) -> print_trace<Args...>;
 }
 
 #endif //FOO_DEBUG_OUT_HPP
