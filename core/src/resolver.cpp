@@ -183,6 +183,15 @@ namespace foo
             SlotId first_slot;
         };
 
+        struct Callee
+        {
+            FunctionSig sig;
+            RefKind ref = RefKind::None;
+            Id index = -1;
+
+            const ast::Expr* receiver = nullptr;
+        };
+
 
         // ------------------------------------------
 
@@ -965,6 +974,7 @@ namespace foo
             [&](const ast::Binary& e)           { return resolve_binary(e, span); },
             [&](const ast::Index& e)            { return resolve_index(e, span); },
             [&](const ast::Member& e)           { return resolve_member(e, span); },
+            [&](const ast::Call& e)             { return resolve_call(e, span); },
 
 
             [&](const auto&)                    { return make_einfo(BaseTypes::Error); }
@@ -1268,6 +1278,125 @@ namespace foo
             return make_einfo(BaseTypes::Error);
         }
 
+        static Callee make_callee(const FunctionSig& sig, RefKind ref, Id index, const ast::Expr* receiver = nullptr)
+        {
+            Callee callee;
+            callee.sig = sig;
+            callee.ref = ref;
+            callee.index = index;
+            callee.receiver = receiver;
+            return callee;
+        }
+
+        ExprInfo resolve_call(const ast::Call& call, const SourceSpan& span)
+        {
+            std::optional<Callee> callee = resolve_callee(*call.callee);
+
+            if (callee.has_value() == false)
+            {
+                _output.exprs[call.callee.get()] = make_einfo(BaseTypes::Error);
+                return fail_call(call.args);
+            }
+
+            _output.exprs[call.callee.get()] = make_einfo(callee->sig.ret, callee->ref, callee->index);
+
+
+            bool needs_variable = (callee->receiver != nullptr) && callee->sig.self_by_ref;
+            if (needs_variable && is_lvalue(*callee->receiver) == false)
+                error(callee->receiver->span, "this method takes self by reference, the receiver must be a lvalue");
+
+            return make_einfo(callee->sig.ret);
+        }
+
+        std::optional<Callee> resolve_callee(const ast::Expr& expr)
+        {
+            const ast::Name* name = std::get_if<ast::Name>(&expr.kind);
+            if (name != nullptr)
+                return resolve_function_callee(*name, expr.span);
+
+            const ast::Member* member = std::get_if<ast::Member>(&expr.kind);
+            if (member != nullptr)
+                return resolve_method_callee(*member, expr.span);
+
+            error(expr.span, "this expression cannot be called");
+            return std::nullopt;
+        }
+
+        std::optional<Callee> resolve_function_callee(const ast::Name& name, const SourceSpan& span)
+        {
+            std::optional<FunctionId> found = lookup_function(name.path);
+            if (found.has_value())
+                return make_callee(function_at(*found).sig, RefKind::Function, *found);
+
+            std::string full_name = to_string(name.path);
+
+            if (natives() != nullptr)
+            {
+                auto match = natives()->find_function(types(), full_name);
+                if (match.has_value())
+                    return make_callee(match->sig, RefKind::Native, match->id);
+            }
+
+            error(span, "unknown function '" + full_name + "'");
+            return std::nullopt;
+        }
+
+        std::optional<Callee> resolve_method_callee(const ast::Member& member, const SourceSpan& span)
+        {
+            TypeId receiver_type = resolve_expr(*member.target);
+
+            if (receiver_type == BaseTypes::Error)
+                return std::nullopt;
+
+            if (is_struct_type(receiver_type))
+            {
+                StructInfo& info = struct_of_type(receiver_type);
+
+                auto found = info.methods.find(member.name);
+                if (found != info.methods.end())
+                {
+                    FunctionInfo& function = function_at(found->second);
+
+                    if (function.is_method == false)
+                    {
+                        error(span, "'" + member.name + "' is a static function, not a method");
+
+                        return std::nullopt;
+                    }
+
+                    return make_callee(function.sig, RefKind::Method, found->second, member.target.get());
+                }
+            }
+
+            if (natives() != nullptr)
+            {
+                auto match = natives()->find_method(types(), receiver_type, member.name);
+                if (match.has_value())
+                    return make_callee(match->sig, RefKind::NativeMethod, match->id, member.target.get());
+            }
+
+            error(span, "'" + type_name(receiver_type) + "' has no method '" + member.name + "'");
+            return std::nullopt;
+        }
+
+        static const ParamSig* param_for_argument(const FunctionSig& sig, size_t arg_index)
+        {
+            if (arg_index < sig.params.size())
+                return &sig.params[arg_index];
+
+            if (sig.variadic && !sig.params.empty())
+                return &sig.params.back();
+
+            return nullptr;
+        }
+
+        ExprInfo fail_call(const std::vector<ast::ExprPtr>& args)
+        {
+            for (const ast::ExprPtr& arg : args)
+                resolve_expr(*arg);
+
+            return make_einfo(BaseTypes::Error);
+        }
 
 
 
