@@ -25,9 +25,14 @@ struct A
 {
     a: string[]
 
-    fn clear(ref self: A)
+    fn clearw(ref self: A)
     {
         self.a = [];
+    }
+
+    fn empty() -> A
+    {
+        return #A{ a = [] }
     }
 }
 
@@ -43,6 +48,9 @@ fn function_in_main() -> void
 
     var a = #A{a = ["1","2"]}
     a.clear();
+
+    var newa = @A.empty();
+
 
 
     var f: float = 1 + 2
