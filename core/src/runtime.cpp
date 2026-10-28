@@ -2,7 +2,7 @@
 
 namespace foo
 {
-    void Runtime::inject(TypeTable &types, NativeRegistry& natives)
+    void Runtime::inject(TypeTable& types, NativeRegistry& natives)
     {
         FunctionSig signature;
 
@@ -12,9 +12,9 @@ namespace foo
         natives.add_function("println",signature);
         natives.add_function("print",signature);
 
-        natives.add_static_function("new", [](TypeTable& types, TypeId receiver) -> std::optional<FunctionSig>
+        natives.add_static_function("new", [](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
         {
-            if (types.kind(receiver) != TypeKind::Map)
+            if (ts.kind(receiver) != TypeKind::Map)
                 return std::nullopt;
 
             FunctionSig sig;

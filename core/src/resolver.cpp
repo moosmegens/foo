@@ -1,9 +1,11 @@
 #include <iostream>
 #include <foo/resolver.hpp>
+
+#include <foo/debug/debug_out.hpp>
+
 #include <ranges>
 
-#include "foo/debug/debug_out.hpp"
-#include "foo/util/overloaded.hpp"
+#include <foo/util/overloaded.hpp>
 
 
 namespace foo
@@ -382,7 +384,7 @@ namespace foo
             {
                 if (!d)
                 {
-                    foo::print_trace("DeclPtr is NULL!");
+                    foo::println("DeclPtr is NULL!");
                     return;
                 }
 
@@ -1599,7 +1601,7 @@ namespace foo
         return result;
     }
 
-    std::string to_string(const ResolveOutput& o, const FunctionInfo& _function, bool nerd)
+    std::string to_string(const ResolveOutput& o, const FunctionInfo& _function, [[maybe_unused]] bool nerd)
     {
         std::string result = foo::to_string(_function.path);
 

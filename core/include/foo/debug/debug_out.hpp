@@ -33,17 +33,13 @@ namespace foo
     template <typename... Args>
     inline void print([[maybe_unused]] const Args&... args)
     {
-#ifndef NDEBUG
-        std::cerr << detail::join(args...);
-#endif
+        std::cout << detail::join(args...);
     }
 
     template <typename... Args>
     inline void println([[maybe_unused]] const Args&... args)
     {
-#ifndef NDEBUG
-        std::cerr << detail::join(args...) << '\n';
-#endif
+        std::cout << detail::join(args...) << '\n';
     }
 }
 

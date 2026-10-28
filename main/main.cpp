@@ -15,8 +15,6 @@
 
 #include <foo/ast_printer.hpp>
 
-#include <foo/debug/log.hpp>
-
 #include "foo/collector.hpp"
 #include "foo/util/str.hpp"
 
