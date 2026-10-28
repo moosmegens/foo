@@ -950,6 +950,7 @@ namespace foo
             [&](const ast::BoolLit&)            { return make_einfo(BaseTypes::Bool); },
             [&](const ast::ArrayLit& e)         { return resolve_array_expr(e, span, expected_type); },
             [&](const ast::StructLit& e)        { return resolve_struct_lit(e, span); },
+            [&](const ast::Name e)              { return resolve_name(e, span); },
 
 
                     [&](const auto&)            { return make_einfo(BaseTypes::Error); }
@@ -1046,6 +1047,20 @@ namespace foo
             _output.struct_lit_fields[&lit] = std::move(field_indices);
 
             return make_einfo(type, RefKind::StructLit, types().struct_id(type));
+        }
+
+        ExprInfo resolve_name(const ast::Name& name, const SourceSpan& span)
+        {
+            if (name.path.size() == 1)
+            {
+                const LocalInfo* local = find_local(name.path[0]);
+
+                if (local != nullptr)
+                    return make_einfo(local->type, RefKind::Local, local->slot);
+            }
+
+            error(span, "unknown variable '" + to_string(name.path) + "'");
+            return make_einfo(BaseTypes::Error);
         }
 
 

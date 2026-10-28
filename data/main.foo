@@ -1,15 +1,9 @@
 import "a", "fn";
 
-struct u
-{
-    a: int;
-    b: int[];
-}
-
 struct other_struct
 {
     a: io::file[]
-    b: u?
+    b: A?
 }
 
 struct my_struct
@@ -27,7 +21,31 @@ fn main()
 {
 }
 
+struct A
+{
+    a: B[]
+}
+
+struct B
+{
+    content: string[]
+}
+
 fn a(a: int, b: string[]) -> void
 {
-    var array = #u{ a = "", b = [1,2,3,4] };
+    var invalid = 5
+    var good = #B{
+        content = ["hello", "world"]
+    },
+
+    var alit = #A{
+        a = [
+            #B{
+                content = ["hello", "world"]
+            },
+            #B{content = []},
+            good,
+            invalid
+        ]
+    }
 }
