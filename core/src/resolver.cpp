@@ -337,7 +337,6 @@ namespace foo
                     return static_cast<int>(i);
             }
 
-            std::cout << "returning -1 from find field" << std::endl;
             return -1;
         }
 
@@ -836,7 +835,27 @@ namespace foo
 
         void resolve_return(const ast::Return& ret, const SourceSpan& span)
         {
+            if (!ret.value)
+            {
+                if (_current_return_type != BaseTypes::Void)
+                    error(span, "missing return value, expected '" + type_name(_current_return_type) + "'");
 
+                return;
+            }
+
+            TypeId value_type = resolve_expr(*ret.value, _current_return_type);
+
+            if (_current_return_type == BaseTypes::Void)
+                error(ret.value->span, "a void function cannot return a value");
+            else
+            {
+                if (!assignable(_current_return_type, value_type))
+                {
+                    error(span,
+                        "type mismatch: expected return type '" + type_name(_current_return_type)
+                        + "' but got '"+ type_name(value_type) + "'");
+                }
+            }
         }
 
         void resolve_if(const ast::If& if_stmt)
@@ -990,9 +1009,7 @@ namespace foo
             [&](const ast::Index& e)            { return resolve_index(e, span); },
             [&](const ast::Member& e)           { return resolve_member(e, span); },
             [&](const ast::Call& e)             { return resolve_call(e, span); },
-            [&](const ast::StaticCall& e)       { return resolve_static_call(e, span); },
-
-            [&](const auto&)                    { return make_einfo(BaseTypes::Error); }
+            [&](const ast::StaticCall& e)       { return resolve_static_call(e, span); }
             }, expr.kind);
 
             _output.exprs[&expr] = info;
@@ -1134,12 +1151,10 @@ namespace foo
 
         ExprInfo resolve_binary(const ast::Binary& binary, const SourceSpan& span)
         {
-            std::cout << "######## resolve_binary" << std::endl;
             using Op = ast::BinaryOp;
 
             if (binary.op == Op::Assign)
             {
-                std::cout << "######## resolve_binary Assign" << std::endl;
                 return resolve_assign(binary);
             }
 
@@ -1222,7 +1237,6 @@ namespace foo
 
         ExprInfo resolve_assign(const ast::Binary& assign)
         {
-            std::cout << "######## resolve_assign" << std::endl;
             TypeId target_type = resolve_expr(*assign.lhs);
             TypeId value_type = resolve_expr(*assign.rhs, target_type);
 
@@ -1264,29 +1278,22 @@ namespace foo
         {
             TypeId target_type = resolve_expr(*member.target);
 
-            std::cout << "######## resolve_member" << std::endl;
 
             if (target_type == BaseTypes::Error)
                 return make_einfo(BaseTypes::Error);
 
-            std::cout << "######## resolve_member no error" << std::endl;
 
             if (is_struct_type(target_type))
             {
-                std::cout << "######## resolve_member is struct" << std::endl;
-
-
                 StructInfo& info = struct_of_type(target_type);
                 int field_index = find_field(info, member.name);
 
                 if (field_index >= 0)
                 {
-                    std::cout << "######## resolve_member valid field" << std::endl;
 
                     TypeId field_type = info.fields[static_cast<size_t>(field_index)].type;
                     return make_einfo(field_type, RefKind::Field, field_index);
                 }
-                std::cout << "######## resolve_member invalid field" << std::endl;
             }
 
             error(span, "'" + type_name(target_type) + "' has no field '" + member.name + "'");
@@ -1319,6 +1326,8 @@ namespace foo
             bool needs_variable = (callee->receiver != nullptr) && callee->sig.self_by_ref;
             if (needs_variable && is_lvalue(*callee->receiver) == false)
                 error(callee->receiver->span, "this method takes self by reference, the receiver must be a lvalue");
+
+            resolve_args(callee->sig, call.args, span);
 
             return make_einfo(callee->sig.ret);
         }
@@ -1353,6 +1362,8 @@ namespace foo
 
             if (callee.has_value() == false)
                 return fail_call(call.args);
+
+            resolve_args(callee->sig, call.args, span);
 
             return make_einfo(callee->sig.ret, callee->ref, callee->index);
         }
@@ -1473,6 +1484,44 @@ namespace foo
                 return &sig.params.back();
 
             return nullptr;
+        }
+
+        void resolve_args(const FunctionSig& sig, const std::vector<ast::ExprPtr>& args, const SourceSpan& span)
+        {
+            const size_t param_count = sig.params.size();
+            const size_t arg_count = args.size();
+
+            if (sig.variadic)
+            {
+                size_t min_args = 0;
+                if (param_count > 0)
+                    min_args = param_count - 1;
+
+                if (arg_count < min_args)
+                    error(span, "expected at least " + std::to_string(min_args) + " argument(s), found " + std::to_string(arg_count));
+            }
+            else if (arg_count != param_count)
+            {
+                error(span, "expected " + std::to_string(param_count) + " argument(s), found " + std::to_string(arg_count));
+            }
+
+            for (size_t i = 0; i < arg_count; ++i)
+            {
+                const ast::Expr& arg = *args[i];
+                const ParamSig* param = param_for_argument(sig, i);
+
+                if (param == nullptr)
+                {
+                    resolve_expr(arg);
+                    continue;
+                }
+
+                TypeId arg_type = resolve_expr(arg, param->type);
+                expect_assignable(param->type, arg_type, arg.span);
+
+                if (param->by_ref && is_lvalue(arg) == false)
+                    error(arg.span, "this parameter is by reference, pass a variable");
+            }
         }
 
         ExprInfo fail_call(const std::vector<ast::ExprPtr>& args)

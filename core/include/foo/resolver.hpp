@@ -301,9 +301,17 @@ namespace foo
         SourceSpan span;
     };
 
+    struct ResolveWarning
+    {
+        std::string message;
+        int file_index;
+        SourceSpan span;
+    };
+
     struct ResolveOutput
     {
         std::vector<ResolveError> errors;
+        std::vector<ResolveWarning> warnings;
 
         TypeTable type_table;
         std::vector<StructInfo> structs;

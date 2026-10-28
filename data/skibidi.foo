@@ -1,0 +1,5 @@
+struct toilet
+{
+    foo: [int, string]
+    baz: string[]
+}

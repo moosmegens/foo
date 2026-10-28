@@ -1,65 +1,6 @@
-import "a", "fn";
-
-struct other_struct
-{
-    a: io::file[]
-    b: A?
-}
-
-struct my_struct
-{
-    a: int[][]
-    b: [string, int]
-    c: [string, other_struct]
-    d: [string, a::my_struct]
-
-    fn method(ref self: my_struct)  {}
-    fn function(a: int)             {}
-}
+import "skibidi"
 
 fn main()
 {
-}
-
-struct A
-{
-    a: string[]
-
-    fn clear(ref self: A)
-    {
-        self.a = [];
-    }
-
-    fn empty() -> A
-    {
-        return #A{ a = [] }
-    }
-}
-
-struct B
-{
-    content: string[]
-}
-
-fn function_in_main() -> void
-{
-    var w = [1,2]
-    var s = ["a","b"]
-
-    var a = #A{a = ["1","2"]}
-    a.clear();
-
-    var newa = @A.empty();
-
-    var integer = @int.from_string() + 1;
-
-    var f: float = 1 + 2
-    var i1: int = 2 - 5;
-    var i2: int = 2 * 5;
-    var i3: int = 2 / 5;
-    var i4: int = 2 + 5;
-    var i5: int = 2 % 5;
-
-
-
+    var t = #skibidi::toilet{ foo = @[int,string].new(), baz = [] }
 }

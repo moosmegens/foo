@@ -147,6 +147,17 @@ void main2()
     from_string.ret = foo::BaseTypes::Int;
     natives.add_static_function("from_string", foo::BaseTypes::Int, from_string);
 
+    natives.add_static_function("new", [](foo::TypeTable& types, foo::TypeId receiver) -> std::optional<foo::FunctionSig>
+    {
+        if (types.kind(receiver) != foo::TypeKind::Map)
+            return std::nullopt;
+
+
+        foo::FunctionSig sig;
+        sig.ret = receiver;
+        return sig;
+    });
+
     r.resolver_input.natives = &natives;
 
     auto o = foo::resolve(r.resolver_input);
