@@ -313,6 +313,7 @@ namespace foo
                     return static_cast<int>(i);
             }
 
+            std::cout << "returning -1 from find field" << std::endl;
             return -1;
         }
 
@@ -911,6 +912,9 @@ namespace foo
 
         bool assignable(TypeId to, TypeId from)
         {
+            if (to == BaseTypes::Error || from == BaseTypes::Error)
+                return true;
+
             if (to == from)
                 return true;
 
@@ -945,6 +949,9 @@ namespace foo
             [&](const ast::StringLit&)          { return make_einfo(BaseTypes::String); },
             [&](const ast::BoolLit&)            { return make_einfo(BaseTypes::Bool); },
             [&](const ast::ArrayLit& e)         { return resolve_array_expr(e, span, expected_type); },
+            [&](const ast::StructLit& e)        { return resolve_struct_lit(e, span); },
+
+
                     [&](const auto&)            { return make_einfo(BaseTypes::Error); }
             }, expr.kind);
 
@@ -979,6 +986,68 @@ namespace foo
 
             return make_einfo(types().array_of(element_type));
         }
+
+        ExprInfo resolve_struct_lit(const ast::StructLit& lit, const SourceSpan& span)
+        {
+            TypeId type = resolve_type(lit.type);
+
+            if (type != BaseTypes::Error && types().kind(type) != TypeKind::Struct)
+            {
+                error(span, "'" + type_name(type) + "' is not a struct");
+                type = BaseTypes::Error;
+            }
+
+            if (type == BaseTypes::Error)
+            {
+                for (const ast::FieldInit& init : lit.fields)
+                    resolve_expr(*init.value);
+
+                return make_einfo(BaseTypes::Error);
+            }
+
+            StructInfo& info = struct_at(types().struct_id(type));
+            std::vector<bool> field_was_set(info.fields.size(), false);
+
+            std::vector<int> field_indices;
+
+            field_indices.reserve(lit.fields.size());
+
+
+            for (const ast::FieldInit& init : lit.fields)
+            {
+                int field_index = find_field(info, init.name);
+                field_indices.push_back(field_index);
+
+                if (field_index < 0)
+                {
+                    error(init.span, "'" + to_string(info.path) + "' has no field '" + init.name + "'");
+                    resolve_expr(*init.value);
+                    continue;
+                }
+
+                const size_t index = static_cast<size_t>(field_index);
+
+                if (field_was_set[index])
+                    error(init.span, "field '" + init.name + "' is set twice");
+
+                field_was_set[index] = true;
+
+                TypeId field_type = info.fields[index].type;
+                TypeId value_type = resolve_expr(*init.value, field_type);
+                expect_assignable(field_type, value_type, init.value->span);
+            }
+
+            for (size_t i = 0; i < field_was_set.size(); i++)
+            {
+                if (field_was_set[i] == false)
+                    error(span, "missing field '" + info.fields[i].name + "'");
+            }
+
+            _output.struct_lit_fields[&lit] = std::move(field_indices);
+
+            return make_einfo(type, RefKind::StructLit, types().struct_id(type));
+        }
+
 
 
 

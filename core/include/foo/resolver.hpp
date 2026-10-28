@@ -299,6 +299,8 @@ namespace foo
         std::vector<StructInfo> structs;
         std::vector<FunctionInfo> functions;
 
+        std::unordered_map<const ast::StructLit*, std::vector<int>> struct_lit_fields;
+
         std::unordered_map<const ast::Expr*, ExprInfo> exprs;
         std::unordered_map<const ast::VarDecl*, LocalInfo> var_decls;
         std::unordered_map<const ast::ForIn*, LocalInfo> for_vars;

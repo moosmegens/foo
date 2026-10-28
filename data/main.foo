@@ -1,6 +1,10 @@
 import "a", "fn";
 
-struct u {}
+struct u
+{
+    a: int;
+    b: int[];
+}
 
 struct other_struct
 {
@@ -25,5 +29,5 @@ fn main()
 
 fn a(a: int, b: string[]) -> void
 {
-    var array = [[],[1]]
+    var array = #u{ a = "", b = [1,2,3,4] };
 }
