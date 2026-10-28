@@ -33,12 +33,13 @@ struct B
 
 fn function_in_main() -> void
 {
+    var w = [1,2]
     var s = ["a","b"]
     var a = [s,s]
 
     var blit = #B{ content = a[0] }
 
-    s = blit.a;
+    w = blit.content;
 
     var f: float = 1 + 2
     var i1: int = 2 - 5;

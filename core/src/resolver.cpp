@@ -945,7 +945,7 @@ namespace foo
             if (assignable(to, from))
                 return;
 
-            error(span, "expected '" + type_name(to) + "', found '" + type_name(from) + "'");
+            error(span, "type mismatch: cannot assign '" + type_name(from) + "' to '" + type_name(to) + "'");
         }
 
 
