@@ -23,6 +23,23 @@ namespace foo
     //     return ss.str();
     // }
 
+    inline std::vector<std::string> list_dir(const std::filesystem::path& path)
+    {
+        std::vector<std::string> files;
+        std::error_code ec;
+
+        for (std::filesystem::directory_iterator it(path, ec), end;
+             !ec && it != end;
+             it.increment(ec))
+        {
+            std::error_code file_ec;
+            if (it->is_regular_file(file_ec))
+                files.push_back(it->path().filename().string());
+        }
+
+        return files;
+    }
+
     inline std::expected<std::monostate, std::string> create_file(const std::filesystem::path& path)
     {
         std::error_code ec;

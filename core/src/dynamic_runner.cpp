@@ -30,6 +30,18 @@ namespace foo
         Value(bool v) : data(v) {}
         Value(std::string v) : data(std::move(v)) {}
         Value(Array v) : data(std::move(v)) {}
+
+        template <typename T>
+        static Array make_array(const std::vector<T>& array)
+        {
+            Array a;
+
+            for (size_t i = 0; i < array.size(); i++)
+                a.push_back(Value{array[i]});
+
+
+            return a;
+        }
     };
 
     static std::string display(const Value& v, bool string_qouted = false)
@@ -350,6 +362,25 @@ namespace foo
                 {
                     fail("file_append expects 2 argument <string, string> c", span);
                 }
+            };
+
+            _builtin_functions["io::dir"] = [](std::span<Value> a, SourceSpan span) -> Value
+            {
+                if (a.size() != 1)
+                {
+                    fail("dir expects 1 argument <string>", span);
+                }
+
+                if (auto* v = std::get_if<std::string>(&a[0].data))
+                {
+                    return Value{Value::make_array(list_dir(*v))};
+
+                } else
+                {
+                    fail("dir expects 1 argument <string>", span);
+                }
+
+                return Value{};
             };
 
             _builtin_functions["io::create_path"] = [this](std::span<Value> a, SourceSpan span) -> Value
