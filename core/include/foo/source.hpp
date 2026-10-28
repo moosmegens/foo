@@ -88,7 +88,10 @@ namespace foo
         size_t underline_length{};
     };
 
-    inline std::vector<DiagnosticLine> get_diagnostic_lines(std::string_view source, const SourceSpan& span)
+    inline std::vector<DiagnosticLine> get_diagnostic_lines(
+        std::string_view source,
+        const SourceSpan& span,
+        size_t context_lines = 2)
     {
         std::vector<DiagnosticLine> lines;
 
@@ -102,6 +105,34 @@ namespace foo
             current = (nl == std::string_view::npos) ? 0 : nl + 1;
         }
 
+        for (size_t i = 0; i < context_lines && current > 0; i++)
+        {
+            size_t prev_nl = source.rfind('\n', current - 2);
+            current = (prev_nl == std::string_view::npos) ? 0 : prev_nl + 1;
+        }
+
+        size_t last_line_start = start;
+        if (end > 0)
+        {
+            size_t nl = source.rfind('\n', end - 1);
+            last_line_start = (nl == std::string_view::npos) ? 0 : nl + 1;
+        }
+
+        size_t last_line_end = source.find('\n', last_line_start);
+        if (last_line_end == std::string_view::npos)
+            last_line_end = source.size();
+
+        size_t range_end = last_line_end;
+        for (size_t i = 0; i < context_lines && range_end < source.size(); ++i)
+        {
+            range_end = source.find('\n', range_end + 1);
+            if (range_end == std::string_view::npos)
+            {
+                range_end = source.size();
+                break;
+            }
+        }
+
         int line_num = SourceSpan::get_line(source, current);
 
         while (true)
@@ -112,14 +143,17 @@ namespace foo
 
             size_t text_end = line_end;
             if (text_end > current && source[text_end - 1] == '\r')
-                --text_end;
+                text_end--;
 
             size_t u_start = std::min(std::max(current, start), text_end);
             size_t u_end = std::min(text_end, end);
             size_t u_len = u_end > u_start ? u_end - u_start : 0;
 
-            if (u_len == 0 && lines.empty())
+            if (u_len == 0 && start == end && start >= current && start <= text_end)
+            {
+                u_start = start;
                 u_len = 1;
+            }
 
             lines.push_back({
                 line_num,
@@ -128,7 +162,7 @@ namespace foo
                 u_len
             });
 
-            if (line_end + 1 >= end || line_end >= source.size())
+            if (line_end >= range_end || line_end >= source.size())
                 break;
 
             current = line_end + 1;

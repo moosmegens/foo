@@ -3,4 +3,8 @@ import "skibidi"
 fn main()
 {
     var t = #skibidi::toilet{ foo = @[int,string].new(), baz = [] }
+
+    var a: int
+
+
 }

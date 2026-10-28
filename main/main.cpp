@@ -43,11 +43,21 @@
 #define CLR_BRIGHT_CYAN    "\033[1;96m"
 #define CLR_BRIGHT_WHITE   "\033[1;97m"
 
-void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span)
+void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span, bool is_error = true, const std::string file = "")
 {
-    auto lines = foo::get_diagnostic_lines(src, span);
+    auto lines = foo::get_diagnostic_lines(src, span, is_error ? 2 : 1);
 
-    std::cout << CLR_RED << "error" << CLR_RESET << ": " << error << "\n";
+    std::string_view col = is_error ? CLR_RED : CLR_YELLOW;
+
+    if (is_error)
+        std::cout << col << "error" << CLR_RESET << ": " << error << "\n";
+    else
+        std::cout << col << "warning" << CLR_RESET << ": " << error << "\n";
+
+    if (!file.empty())
+    {
+        std::cout << file << "\n";
+    }
 
     if (lines.empty())
     {
@@ -60,22 +70,22 @@ void print_diagnostics(const std::string& error, std::string_view src, foo::Sour
 
     std::string pad(pad_len, ' ');
 
-    for (size_t i = 0; i < lines.size(); ++i)
+    for (const auto& dl : lines)
     {
-        const auto& dl = lines[i];
         std::string num_str = std::to_string(dl.line_number);
         std::string num_pad(pad_len - num_str.length(), ' ');
 
-        std::cout << CLR_CYAN << num_str << num_pad << " |" << CLR_RESET << " " << dl.text << "\n";
+        std::cout << CLR_CYAN << num_str << num_pad
+                  << " |" << CLR_BRIGHT_WHITE << " "
+                  << dl.text << CLR_RESET << '\n';
 
-        std::cout << pad << " " << CLR_CYAN << "|" << CLR_RESET << " ";
-        std::cout << std::string(dl.underline_start, ' ');
-        std::cout << CLR_RED << std::string(dl.underline_length, '^');
-
-        if (i == 0)
-            std::cout << " " << error;
-
-        std::cout << CLR_RESET << "\n";
+        if (dl.underline_length > 0)
+        {
+            std::cout << pad << " " << CLR_CYAN << "|" << CLR_RESET << " ";
+            std::cout << std::string(dl.underline_start, ' ');
+            std::cout << col << std::string(dl.underline_length, '^');
+            std::cout << " " << error << CLR_RESET << '\n';
+        }
     }
 }
 
@@ -187,13 +197,22 @@ void main2()
             }
         }
 
-    } else
+    }
+    else
     {
         for (const auto& err : o.errors)
         {
-            print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span);
+            print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span, true,
+                r.resolver_input.sources[err.file_index].path.string());
         }
     }
+
+    for (const auto& err : o.warnings)
+    {
+        print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span, false,
+            r.resolver_input.sources[err.file_index].path.string());
+    }
+
 }
 
 #define FASSERT(cond) if (!(cond)) { std::cout << #cond << std::endl; }

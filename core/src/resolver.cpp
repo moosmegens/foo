@@ -236,6 +236,11 @@ namespace foo
             _output.errors.push_back({std::move(message), _file_id, span});
         }
 
+        void warn(const SourceSpan& span, std::string message)
+        {
+            _output.warnings.push_back({std::move(message), _file_id, span});
+        }
+
         const std::vector<Path>& imports_of_current_file() const
         {
             return _imports[static_cast<size_t>(_file_id)];
@@ -828,6 +833,10 @@ namespace foo
             {
                 error(span, "variable '" + var.name + "' needs a type or an initializer");
                 type = BaseTypes::Error;
+            }
+            else
+            {
+                warn(span, "variable '" + var.name + "' doesn't have a initial value");
             }
 
             _output.var_decls[&var] = declare_local(var.name, type, span);
