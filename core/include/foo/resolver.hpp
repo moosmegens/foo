@@ -313,6 +313,8 @@ namespace foo
         std::vector<ResolveError> errors;
         std::vector<ResolveWarning> warnings;
 
+        NativeRegistry natives;
+
         TypeTable type_table;
         std::vector<StructInfo> structs;
         std::vector<FunctionInfo> functions;
@@ -330,7 +332,11 @@ namespace foo
     ResolveOutput resolve(const ResolverInput& input);
 
 
-    std::string type_name(TypeId type, const ResolveOutput& output, const NativeRegistry& natives);
+    std::string type_name(TypeId type, const ResolveOutput& output);
+
+    std::string to_string(const ResolveOutput& o, const FunctionSig& sig);
+    std::string to_string(const ResolveOutput& o, const StructInfo& _struct, bool nerd = false);
+    std::string to_string(const ResolveOutput& o, const FunctionInfo& _function, bool nerd = false);
 }
 
 #endif //FOO_RESOLVER_HPP

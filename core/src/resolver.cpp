@@ -117,8 +117,10 @@ namespace foo
     }
 
 // type name
-    std::string type_name(TypeId type, const ResolveOutput& output, const NativeRegistry& natives)
+    std::string type_name(TypeId type, const ResolveOutput& output)
     {
+        const auto& natives = output.natives;
+
         if (type == EmptyType)
             return "<none>";
 
@@ -135,17 +137,17 @@ namespace foo
             case TypeKind::Any:     return "any";
 
             case TypeKind::Range:
-                return "range<" + type_name(types.element(type), output, natives) + ">";
+                return "range<" + type_name(types.element(type), output) + ">";
 
             case TypeKind::Array:
-                return "array<" + type_name(types.element(type), output, natives) + ">";
+                return "array<" + type_name(types.element(type), output) + ">";
 
             case TypeKind::Optional:
-                return "optional<" + type_name(types.element(type), output, natives) + ">";
+                return "optional<" + type_name(types.element(type), output) + ">";
 
             case TypeKind::Map:
-                return "map<" + type_name(types.key(type), output, natives)
-                    + ", " + type_name(types.value(type), output, natives) + ">";
+                return "map<" + type_name(types.key(type), output)
+                    + ", " + type_name(types.value(type), output) + ">";
 
             case TypeKind::Struct:
             {
@@ -172,6 +174,7 @@ namespace foo
         ResolveOutput resolve()
         {
             _output.type_table = _input.types;
+            _output.natives = _input.natives;
 
             discover_decls_from_files();
             resolve_types();
@@ -245,7 +248,7 @@ namespace foo
 
         TypeTable& types() { return _output.type_table; }
 
-        const NativeRegistry& natives() const { return _input.natives; }
+        const NativeRegistry& natives() const { return _output.natives; }
 
 
         StructInfo& struct_at(StructId id)          { return _output.structs[static_cast<size_t>(id)]; }
@@ -624,7 +627,7 @@ namespace foo
 
         [[maybe_unused]] std::string type_name(TypeId type) const
         {
-            return foo::type_name(type, _output, natives());
+            return foo::type_name(type, _output);
         }
 
 
@@ -694,8 +697,6 @@ namespace foo
             _next_slot = 0;
             _max_slot = 0;
 
-            std::cout << "RESOLVING fn " << to_string(info.path) << '\n';
-
             push_locals();
 
             size_t first_param = 0;
@@ -750,7 +751,7 @@ namespace foo
                 return local;
             }
 
-            std::cout << "  slot " << local.slot << ": " << name << " : " << type_name(type) << "\n";
+            // std::cout << "  slot " << local.slot << ": " << name << " : " << type_name(type) << "\n";
 
             _next_slot += 1;
             _max_slot = std::max(_max_slot, _next_slot);
@@ -1542,5 +1543,68 @@ namespace foo
     {
         Resolver resolver{input};
         return resolver.resolve();
+    }
+
+
+    std::string to_string(const ResolveOutput& o, const StructInfo& _struct, bool nerd)
+    {
+        std::string result = foo::to_string(_struct.path);
+
+
+        result += "{ ";
+        bool first = true;
+        for (const auto& f : _struct.fields)
+        {
+            if (!first)
+                result += ", ";
+
+            result += f.name;
+            if (nerd)
+            {
+                result += ": ";
+                result += type_name(f.type, o);
+            }
+
+            first = false;
+        }
+
+        result += " }";
+
+
+        return result;
+    }
+
+    std::string to_string(const ResolveOutput& o, const FunctionSig& sig)
+    {
+        std::string result;
+
+        result += "(";
+        bool first = true;
+        for (const ParamSig& arg : sig.params)
+        {
+            if (!first)
+                result += ", ";
+
+            result += type_name(arg.type, o);
+            first = false;
+        }
+        if (sig.variadic)
+        {
+            result += "...";
+        }
+        result += ")";
+
+        result += " -> " + type_name(sig.ret, o);
+
+        return result;
+    }
+
+    std::string to_string(const ResolveOutput& o, const FunctionInfo& _function, bool nerd)
+    {
+        std::string result = foo::to_string(_function.path);
+
+        result += to_string(o, _function.sig);
+
+        return result;
     }
 }

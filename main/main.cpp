@@ -141,6 +141,8 @@ void main2()
             std::cout << foo::to_string(decl, 1) << '\n';
         }
         std::cout << CLR_RESET;
+
+        std::cout << std::endl;
     }
 
     foo::NativeRegistry natives;
@@ -160,29 +162,37 @@ void main2()
     auto o = foo::resolve(r.resolver_input);
     if (o.errors.empty())
     {
-        for (const auto& f : o.functions)
+        std::cout << CLR_BRIGHT_MAGENTA << "functions" << CLR_RESET << std::endl;
+        for (const auto& fn : o.functions)
         {
-            std::cout << "fn     " << foo::to_string(f.path) << " (";
-            bool first = true;
-            for (const auto& p : f.sig.params)
-            {
-                if (!first)
-                    std::cout << ", ";
-
-                first = false;
-                std::cout << foo::type_name(p.type, o, r.resolver_input.natives);
-            }
-            std::cout << ") -> " << foo::type_name(f.sig.ret, o, r.resolver_input.natives) << " SLOTS: " << f.slot_count <<'\n';
+            std::cout << foo::to_string(o, fn) << std::endl;
         }
+        std::cout << std::endl;
 
+        std::cout << CLR_BRIGHT_MAGENTA << "structs" << CLR_RESET << std::endl;
         for (const auto& s : o.structs)
         {
-            std::cout << "struct " << foo::to_string(s.path) << '\n';
-            for (const auto& f : s.fields)
-            {
-                std::cout << "    " << f.name << ": " << foo::type_name(f.type, o, r.resolver_input.natives) << '\n';
-            }
+            std::cout << foo::to_string(o, s, true) << std::endl;
         }
+        std::cout << std::endl;
+
+        std::cout << CLR_BRIGHT_MAGENTA << "native types" << CLR_RESET << std::endl;
+        for (const auto& s : o.natives.type_names())
+        {
+            std::cout << s << std::endl;
+        }
+        std::cout << std::endl;
+
+
+        //
+        // for (const auto& s : o.structs)
+        // {
+        //     std::cout << "struct " << foo::to_string(s.path) << '\n';
+        //     for (const auto& f : s.fields)
+        //     {
+        //         std::cout << "    " << f.name << ": " << foo::type_name(f.type, o, r.resolver_input.natives) << '\n';
+        //     }
+        // }
 
     }
     else

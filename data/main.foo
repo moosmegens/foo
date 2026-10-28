@@ -1,10 +1,13 @@
 import "skibidi"
 
-fn main()
+fn a(ks: int[], vs: string[]) -> [int, string]
 {
-    var t = #skibidi::toilet{ foo = @[int,string].new(), baz = [] }
 
-    var a: int
+    return @[int, string].new()
+}
 
-    print()
+fn main() -> int
+{
+
+    return 5
 }
