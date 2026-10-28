@@ -24,7 +24,7 @@ fn main()
     var a: int = func() var b: int
 }
 
-fn a(a: int, b: string[]) -> [string, int]
+fn a(a: int, b: string[]) -> void
 {
 
 }

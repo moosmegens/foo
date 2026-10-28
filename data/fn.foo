@@ -1,4 +1,4 @@
-fn A(a: int, b: float) -> io::file
+fn A(a: int, b: float)
 {
     {
         var b = 10;
@@ -6,4 +6,6 @@ fn A(a: int, b: float) -> io::file
     {
         var b = 10;
     }
+
+
 }

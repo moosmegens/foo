@@ -662,7 +662,7 @@ namespace foo
                 first_param = 1;
             }
 
-            for (size_t i = first_param; i < decl.params.size(); ++i)
+            for (size_t i = first_param; i < decl.params.size(); i++)
             {
                 const ast::Param& param = decl.params[i];
                 TypeId type = info.sig.params[i - first_param].type;
@@ -671,6 +671,9 @@ namespace foo
             }
 
             resolve_block(decl.body);
+
+            if (_current_return_type != BaseTypes::Void && block_always_returns(decl.body) == false)
+                error(info.span, "'" + to_string(info.path) + "' does not return a value on every path");
 
             pop_locals();
 
@@ -810,6 +813,76 @@ namespace foo
             if (check.bad_branch)
                 check_stmt_in_own_scope(check.bad_branch);
         }
+
+        static bool block_always_returns(const ast::Block& block)
+        {
+            for (const ast::StmtPtr& stmt : block.statements)
+            {
+                if (stmt_always_returns(*stmt))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool stmt_always_returns(const ast::Stmt& stmt)
+        {
+            return std::visit(overload{
+                [](const ast::Return&)
+                {
+                    return true;
+                },
+                [](const ast::Block& block)
+                {
+                    return block_always_returns(block);
+                },
+                [](const ast::If& if_stmt)
+                {
+                    if (!if_stmt.else_branch)
+                        return false;
+
+                    return stmt_always_returns(*if_stmt.then_branch) && stmt_always_returns(*if_stmt.else_branch);
+                },
+                [](const ast::Check& check)
+                {
+                    if (!check.bad_branch)
+                        return false;
+
+                    return stmt_always_returns(*check.good_branch) && stmt_always_returns(*check.bad_branch);
+                },
+                [](const auto&)
+                {
+                    return false;
+                }
+            }, stmt.kind);
+        }
+
+
+        // exprs
+
+        static bool is_lvalue(const ast::Expr& expr)
+        {
+            return std::visit(overload{
+                [](const ast::Name&)
+                {
+                    return true;
+                },
+                [](const ast::Index& index)
+                {
+                    return is_lvalue(*index.target);
+                },
+                [](const ast::Member& member)
+                {
+                    return is_lvalue(*member.target);
+                },
+                [](const auto&)
+                {
+                    return false;
+                }
+            }, expr.kind);
+        }
+
+
 
 
     }; // class
