@@ -304,34 +304,90 @@ fn main() -> int
 R"AAA(
 fn main() -> int
 {
-    // optional bool
-    var a: bool? = true
+    // optional int
+    var a: int? = 0
 
     check a => good_a
     {
         // a exists,
-        //  good_a is of type bool
+        //  good_a is of type int
+        var new_a: int = good_a;
 
-        var new_a: bool = good_a;
+        return new_a
     } else
     {
         // a was null
+        return -1
     }
 }
 )AAA"
 },
 });
 
+    add("multiple_files",
+{
+{"main",
+R"AAA(
+import "a"
+
+fn main() -> int
+{
+    return a::double(10)
+}
+)AAA"
+}, {"a", R"AAA(
+fn double(x: int) -> int
+{
+    return x * 2
+}
+)AAA"}
+});
+
+    add("arrays",
+{
+    {"main",
+R"AAA(
+fn main() -> void
+{
+    var a_0: int[] = [1, 2, 3]
+
+    var a_1: int[][] = [ [1,2],
+                         [3,4] ]
+
+    a_0 = a_1[0]
+}
+)AAA"
+        },
+    });
+
+
+    //     add("hello_world",
+    // {
+    //     {"main",
+    // R"AAA(
+    // fn main() -> void
+    // {
+    //     println("Hello, World!")
+    // }
+    // )AAA"
+    //         },
+    //     });
+
 
     add("any",
 {
 {"main",
 R"AAA(
-fn main() -> void
+fn main() -> int
 {
     var a: any = 5;
 
-    a + 5
+    check @int.from(a) => is_int
+    {
+        return is_int
+    } else {
+        return 0
+    }
 }
 )AAA"
 },
@@ -375,8 +431,6 @@ fn main() -> int
 },
 });
 
-
-
     return examples;
 }
 
@@ -405,9 +459,11 @@ int main(int argc, char** argv)
         .help("Set up single file project");
 
     program.add_argument("--examples")
-        .default_value(false)
-        .implicit_value(true)
+        .default_value(std::string{""})
+        .implicit_value(std::string{"examples"})
         .help("Create an example folder with all the examples");
+
+
 
     try
     {
@@ -423,23 +479,40 @@ int main(int argc, char** argv)
     const bool ast = program.get<bool>("--ast");
     const bool setup = program.get<bool>("--setup");
     const bool check = program.get<bool>("--check");
-    const bool examples = program.get<bool>("--examples");
+    const std::string examples = program.get<std::string>("--examples");
 
-    bool should_run = !check && !examples && !setup && !ast;
+    bool should_run = !check && examples.empty() && !setup && !ast;
 
-    if (examples)
+    if (!examples.empty())
     {
-        auto example_list = create_examples();
-        for (const auto& e : example_list)
-        {
-            create_example_files(e,"examples");
-        }
+        std::filesystem::create_directories(examples);
 
-        if (check)
+        if (!std::filesystem::is_empty(examples))
         {
+            auto example_list = create_examples();
+            if (check)
+            {
+                for (const auto& e : example_list)
+                {
+                    check_example(e, examples);
+                }
+            }
+
+            std::cout << CLR_YELLOW << "no new examples were added, clear the directory or give a unique one" << CLR_RESET << std::endl;
+        } else
+        {
+            auto example_list = create_examples();
             for (const auto& e : example_list)
             {
-                check_example(e, "examples");
+                create_example_files(e,examples);
+            }
+
+            if (check)
+            {
+                for (const auto& e : example_list)
+                {
+                    check_example(e, examples);
+                }
             }
         }
     }
@@ -492,7 +565,7 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    if (check && !examples)
+    if (check && examples.empty())
     {
         std::filesystem::path path = script;
 

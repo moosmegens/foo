@@ -31,6 +31,50 @@ namespace foo
             return sig;
         });
 
+        natives.add_method("at", [](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+        {
+            if (ts.kind(receiver) == TypeKind::Array)
+            {
+                FunctionSig sig;
+                sig.ret = ts.optional_of(ts.element(receiver));
+                sig.variadic = false;
+                sig.params = {{BaseTypes::Int}};
+                return sig;
+            }
+
+            if (ts.kind(receiver) != TypeKind::String)
+            {
+                FunctionSig sig;
+                sig.ret = ts.optional_of(BaseTypes::String);
+                sig.variadic = false;
+                sig.params = {{BaseTypes::Int}};
+                return sig;
+            }
+
+            return std::nullopt;
+        });
+
+        natives.add_method("length", [](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+        {
+            if (ts.kind(receiver) == TypeKind::Array)
+            {
+                FunctionSig sig;
+                sig.ret = BaseTypes::Int;
+                sig.variadic = false;
+                return sig;
+            }
+
+            if (ts.kind(receiver) != TypeKind::String)
+            {
+                FunctionSig sig;
+                sig.ret = BaseTypes::Int;
+                sig.variadic = false;
+                return sig;
+            }
+
+            return std::nullopt;
+        });
+
 
     }
 }

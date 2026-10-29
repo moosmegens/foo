@@ -384,6 +384,8 @@ namespace foo::ast
         TypeExprPtr return_type;
         Block body;
 
+        SourceSpan decl_span = {};
+
         bool operator==(const FnDecl& other) const
         {
             return name == other.name

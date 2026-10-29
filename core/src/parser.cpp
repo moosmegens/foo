@@ -517,6 +517,7 @@ namespace foo
 
             std::optional<ast::FnDecl> parse_fn_decl()
             {
+                SourceSpan decl_span{current().source.start, 0};
                 if (!check<tok::Identifier>())
                 {
                     report_error(current(), "Expected function name");
@@ -552,13 +553,17 @@ namespace foo
                         return std::nullopt;
                 }
 
+                finish_span(decl_span);
+
                 auto body = parse_block_body();
                 if (!body)
                     return std::nullopt;
 
 
                 return ast::FnDecl{
-                    std::move(name), std::move(params), std::move(return_type), std::move(*body)
+                    std::move(name), std::move(params), std::move(return_type), std::move(*body),
+
+                    decl_span
                 };
             }
 

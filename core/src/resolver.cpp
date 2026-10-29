@@ -412,7 +412,7 @@ namespace foo
             FunctionInfo info;
             info.path = path_child(scope, fn.name);
             info.file_index = _file_id;
-            info.span = span;
+            info.span = fn.decl_span;
             info.decl = &fn;
 
 
