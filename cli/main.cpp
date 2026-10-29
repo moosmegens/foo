@@ -403,6 +403,11 @@ fn good_function() -> int
     return 420
 }
 
+fn needs_input(a: int, b: any) -> void
+{
+
+}
+
 fn main() -> int
 {
     var good_var = ["a","b"]
@@ -416,6 +421,23 @@ fn main() -> int
 
     // unknown variable
     var u_01 = IDONTEXIST
+
+
+
+    // not bool
+    if (5)          { }
+    while (t_01)    { }
+    while (1 + 1)   { }
+
+
+    // hidden types
+    var h_01: any = 1
+    t_01 = t_01 + h_01
+
+    // incorrect usage of function
+    needs_input(1)
+    needs_input()
+    needs_input("", "")
 
 
 

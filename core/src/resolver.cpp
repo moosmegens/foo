@@ -867,6 +867,13 @@ namespace foo
 
         void resolve_if(const ast::If& if_stmt)
         {
+            TypeId cond_type = resolve_expr(*if_stmt.cond);
+
+            if (!assignable(BaseTypes::Bool, cond_type))
+            {
+                error(if_stmt.cond->span, "type mismatch: condition doesn't result in bool, got '" + type_name(cond_type) + "'");
+            }
+
             check_stmt_in_own_scope(if_stmt.then_branch);
 
             if (if_stmt.else_branch)
@@ -876,14 +883,40 @@ namespace foo
 
         void resolve_while(const ast::While& while_stmt)
         {
+            TypeId cond_type = resolve_expr(*while_stmt.cond);
+            if (!assignable(BaseTypes::Bool, cond_type))
+            {
+                error(while_stmt.cond->span, "type mismatch: condition doesn't result in bool, got '" + type_name(cond_type) + "'");
+            }
+
             check_stmt_in_own_scope(while_stmt.body);
+        }
+
+        TypeId iteration_type(TypeId type, const SourceSpan& span)
+        {
+            if (type == BaseTypes::Error)
+                return BaseTypes::Error;
+
+            TypeKind kind = types().kind(type);
+
+            if (kind == TypeKind::Range || kind == TypeKind::Array)
+                return types().element(type);
+
+            if (kind == TypeKind::Map)
+                return types().key(type);
+
+            error(span, "cannot iterate over '" + type_name(type) + "'");
+            return BaseTypes::Error;
         }
 
         void resolve_for_in(const ast::ForIn& for_stmt, const SourceSpan& span)
         {
+            TypeId iterable_type = resolve_expr(*for_stmt.iterable);
+            TypeId element_type = iteration_type(iterable_type, for_stmt.iterable->span);
+
             push_locals();
 
-            _output.for_vars[&for_stmt] = declare_local(for_stmt.variable_name, EmptyType, span);
+            _output.for_vars[&for_stmt] = declare_local(for_stmt.variable_name, element_type, span);
             resolve_stmt(*for_stmt.body);
 
             pop_locals();
