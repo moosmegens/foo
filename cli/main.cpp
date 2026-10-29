@@ -530,31 +530,31 @@ fn main() -> int
 
 int main(int argc, char** argv)
 {
-    argparse::ArgumentParser program("foo", "0.0");
+    argparse::ArgumentParser program("foo", "0.1");
 
     program.add_argument("script")
         .default_value("main")
-        .help("Script file to execute");
+        .help("script file to use");
 
     program.add_argument("--ast")
         .default_value(false)
         .implicit_value(true)
-        .help("Print the AST");
+        .help("prints the AST");
 
     program.add_argument("-c", "--check")
         .default_value(false)
         .implicit_value(true)
-        .help("Check if script is executable");
+        .help("checks if script is executable");
 
     program.add_argument("--setup")
         .default_value(false)
         .implicit_value(true)
-        .help("Set up single file project");
+        .help("sets up single file project");
 
     program.add_argument("--examples")
         .default_value(std::string{""})
         .implicit_value(std::string{"examples"})
-        .help("Create an example folder with all the examples");
+        .help("creates an example folder with all the examples");
 
     program.add_argument("--decls")
         .default_value(false)
