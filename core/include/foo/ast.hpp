@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <memory_resource>
 #include <string>
 #include <variant>
 #include <vector>
@@ -15,8 +16,13 @@
 #include <foo/util/ptr_eq.hpp>
 
 
+
 namespace foo::ast
 {
+    inline std::pmr::unsynchronized_pool_resource ast_pool {
+        std::pmr::pool_options{ .max_blocks_per_chunk = 1 << 14, .largest_required_pool_block = 256 }
+    };
+
     struct Stmt;
     struct Expr;
     struct TypeExpr;
@@ -76,6 +82,9 @@ namespace foo::ast
         {
             return type == other.type;
         }
+
+        static void* operator new(std::size_t n) { return ast_pool.allocate(n); }
+        static void operator delete(void* p, std::size_t n) noexcept { ast_pool.deallocate(p, n); }
     };
 
 
@@ -238,6 +247,9 @@ namespace foo::ast
         {
             return kind == other.kind;
         }
+
+        static void* operator new(std::size_t n) { return ast_pool.allocate(n); }
+        static void operator delete(void* p, std::size_t n) noexcept { ast_pool.deallocate(p, n); }
     };
 
 
@@ -357,6 +369,9 @@ namespace foo::ast
         {
             return kind == other.kind;
         }
+
+        static void* operator new(std::size_t n) { return ast_pool.allocate(n); }
+        static void operator delete(void* p, std::size_t n) noexcept { ast_pool.deallocate(p, n); }
     };
 
 
@@ -451,6 +466,9 @@ namespace foo::ast
         {
             return kind == other.kind;
         }
+
+        static void* operator new(std::size_t n) { return ast_pool.allocate(n); }
+        static void operator delete(void* p, std::size_t n) noexcept { ast_pool.deallocate(p, n); }
     };
 }
 
