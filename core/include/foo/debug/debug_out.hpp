@@ -5,7 +5,6 @@
 #include <format>
 #include <source_location>
 #include <string>
-#include <print>
 
 namespace foo
 {

@@ -2,7 +2,7 @@
 
 namespace foo
 {
-    void Runtime::inject(TypeTable& types, NativeRegistry& natives)
+    void Runtime::inject(TypeTable&, NativeRegistry& natives)
     {
         FunctionSig signature;
 

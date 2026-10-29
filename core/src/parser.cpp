@@ -888,7 +888,7 @@ namespace foo
                     advance();
                     return std::make_unique<ast::Expr>(ast::BoolLit{value}, span);
                 }
-                if (auto* _ = std::get_if<tok::Hash>(&v))
+                if (std::get_if<tok::Hash>(&v))
                 {
                     advance();
 
