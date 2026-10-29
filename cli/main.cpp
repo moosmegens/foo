@@ -84,7 +84,7 @@ static void print_diagnostics(const std::string& error, std::string_view src, fo
     }
 }
 
-void check_script(std::filesystem::path path)
+void check_script(std::filesystem::path path, bool list_decls = false)
 {
     bool check_is_ok = true;
 
@@ -556,6 +556,11 @@ int main(int argc, char** argv)
         .implicit_value(std::string{"examples"})
         .help("Create an example folder with all the examples");
 
+    program.add_argument("--decls")
+        .default_value(false)
+        .implicit_value(true)
+        .help("List the resolved declarations");
+
 
 
     try
@@ -573,6 +578,7 @@ int main(int argc, char** argv)
     const bool setup = program.get<bool>("--setup");
     const bool check = program.get<bool>("--check");
     const std::string examples = program.get<std::string>("--examples");
+    const bool list_decls = program.get<bool>("--decls");
 
     bool should_run = !check && examples.empty() && !setup && !ast;
 
@@ -663,6 +669,40 @@ int main(int argc, char** argv)
         std::filesystem::path path = script;
 
         check_script(path);
+        std::cout << std::endl;
+    }
+
+    if (list_decls)
+    {
+        std::cout << "declarations: " << std::endl;
+
+        std::filesystem::path path = script;
+
+        auto co = foo::collect(path.parent_path(), path.filename().string());
+
+        auto ro = foo::resolve(co.resolver_input);
+
+
+        std::cout << CLR_BRIGHT_MAGENTA << "native types" << CLR_RESET << std::endl;
+        for (const auto& s : ro.natives.type_names())
+        {
+            std::cout << s << std::endl;
+        }
+        std::cout << std::endl;
+
+        std::cout << CLR_BRIGHT_MAGENTA << "functions" << CLR_RESET << std::endl;
+        for (const auto& fn : ro.functions)
+        {
+            std::cout << foo::to_string(ro, fn) << std::endl;
+        }
+        std::cout << std::endl;
+
+        std::cout << CLR_BRIGHT_MAGENTA << "structs" << CLR_RESET << std::endl;
+        for (const auto& s : ro.structs)
+        {
+            std::cout << foo::to_string(ro, s, true) << std::endl;
+        }
+        std::cout << std::endl;
     }
 
     if (should_run)
