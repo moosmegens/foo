@@ -13,20 +13,45 @@
 #include <foo/parser.hpp>
 #include <foo/source.hpp>
 #include <foo/ast_printer.hpp>
-#include <foo/debug/log.hpp>
 
 #include <foo/collector.hpp>
 
-void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span)
+#include "foo/runtime.hpp"
+
+#define CLR_BLACK   "\033[1;30m"
+#define CLR_RED     "\033[1;31m"
+#define CLR_GREEN   "\033[1;32m"
+#define CLR_YELLOW  "\033[1;33m"
+#define CLR_BLUE    "\033[1;34m"
+#define CLR_MAGENTA "\033[1;35m"
+#define CLR_CYAN    "\033[1;36m"
+#define CLR_WHITE   "\033[1;37m"
+#define CLR_RESET   "\033[0m"
+
+#define CLR_BRIGHT_BLACK   "\033[1;90m"
+#define CLR_BRIGHT_RED     "\033[1;91m"
+#define CLR_BRIGHT_GREEN   "\033[1;92m"
+#define CLR_BRIGHT_YELLOW  "\033[1;93m"
+#define CLR_BRIGHT_BLUE    "\033[1;94m"
+#define CLR_BRIGHT_MAGENTA "\033[1;95m"
+#define CLR_BRIGHT_CYAN    "\033[1;96m"
+#define CLR_BRIGHT_WHITE   "\033[1;97m"
+
+static void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span, bool is_error = true, const std::string file = "")
 {
-    #define CLR_RED "\033[1;31m"
-    #define CLR_CYAN "\033[1;36m"
-    #define CLR_BLUE "\033[1;34m"
-    #define CLR_RESET "\033[0m"
+    auto lines = foo::get_diagnostic_lines(src, span, is_error ? 2 : 1);
 
-    auto lines = foo::get_diagnostic_lines(src, span);
+    std::string_view col = is_error ? CLR_RED : CLR_YELLOW;
 
-    std::cout << CLR_RED << "error" << CLR_RESET << ": " << error << "\n";
+    if (is_error)
+        std::cout << col << "error" << CLR_RESET << ": " << error << "\n";
+    else
+        std::cout << col << "warning" << CLR_RESET << ": " << error << "\n";
+
+    if (!file.empty())
+    {
+        std::cout << file << "\n";
+    }
 
     if (lines.empty())
     {
@@ -39,29 +64,78 @@ void print_diagnostics(const std::string& error, std::string_view src, foo::Sour
 
     std::string pad(pad_len, ' ');
 
-    for (size_t i = 0; i < lines.size(); ++i)
+    for (const auto& dl : lines)
     {
-        const auto& dl = lines[i];
         std::string num_str = std::to_string(dl.line_number);
         std::string num_pad(pad_len - num_str.length(), ' ');
 
-        std::cout << CLR_CYAN << num_str << num_pad << " |" << CLR_RESET << " " << dl.text << "\n";
+        std::cout << CLR_CYAN << num_str << num_pad
+                  << " |" << CLR_BRIGHT_WHITE << " "
+                  << dl.text << CLR_RESET << '\n';
 
-        std::cout << pad << " " << CLR_CYAN << "|" << CLR_RESET << " ";
-        std::cout << std::string(dl.underline_start, ' ');
-        std::cout << CLR_RED << std::string(dl.underline_length, '^');
-
-        if (i == 0)
-            std::cout << " " << error;
-
-        std::cout << CLR_RESET << "\n";
+        if (dl.underline_length > 0)
+        {
+            std::cout << pad << " " << CLR_CYAN << "|" << CLR_RESET << " ";
+            std::cout << std::string(dl.underline_start, ' ');
+            std::cout << col << std::string(dl.underline_length, '^');
+            std::cout << " " << error << CLR_RESET << '\n';
+        }
     }
+}
+
+struct Example
+{
+    struct SingleFile
+    {
+        std::string name;
+        std::string text;
+    };
+
+    std::string suite;
+    std::vector<SingleFile> files;
+};
+
+static void create_example_files(const Example& e, std::filesystem::path root = "")
+{
+    std::filesystem::path path_to_folder = root / e.suite;
+    std::filesystem::create_directories(path_to_folder);
+
+    for (const auto& fileinfo : e.files)
+    {
+        std::filesystem::path path_to_file = path_to_folder / (fileinfo.name + ".foo");
+
+        std::ofstream file(path_to_file);
+        file << fileinfo.text << std::endl;
+        file.close();
+    }
+}
+
+static std::vector<Example> create_examples()
+{
+    std::vector<Example> examples;
+    int id = 0;
+    auto id_string = [&](std::string_view sv)
+    {
+        return std::to_string(id++) + "_" + std::string{sv};
+    };
+
+    examples.emplace_back(Example{
+        id_string("hello_world"),
+        {{"main", {
+                    "fn main() -> void\n"
+                    "{\n"
+                    "    println(\"Hello, World!\")\n"
+                    "}"
+        }}}
+    });
+
+    return examples;
 }
 
 
 int main(int argc, char** argv)
 {
-    argparse::ArgumentParser program("foo");
+    argparse::ArgumentParser program("foo", "0.0");
 
     program.add_argument("script")
         .default_value("main")
@@ -72,10 +146,20 @@ int main(int argc, char** argv)
         .implicit_value(true)
         .help("Print the AST");
 
+    program.add_argument("-c", "--check")
+        .default_value(false)
+        .implicit_value(true)
+        .help("Check if script is executable");
+
     program.add_argument("--setup")
         .default_value(false)
         .implicit_value(true)
-        .help("Sets up single file project");
+        .help("Set up single file project");
+
+    program.add_argument("--examples")
+        .default_value(false)
+        .implicit_value(true)
+        .help("Create an example folder with all the examples");
 
     try
     {
@@ -90,66 +174,117 @@ int main(int argc, char** argv)
     const auto script = program.get<std::string>("script");
     const bool ast = program.get<bool>("--ast");
     const bool setup = program.get<bool>("--setup");
+    const bool check = program.get<bool>("--check");
+    const bool examples = program.get<bool>("--examples");
+
+    bool should_run = !check && !examples && !setup && !ast;
+
+    if (examples)
+    {
+        auto example_list = create_examples();
+        for (const auto& e : example_list)
+        {
+            create_example_files(e,"examples");
+        }
+    }
+
+    if (ast)
+    {
+        std::filesystem::path path = script;
+
+        auto co = foo::collect(path.parent_path(), path.filename().string());
+
+        for (const auto& file : co.resolver_input.files)
+        {
+            std::cout << CLR_YELLOW << "[" << file.path << "]" << CLR_RESET <<'\n';
+
+            std::cout << CLR_GREEN;
+            for (const auto& decl : file.decls)
+            {
+                std::cout << foo::to_string(decl, 1) << '\n';
+            }
+            std::cout << CLR_RESET;
+
+            std::cout << std::endl;
+        }
+    }
 
     if (setup)
     {
-        std::ofstream file(script + ".foo");
+        std::filesystem::path path = script;
 
-        file << "fn main() -> void" << std::endl;
-        file << "{" << std::endl;
-        file << "    // this prints hello world" << std::endl;
-        file << "    io::println(\"Hello, World!\")" << std::endl;
-        file << "    " << std::endl;
-        file << "    return \"ok\" " << std::endl;
-        file << "}" << std::endl;
+        auto co = foo::collect(path.parent_path(), path.filename().string());
 
-        file.close();
+        if (std::filesystem::exists(script + ".foo"))
+        {
+            std::cout << "script " << script << " already exists" << std::endl;
+        } else
+        {
+            std::ofstream file(script + ".foo");
+
+            file << "fn main() -> void" << std::endl;
+            file << "{" << std::endl;
+            file << "    // this prints hello world" << std::endl;
+            file << "    io::println(\"Hello, World!\")" << std::endl;
+            file << "    " << std::endl;
+            file << "    return \"ok\" " << std::endl;
+            file << "}" << std::endl;
+
+            file.close();
+        }
 
         return 0;
     }
 
-    std::filesystem::path path = script;
-
-    auto r = foo::collect(path.parent_path(), path.filename().string());
-
-    for (const auto& err : r.errors)
+    if (check)
     {
-        if (err.file_id < 0)
+        bool check_is_ok = true;
+
+        std::filesystem::path path = script;
+
+        auto co = foo::collect(path.parent_path(), path.filename().string());
+
+        for (const auto& err : co.errors)
         {
-            std::cerr << "error: " << err.message << '\n';
-            continue;
+            print_diagnostics(err.message, co.resolver_input.sources[err.file_id].text, err.span, true,
+                co.resolver_input.sources[err.file_id].path.string());
+
+            check_is_ok = false;
         }
 
-        const auto& file = r.resolver_input.sources[static_cast<size_t>(err.file_id)];
 
-        print_diagnostics(
-            std::format("{}: {}", file.path.string(), err.message),
-            file.text,
-            err.span);
+        foo::Runtime::inject(co.resolver_input.types, co.resolver_input.natives);
+
+        auto ro = foo::resolve(co.resolver_input);
+
+        for (const auto& wrng : ro.warnings)
+        {
+            print_diagnostics(wrng.message, co.resolver_input.sources[wrng.file_index].text, wrng.span, false,
+                co.resolver_input.sources[wrng.file_index].path.string());
+
+        }
+
+        for (const auto& err : ro.errors)
+        {
+            print_diagnostics(err.message, co.resolver_input.sources[err.file_index].text, err.span, true,
+                co.resolver_input.sources[err.file_index].path.string());
+
+            check_is_ok = false;
+        }
+
+        if (check_is_ok)
+        {
+            std::cout << CLR_GREEN << "check: is ok" << CLR_RESET << std::endl;
+        } else
+        {
+            std::cout << CLR_RED << "check: not ok" << CLR_RESET << std::endl;
+        }
     }
 
-    std::vector<foo::ast::DeclPtr> decls;
-    for (auto& file : r.resolver_input.files)
+    if (should_run)
     {
-        decls.append_range(file.decls | std::views::as_rvalue);
-    }
+        std::filesystem::path path = script;
 
-    if (r.errors.empty())
-    {
-        if (ast)
-        {
-            for (auto& decl : decls)
-            {
-                std::cout << foo::to_string(decl) << std::endl;
-            }
-        }
-        else
-        {
-            auto err = foo::run(decls);
-            if (err)
-            {
-                print_diagnostics(err->message, r.resolver_input.sources[0].text, err->span);
-            }
-        }
+        auto r = foo::collect(path.parent_path(), path.filename().string());
     }
 }
