@@ -113,7 +113,7 @@ std::string load_file(const std::filesystem::path& path)
 void main2()
 {
     foo::scoped_timer t("timer");
-    auto r = foo::collect(foo_root() / "data", "main");
+    auto r = foo::collect(foo_root() / "data", "test_4000");
     for (const auto& err : r.errors)
     {
         if (err.file_id < 0)
@@ -130,30 +130,21 @@ void main2()
             err.span);
     }
 
-    for (const auto& file : r.resolver_input.files)
-    {
-        std::cout << CLR_YELLOW << "[" << file.path << "]" << CLR_RESET <<'\n';
-
-        std::cout << CLR_GREEN;
-        for (const auto& decl : file.decls)
-        {
-            std::cout << foo::to_string(decl, 1) << '\n';
-        }
-        std::cout << CLR_RESET;
-
-        std::cout << std::endl;
-    }
+    // for (const auto& file : r.resolver_input.files)
+    // {
+    //     std::cout << CLR_YELLOW << "[" << file.path << "]" << CLR_RESET <<'\n';
+    //
+    //     std::cout << CLR_GREEN;
+    //     for (const auto& decl : file.decls)
+    //     {
+    //         std::cout << foo::to_string(decl, 1) << '\n';
+    //     }
+    //     std::cout << CLR_RESET;
+    //
+    //     std::cout << std::endl;
+    // }
 
     foo::NativeRegistry natives;
-    natives.type(r.resolver_input.types, "io::file");
-
-    natives.add_method("to_string", [](foo::TypeTable& types, foo::TypeId receiver) -> std::optional<foo::FunctionSig>
-    {
-        foo::FunctionSig sig;
-        sig.ret = foo::BaseTypes::String;
-        return sig;
-    });
-
     r.resolver_input.natives = std::move(natives);
 
     foo::Runtime::inject(r.resolver_input.types, r.resolver_input.natives);
