@@ -205,6 +205,34 @@ fn main() -> void
         },
     });
 
+    add("variables",
+{
+{"main",
+R"AAA(
+fn main() -> int
+{
+    var is_int = 5
+
+    {
+        var is_also_int = 5
+
+        // < is_also_int ends here
+    }
+
+    // type annotations are needed when
+    //  it can't infer the type from the initializer
+    var variable_with_type: string[] = []
+
+    // here it isn't needed as it can infer string[] from ["a","b"]
+    var variable_without_type = ["a","b"]
+
+    return is_int
+    // < is_int ends here
+}
+)AAA"
+},
+});
+
     add("range",
 {
     {"main",
@@ -250,33 +278,25 @@ fn main() -> int
         },
     });
 
-    add("variables",
+    add("functions",
 {
 {"main",
 R"AAA(
+fn double(ref a: int) -> void
+{
+    a = a * 2
+}
+
 fn main() -> int
 {
-    var is_int = 5
+    var a = 5
 
-    {
-        var is_also_int = 5
-
-        // < is_also_int ends here
-    }
-
-    // type annotations are needed when
-    //  it can't infer the type from the initializer
-    var variable_with_type: string[] = []
-
-    // here it isn't needed as it can infer string[] from ["a","b"]
-    var variable_without_type = ["a","b"]
-
-    return is_int
-    // < is_int ends here
+    double(a)
 }
 )AAA"
     },
 });
+
 
 
     add("if",
@@ -359,6 +379,57 @@ fn main() -> void
 )AAA"
         },
     });
+
+    add("structs",
+{
+{"main",
+R"AAA(
+struct my_struct
+{
+    a: int
+    b: int
+}
+
+
+fn main() -> void
+{
+    var a = #my_struct{ a = 0, b = -1 }
+    a.a = 0
+
+    a.a = a.b * a.a
+}
+)AAA"
+    },
+});
+
+    add("methods",
+{
+{"main",
+R"AAA(
+struct my_struct
+{
+    a: int
+    b: int
+
+    // ref is used to modify the arg in place of caller or in order to save memory space.
+    fn times(ref self: my_struct, other: my_struct) -> void
+    {
+        self.a = self.a * other.a
+        self.b = self.b * other.b
+    }
+}
+
+
+fn main() -> void
+{
+    var a = #my_struct{ a = 0, b = -1 }
+
+    // times itself
+    a.times(a)
+}
+)AAA"
+},
+});
 
 
     //     add("hello_world",
