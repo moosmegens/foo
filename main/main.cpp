@@ -112,6 +112,7 @@ std::string load_file(const std::filesystem::path& path)
 
 void main2()
 {
+    foo::scoped_timer t("timer");
     auto r = foo::collect(foo_root() / "data", "main");
     for (const auto& err : r.errors)
     {
@@ -160,37 +161,6 @@ void main2()
     auto o = foo::resolve(r.resolver_input);
     if (o.errors.empty())
     {
-        std::cout << CLR_BRIGHT_MAGENTA << "functions" << CLR_RESET << std::endl;
-        for (const auto& fn : o.functions)
-        {
-            std::cout << foo::to_string(o, fn) << std::endl;
-        }
-        std::cout << std::endl;
-
-        std::cout << CLR_BRIGHT_MAGENTA << "structs" << CLR_RESET << std::endl;
-        for (const auto& s : o.structs)
-        {
-            std::cout << foo::to_string(o, s, true) << std::endl;
-        }
-        std::cout << std::endl;
-
-        std::cout << CLR_BRIGHT_MAGENTA << "native types" << CLR_RESET << std::endl;
-        for (const auto& s : o.natives.type_names())
-        {
-            std::cout << s << std::endl;
-        }
-        std::cout << std::endl;
-
-
-        //
-        // for (const auto& s : o.structs)
-        // {
-        //     std::cout << "struct " << foo::to_string(s.path) << '\n';
-        //     for (const auto& f : s.fields)
-        //     {
-        //         std::cout << "    " << f.name << ": " << foo::type_name(f.type, o, r.resolver_input.natives) << '\n';
-        //     }
-        // }
 
     }
     else

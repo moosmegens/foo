@@ -200,7 +200,7 @@ namespace foo
                 if (n.bad_branch)
                 {
                     out += "\n" + pad(indent) + "else";
-                    body(n.bad_branch, indent);
+                    out += body(n.bad_branch, indent);
                 }
                 return out;
             },
