@@ -29,7 +29,7 @@ namespace foo::ast
     struct Decl;
 
 
-    using TypeExprPtr = std::shared_ptr<TypeExpr>;
+    using TypeExprPtr = std::unique_ptr<TypeExpr>;
     using StmtPtr = std::unique_ptr<Stmt>;
     using ExprPtr = std::unique_ptr<Expr>;
     using DeclPtr = std::unique_ptr<Decl>;
