@@ -22,6 +22,15 @@ namespace foo
             return sig;
         });
 
+        natives.add_static_function("from", [](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+        {
+            FunctionSig sig;
+            sig.ret = ts.optional_of(receiver);
+            sig.variadic = false;
+            sig.params = {{BaseTypes::Any}};
+            return sig;
+        });
+
 
     }
 }

@@ -1,13 +1,11 @@
-import "skibidi"
-
-fn a(ks: int[], vs: string[]) -> [int, string]
-{
-
-    return @[int, string].new()
-}
-
 fn main() -> int
 {
+    var a: any = 5;
 
-    return 5
+    check @int.from(a) => is_int
+    {
+        return is_int
+    } else {
+        return 0
+    }
 }

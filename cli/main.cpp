@@ -323,6 +323,21 @@ fn main() -> int
 });
 
 
+    add("any",
+{
+{"main",
+R"AAA(
+fn main() -> void
+{
+    var a: any = 5;
+
+    a + 5
+}
+)AAA"
+},
+});
+
+
     add("should_error",
 {
 {"main",

@@ -608,6 +608,7 @@ namespace foo
                 if (s == "bool")    return BaseTypes::Bool;
                 if (s == "string")  return BaseTypes::String;
                 if (s == "void")    return BaseTypes::Void;
+                if (s == "any")     return BaseTypes::Any;
             }
 
             std::optional<StructId> found_struct = lookup_struct(parts);
@@ -890,9 +891,20 @@ namespace foo
 
         void resolve_check_stmt(const ast::Check& check, const SourceSpan& span)
         {
+            TypeId expr_type = resolve_expr(*check.expr);
+            TypeId inner_type = BaseTypes::Error;
+
+            if (expr_type != BaseTypes::Error)
+            {
+                if (types().kind(expr_type) == TypeKind::Optional)
+                    inner_type = types().element(expr_type);
+                else
+                    error(check.expr->span, "'check' needs an optional, found '" + type_name(expr_type) + "'");
+            }
+
             push_locals();
 
-            _output.check_vars[&check] = declare_local(check.variable_name, EmptyType, span);
+            _output.check_vars[&check] = declare_local(check.variable_name, inner_type, span);
             resolve_stmt(*check.good_branch);
 
             pop_locals();
