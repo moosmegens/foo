@@ -112,61 +112,59 @@ std::string load_file(const std::filesystem::path& path)
 
 void main2()
 {
-    foo::scoped_timer t("timer");
-    auto r = foo::collect(foo_root() / "data", "test_4000");
-    for (const auto& err : r.errors)
+    foo::scoped_timer t("total");
+
+    foo::CollectorOutput r;
+    foo::ResolveOutput o;
+
     {
-        if (err.file_id < 0)
+        foo::scoped_timer t("collecting");
+        r = foo::collect(foo_root() / "data", "test_4000");
+        for (const auto& err : r.errors)
         {
-            std::cerr << "error: " << err.message << '\n';
-            continue;
+            if (err.file_id < 0)
+            {
+                std::cerr << "error: " << err.message << '\n';
+                continue;
+            }
+
+            const auto& file = r.resolver_input.sources[static_cast<size_t>(err.file_id)];
+
+            print_diagnostics(
+                std::format("{}: {}", file.path.string(), err.message),
+                file.text,
+                err.span);
+        }
+    }
+
+
+    {
+        foo::scoped_timer t("resolving");
+
+        foo::NativeRegistry natives;
+        r.resolver_input.natives = std::move(natives);
+
+        foo::Runtime::inject(r.resolver_input.types, r.resolver_input.natives);
+
+        o = foo::resolve(r.resolver_input);
+        if (o.errors.empty())
+        {
+
+        }
+        else
+        {
+            for (const auto& err : o.errors)
+            {
+                print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span, true,
+                    r.resolver_input.sources[err.file_index].path.string());
+            }
         }
 
-        const auto& file = r.resolver_input.sources[static_cast<size_t>(err.file_id)];
-
-        print_diagnostics(
-            std::format("{}: {}", file.path.string(), err.message),
-            file.text,
-            err.span);
-    }
-
-    // for (const auto& file : r.resolver_input.files)
-    // {
-    //     std::cout << CLR_YELLOW << "[" << file.path << "]" << CLR_RESET <<'\n';
-    //
-    //     std::cout << CLR_GREEN;
-    //     for (const auto& decl : file.decls)
-    //     {
-    //         std::cout << foo::to_string(decl, 1) << '\n';
-    //     }
-    //     std::cout << CLR_RESET;
-    //
-    //     std::cout << std::endl;
-    // }
-
-    foo::NativeRegistry natives;
-    r.resolver_input.natives = std::move(natives);
-
-    foo::Runtime::inject(r.resolver_input.types, r.resolver_input.natives);
-
-    auto o = foo::resolve(r.resolver_input);
-    if (o.errors.empty())
-    {
-
-    }
-    else
-    {
-        for (const auto& err : o.errors)
+        for (const auto& err : o.warnings)
         {
-            print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span, true,
+            print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span, false,
                 r.resolver_input.sources[err.file_index].path.string());
         }
-    }
-
-    for (const auto& err : o.warnings)
-    {
-        print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span, false,
-            r.resolver_input.sources[err.file_index].path.string());
     }
 
 }
