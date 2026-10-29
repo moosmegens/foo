@@ -17,6 +17,7 @@
 #include <foo/collector.hpp>
 
 #include "foo/runtime.hpp"
+#include "foo/util/str.hpp"
 
 #define CLR_BLACK   "\033[1;30m"
 #define CLR_RED     "\033[1;31m"
@@ -83,6 +84,55 @@ static void print_diagnostics(const std::string& error, std::string_view src, fo
     }
 }
 
+void check_script(std::filesystem::path path)
+{
+    bool check_is_ok = true;
+
+    std::cout << CLR_BLUE << "checking: " << path.string() <<CLR_RESET << std::endl;
+
+    auto co = foo::collect(path.parent_path(), path.filename().string());
+
+    for (const auto& err : co.errors)
+    {
+        check_is_ok = false;
+        if (err.file_id == -1)
+        {
+            std::cout << CLR_BRIGHT_RED << "error: " << err.message << CLR_RESET << std::endl;
+            continue;
+        }
+
+        print_diagnostics(err.message, co.resolver_input.sources[err.file_id].text, err.span, true,
+            co.resolver_input.sources[err.file_id].path.string());
+    }
+
+
+    foo::Runtime::inject(co.resolver_input.types, co.resolver_input.natives);
+
+    auto ro = foo::resolve(co.resolver_input);
+
+    for (const auto& wrng : ro.warnings)
+    {
+        print_diagnostics(wrng.message, co.resolver_input.sources[wrng.file_index].text, wrng.span, false,
+            co.resolver_input.sources[wrng.file_index].path.string());
+
+    }
+
+    for (const auto& err : ro.errors)
+    {
+        check_is_ok = false;
+        print_diagnostics(err.message, co.resolver_input.sources[err.file_index].text, err.span, true,
+            co.resolver_input.sources[err.file_index].path.string());
+    }
+
+    if (check_is_ok)
+    {
+        std::cout << CLR_GREEN << "check: is ok" << CLR_RESET << std::endl;
+    } else
+    {
+        std::cout << CLR_RED << "check: not ok" << CLR_RESET << std::endl;
+    }
+}
+
 struct Example
 {
     struct SingleFile
@@ -105,9 +155,19 @@ static void create_example_files(const Example& e, std::filesystem::path root = 
         std::filesystem::path path_to_file = path_to_folder / (fileinfo.name + ".foo");
 
         std::ofstream file(path_to_file);
-        file << fileinfo.text << std::endl;
+
+        file << fileinfo.text;
+        file.flush();
+
         file.close();
     }
+}
+
+static void check_example(const Example& e, std::filesystem::path root = "")
+{
+    std::filesystem::path path_to_script = root / e.suite / "main";
+
+    check_script(path_to_script);
 }
 
 static std::vector<Example> create_examples()
@@ -119,15 +179,188 @@ static std::vector<Example> create_examples()
         return std::to_string(id++) + "_" + std::string{sv};
     };
 
-    examples.emplace_back(Example{
-        id_string("hello_world"),
-        {{"main", {
-                    "fn main() -> void\n"
-                    "{\n"
-                    "    println(\"Hello, World!\")\n"
-                    "}"
-        }}}
+    auto add = [&](const std::string& name, const std::vector<Example::SingleFile>& files)
+    {
+        std::vector<Example::SingleFile> copied_files = files;
+        for (auto& file : copied_files)
+        {
+            file.text = std::string{foo::trim( file.text)};
+        }
+
+        examples.emplace_back(Example{
+            id_string(name),
+            copied_files
+        });
+    };
+
+    add("hello_world",
+{
+    {"main",
+R"AAA(
+fn main() -> void
+{
+    println("Hello, World!")
+}
+)AAA"
+        },
     });
+
+    add("range",
+{
+    {"main",
+R"AAA(
+fn main() -> void
+{
+    for a in 0..=10
+    {
+        println(a)
+    }
+}
+)AAA"
+        },
+    });
+
+    add("returning",
+{
+    {"main",
+R"AAA(
+fn main() -> string
+{
+
+    return "string!"
+}
+)AAA"
+        },
+    });
+
+    add("functions",
+{
+    {"main",
+R"AAA(
+fn my_function() -> int
+{
+    return 5
+}
+
+fn main() -> int
+{
+    return my_function()
+}
+)AAA"
+        },
+    });
+
+    add("variables",
+{
+{"main",
+R"AAA(
+fn main() -> int
+{
+    var is_int = 5
+
+    {
+        var is_also_int = 5
+
+        // < is_also_int ends here
+    }
+
+    // type annotations are needed when
+    //  it can't infer the type from the initializer
+    var variable_with_type: string[] = []
+
+    // here it isn't needed as it can infer string[] from ["a","b"]
+    var variable_without_type = ["a","b"]
+
+    return is_int
+    // < is_int ends here
+}
+)AAA"
+    },
+});
+
+
+    add("if",
+{
+{"main",
+R"AAA(
+fn main() -> int
+{
+    var b = true
+
+    if (b)
+    {
+        // ...
+    }
+
+    return 0
+}
+)AAA"
+},
+});
+
+    add("optionals",
+{
+{"main",
+R"AAA(
+fn main() -> int
+{
+    // optional bool
+    var a: bool? = true
+
+    check a => good_a
+    {
+        // a exists,
+        //  good_a is of type bool
+
+        var new_a: bool = good_a;
+    } else
+    {
+        // a was null
+    }
+}
+)AAA"
+},
+});
+
+
+    add("should_error",
+{
+{"main",
+R"AAA(
+fn good_function() -> int
+{
+    return 420
+}
+
+fn main() -> int
+{
+    var good_var = ["a","b"]
+
+    // type mismatch
+    var t_01: int       = 1.0
+    var t_02: float     = ""
+    var t_03: int[]     = ["",""]
+    var t_04: bool      = good_var[0]
+    var t_05: float     = good_function();
+
+    // unknown variable
+    var u_01 = IDONTEXIST
+
+
+
+    if (false)
+    {
+        // return incompatible type
+        return ""
+    }
+
+    // not every path returns
+}
+)AAA"
+},
+});
+
+
 
     return examples;
 }
@@ -186,6 +419,14 @@ int main(int argc, char** argv)
         {
             create_example_files(e,"examples");
         }
+
+        if (check)
+        {
+            for (const auto& e : example_list)
+            {
+                check_example(e, "examples");
+            }
+        }
     }
 
     if (ast)
@@ -236,49 +477,11 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    if (check)
+    if (check && !examples)
     {
-        bool check_is_ok = true;
-
         std::filesystem::path path = script;
 
-        auto co = foo::collect(path.parent_path(), path.filename().string());
-
-        for (const auto& err : co.errors)
-        {
-            print_diagnostics(err.message, co.resolver_input.sources[err.file_id].text, err.span, true,
-                co.resolver_input.sources[err.file_id].path.string());
-
-            check_is_ok = false;
-        }
-
-
-        foo::Runtime::inject(co.resolver_input.types, co.resolver_input.natives);
-
-        auto ro = foo::resolve(co.resolver_input);
-
-        for (const auto& wrng : ro.warnings)
-        {
-            print_diagnostics(wrng.message, co.resolver_input.sources[wrng.file_index].text, wrng.span, false,
-                co.resolver_input.sources[wrng.file_index].path.string());
-
-        }
-
-        for (const auto& err : ro.errors)
-        {
-            print_diagnostics(err.message, co.resolver_input.sources[err.file_index].text, err.span, true,
-                co.resolver_input.sources[err.file_index].path.string());
-
-            check_is_ok = false;
-        }
-
-        if (check_is_ok)
-        {
-            std::cout << CLR_GREEN << "check: is ok" << CLR_RESET << std::endl;
-        } else
-        {
-            std::cout << CLR_RED << "check: not ok" << CLR_RESET << std::endl;
-        }
+        check_script(path);
     }
 
     if (should_run)
