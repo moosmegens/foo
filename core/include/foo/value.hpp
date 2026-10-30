@@ -49,6 +49,11 @@ namespace foo
         std::vector<ValueRef> fields;
     };
 
+    struct Boxed
+    {
+        ValueRef v;
+    };
+
     struct Native
     {
         virtual ~Native() = default;
@@ -67,6 +72,7 @@ namespace foo
             Array,
             Map,
             Struct,
+            Boxed,
             Rc<Native>
         >;
 
