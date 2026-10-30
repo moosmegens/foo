@@ -1,8 +1,12 @@
 #ifndef FOO_VALUE_HPP
 #define FOO_VALUE_HPP
 
+#include <compare>
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <string>
+#include <variant>
 #include <vector>
 
 namespace foo
@@ -57,6 +61,9 @@ namespace foo
     struct Native
     {
         virtual ~Native() = default;
+
+        virtual std::strong_ordering compare(const Native& o) const
+            { return std::compare_three_way{}(this, &o); }
     };
 
 
