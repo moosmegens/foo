@@ -20,6 +20,8 @@
 
 #include <foo/path.hpp>
 
+#include <foo/value.hpp>
+
 #include "foo/runtime.hpp"
 #include "foo/debug/debug_out.hpp"
 
@@ -119,7 +121,7 @@ void main2()
 
     {
         foo::scoped_timer t("collecting");
-        r = foo::collect(foo_root() / "data", "test_4000");
+        r = foo::collect(foo_root() / "data", "main");
         for (const auto& err : r.errors)
         {
             if (err.file_id < 0)
