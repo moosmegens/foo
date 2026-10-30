@@ -2,7 +2,7 @@ file(GLOB_RECURSE sources CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
 )
 file(GLOB_RECURSE headers CONFIGURE_DEPENDS
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
 )
 
 add_library(foo_core ${sources} ${headers})
