@@ -25,6 +25,8 @@
 #include "foo/runtime.hpp"
 #include "foo/debug/debug_out.hpp"
 
+#include <foo/value.hpp>
+
 #define CLR_BLACK   "\033[1;30m"
 #define CLR_RED     "\033[1;31m"
 #define CLR_GREEN   "\033[1;32m"
@@ -175,6 +177,16 @@ void main2()
 
 int main()
 {
+    auto map = foo::Value{foo::Map{}};
+    auto k = foo::make<foo::Value>("string");
+    auto v = foo::make<foo::Value>(1);
+
+    get<foo::Map>(map.v).items[k] = v;
+
+    auto k2 = foo::make<foo::Value>("string");
+    std::cout << foo::to_string(*get<foo::Map>(map.v).items[k2]) << std::endl;
+
+
     try
     {
         main2();

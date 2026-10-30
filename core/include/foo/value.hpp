@@ -97,6 +97,8 @@ namespace foo
     {
         return (*a <=> *b) < 0;
     }
+
+    std::string to_string(const Value& v);
 }
 
 

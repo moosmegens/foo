@@ -1,9 +1,12 @@
 #include <foo/value.hpp>
 
-#include <variant>
+#include <foo/util/overloaded.hpp>
+
 #include <algorithm>
-#include <compare>
 #include <cmath>
+#include <compare>
+#include <format>
+#include <variant>
 
 namespace foo
 {
@@ -150,6 +153,66 @@ namespace foo
 
             return s;
         }
+
+        void show(std::string& o, const Value& v, bool nested)
+        {
+            std::visit(overload{
+                [&](std::monostate)         { o += "void"; },
+                [&](bool b)                 { o += b ? "true" : "false"; },
+                [&](int64_t i)              { o += std::format("{}", i); },
+                [&](double d)               { o += std::format("{}", d); },
+                [&](const std::string& s)
+                {
+                    if (nested) { o += '"'; o += s; o += '"'; }
+                    else o += s;
+                },
+                [&](const Range& r)
+                {
+                    show(o, *r.lo, true);
+                    o += r.inclusive ? "..=" : "..";
+                    show(o, *r.hi, true);
+                },
+                [&](const Array& a)
+                {
+                    o += '[';
+                    for (size_t i = 0; i < a.items.size(); ++i)
+                    {
+                        if (i) o += ", ";
+                        show(o, *a.items[i], true);
+                    }
+                    o += ']';
+                },
+                [&](const Map& m)
+                {
+                    o += '{';
+                    bool first = true;
+                    for (const auto& [k, e] : m.items)
+                    {
+                        if (!first) o += ", ";
+                        first = false;
+                        show(o, *k, true);
+                        o += ": ";
+                        show(o, *e, true);
+                    }
+                    o += '}';
+                },
+                [&](const Struct& s)
+                {
+                    o += '{';
+                    for (size_t i = 0; i < s.fields.size(); ++i)
+                    {
+                        if (i)
+                            o += ", ";
+
+                        show(o, *s.fields[i], true);
+                    }
+                    o += '}';
+                },
+                [&](const Rc<Native>& n)    { o += "<native>"; },
+                [&](const Boxed& b)         { show(o, *b.v, nested); }
+            }, v.v);
+        }
+
     }
 
     Value Value::clone() const
@@ -174,6 +237,13 @@ namespace foo
     bool operator==(const Value& a, const Value& b)
     {
         return (a <=> b) == 0;
+    }
+
+    std::string to_string(const Value& v)
+    {
+        std::string out;
+        show(out, v, false);
+        return out;
     }
 
 }
