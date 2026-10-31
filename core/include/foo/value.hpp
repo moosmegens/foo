@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -64,6 +65,8 @@ namespace foo
 
         virtual std::strong_ordering compare(const Native& o) const
             { return std::compare_three_way{}(this, &o); }
+
+        virtual std::optional<Rc<Native>> clone() const { return std::nullopt; }
     };
 
 

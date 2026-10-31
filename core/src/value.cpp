@@ -154,6 +154,14 @@ namespace foo
             return s;
         }
 
+        Storage clone_of(const Rc<Native>& x)
+        {
+            if (auto c = x->clone())
+                return std::move(*c);
+
+            return x;
+        }
+
         void show(std::string& o, const Value& v, bool nested)
         {
             std::visit(overload{
