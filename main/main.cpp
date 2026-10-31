@@ -148,7 +148,8 @@ void main2()
         foo::NativeRegistry natives;
         r.resolver_input.natives = std::move(natives);
 
-        foo::Runtime::inject(r.resolver_input.types, r.resolver_input.natives);
+        foo::NativeTable _t;
+        foo::Runtime::inject(r.resolver_input.types, r.resolver_input.natives, _t);
 
         o = foo::resolve(r.resolver_input);
         if (o.errors.empty())

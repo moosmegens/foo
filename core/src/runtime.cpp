@@ -2,7 +2,23 @@
 
 namespace foo
 {
-    void Runtime::inject(TypeTable&, NativeRegistry& natives)
+
+
+
+    Runtime::Runtime(RuntimeInput input)
+        : _input(std::move(input))
+    { }
+
+    ValueRef Runtime::call(FunctionId fn, Args args)
+    {
+
+    }
+
+
+
+
+
+    void Runtime::inject(TypeTable& types, NativeRegistry& natives, NativeTable& table)
     {
         FunctionSig signature;
 

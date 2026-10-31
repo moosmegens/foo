@@ -9,6 +9,17 @@ namespace foo
 {
     class Runtime;
 
+    inline ValueRef make_value(Value::Storage s)
+    {
+        return make<Value>(std::move(s));
+    }
+
+    inline ValueRef make_void()                 { return make_value(std::monostate{}); }
+    inline ValueRef make_bool(bool b)           { return make_value(b); }
+    inline ValueRef make_int(int64_t i)         { return make_value(i); }
+    inline ValueRef make_float(double d)        { return make_value(d); }
+    inline ValueRef make_string(std::string s)  { return make_value(std::move(s)); }
+
     using Args = std::span<const ValueRef>;
     using NativeFn = std::function<ValueRef(Runtime&, Args)>;
 
@@ -53,9 +64,9 @@ namespace foo
     class Runtime
     {
     public:
-        Runtime(RuntimeInput& input);
+        Runtime(RuntimeInput input);
 
-        static void inject(TypeTable& types, NativeRegistry& natives);
+        static void inject(TypeTable& types, NativeRegistry& natives, NativeTable& table);
 
         ValueRef call(FunctionId fn, Args args);
 
