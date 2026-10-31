@@ -123,7 +123,7 @@ void main2()
 
     {
         foo::scoped_timer t("collecting");
-        r = foo::collect(foo_root() / "data", "main");
+        r = foo::collect(foo_root() / "data", "skibidi");
         for (const auto& err : r.errors)
         {
             if (err.file_id < 0)

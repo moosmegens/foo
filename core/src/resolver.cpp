@@ -1014,32 +1014,39 @@ namespace foo
             }, expr.kind);
         }
 
-        bool assignable(TypeId to, TypeId from)
+        bool assignable(TypeId to, TypeId from, bool strict = false)
         {
-            if (to == BaseTypes::Error || from == BaseTypes::Error)
-                return true;
+            if (!strict) {
+                if (to == BaseTypes::Error || from == BaseTypes::Error)
+                    return true;
 
-            if (to == from)
-                return true;
+                if (to == from)
+                    return true;
 
-            if (to == BaseTypes::Any)
-                return from != BaseTypes::Void;
+                if (to == BaseTypes::Any)
+                    return from != BaseTypes::Void;
 
-            if (to == BaseTypes::Float && from == BaseTypes::Int)
-                return true;
+                if (to == BaseTypes::Float && from == BaseTypes::Int)
+                    return true;
 
-            if (types().kind(to) == TypeKind::Optional)
-                return assignable(types().element(to), from);
+                if (types().kind(to) == TypeKind::Optional)
+                    return assignable(types().element(to), from, strict);
+
+            } else
+            {
+                return (to == from);
+            }
 
             return false;
         }
 
-        void expect_assignable(TypeId to, TypeId from, const SourceSpan& span)
+        void expect_assignable(TypeId to, TypeId from, const SourceSpan& span, bool strict = false)
         {
-            if (assignable(to, from))
+            if (assignable(to, from, strict))
                 return;
 
-            error(span, "type mismatch: cannot assign '" + type_name(from) + "' to '" + type_name(to) + "'");
+            error(span, "type mismatch: cannot assign '" + type_name(from) + "' to '" + type_name(to) + "'" +
+                (strict ? " <strict: they need to be the same type>": ""));
         }
 
 
@@ -1565,10 +1572,19 @@ namespace foo
                 }
 
                 TypeId arg_type = resolve_expr(arg, param->type);
-                expect_assignable(param->type, arg_type, arg.span);
 
-                if (param->by_ref && is_lvalue(arg) == false)
-                    error(arg.span, "this parameter is by reference, pass a variable");
+                if (param->by_ref)
+                {
+                    expect_assignable(param->type, arg_type, arg.span, true);
+
+                    if (is_lvalue(arg) == false)
+                        warn(arg.span, "this parameter is by reference, you are passing a rvalue");
+
+                } else
+                {
+                    expect_assignable(param->type, arg_type, arg.span);
+                }
+
             }
         }
 

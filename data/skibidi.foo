@@ -1,5 +1,12 @@
-struct toilet
+
+fn function(ref a: int)
 {
-    foo: [int, string]
-    baz: string[]
+
+}
+
+fn main()
+{
+    var a = 5
+
+    function(2);
 }
