@@ -321,6 +321,9 @@ namespace foo
 
         std::unordered_map<const ast::StructLit*, std::vector<int>> struct_lit_fields;
 
+        // Call and StaticCall
+        std::unordered_map<const void*, FunctionSig> native_sigs;
+
         std::unordered_map<const ast::Expr*, ExprInfo> exprs;
         std::unordered_map<const ast::VarDecl*, LocalInfo> var_decls;
         std::unordered_map<const ast::ForIn*, LocalInfo> for_vars;

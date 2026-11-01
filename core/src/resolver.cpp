@@ -1380,6 +1380,9 @@ namespace foo
 
             _output.exprs[call.callee.get()] = make_einfo(callee->sig.ret, callee->ref, callee->index);
 
+            if (callee->ref == RefKind::Native || callee->ref == RefKind::NativeMethod)
+                _output.native_sigs[&call] = callee->sig;
+
 
             bool needs_variable = (callee->receiver != nullptr) && callee->sig.self_by_ref;
             if (needs_variable && is_lvalue(*callee->receiver) == false)
@@ -1420,6 +1423,9 @@ namespace foo
 
             if (callee.has_value() == false)
                 return fail_call(call.args);
+
+            if (callee->ref == RefKind::Native || callee->ref == RefKind::NativeMethod)
+                _output.native_sigs[&call] = callee->sig;
 
             resolve_args(callee->sig, call.args, span);
 
