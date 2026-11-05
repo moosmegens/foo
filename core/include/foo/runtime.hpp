@@ -24,6 +24,29 @@ namespace foo
     inline ValueRef make_float(double d)        { return make_value(d); }
     inline ValueRef make_string(std::string s)  { return make_value(std::move(s)); }
 
+    [[noreturn]] inline void type_error(const Value& got)
+    {
+        throw std::runtime_error(std::format("got wrong type"));
+    }
+
+    template<class T>
+    T& expect(Value& v)
+    {
+        if (auto* p = std::get_if<T>(&v.v))
+            return *p;
+
+        type_error(v);
+    }
+
+    template<class T>
+    T& native_cast(Value& v)
+    {
+        if (auto* p = dynamic_cast<T*>(expect<Rc<Native>>(v).get()))
+            return *p;
+
+        throw std::runtime_error("wrong native type");
+    }
+
     using Args = std::span<const ValueRef>;
     using NativeFn = std::function<ValueRef(Runtime&, Args)>;
 
@@ -80,8 +103,13 @@ namespace foo
 
         Result<ValueRef, RuntimeError> call(FunctionId fn, Args args);
 
+        Runtime(const Runtime&) = delete;
+        Runtime& operator=(const Runtime&) = delete;
+
     private:
-        RuntimeInput _input;
+        class Runner;
+        std::unique_ptr<Runner> _runner;
+
     };
 }
 
