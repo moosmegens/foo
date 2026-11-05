@@ -3,15 +3,81 @@
 namespace foo
 {
 
+    namespace
+    {
+        struct Frame
+        {
+            std::vector<ValueRef> slots;
+            const FunctionInfo* fn = nullptr;
+        };
+
+        enum class Flow
+        {
+            Continue, Return, Break
+        };
+
+        class Runner
+        {
+        public:
+            Runner(Runtime& rt, RuntimeInput& input)
+                : _rt(rt), _input(input) {}
+
+            Result<ValueRef, RuntimeError> call_function(FunctionId id, std::vector<ValueRef> args)
+            {
+                const FunctionInfo& f = function(id);
+
+                if (!f.decl)
+                    return error("function has no body", f);
+
+                const size_t expected = f.sig.params.size() + (f.is_method ? 1 : 0);
+
+
+
+                return make_void();
+            }
+
+
+        private:
+            Runtime& _rt;
+            RuntimeInput& _input;
+            std::deque<Frame> _frames;
+
+            ValueRef _ret;
+
+
+            static std::unexpected<RuntimeError> error(const std::string& what, const DeclInfo& decl)
+            {
+                return error(what, decl.file_index, decl.span);
+            }
+
+            static std::unexpected<RuntimeError> error(const std::string& what, int file_index = -1, SourceSpan span = {})
+            {
+                return std::unexpected(RuntimeError{
+                  .what = what, .file_index = file_index, .span = span}
+                );
+            }
+
+            const ResolveOutput& resolved() const { return _input.resolver_info; }
+
+            const FunctionInfo& function(Id id) const
+            {
+                if (id < 0 || static_cast<size_t>(id) >= resolved().functions.size())
+                    throw std::runtime_error("internal: bad function id");
+
+                return resolved().functions[static_cast<size_t>(id)];
+            }
+        };
+    }
 
 
     Runtime::Runtime(RuntimeInput input)
         : _input(std::move(input))
     { }
 
-    ValueRef Runtime::call(FunctionId fn, Args args)
+    Result<ValueRef, RuntimeError> Runtime::call(FunctionId fn, Args args)
     {
 
+        return make_void();
     }
 
 

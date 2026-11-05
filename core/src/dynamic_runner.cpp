@@ -143,12 +143,12 @@ namespace foo
                     _user_functions[fn->name] = fn;
         }
 
-        std::optional<RuntimeError> run()
+        std::optional<DynamicRuntimeError> run()
         {
             auto it = _user_functions.find("main");
             if (it == _user_functions.end())
             {
-                return RuntimeError{"no 'main' function", {}};
+                return DynamicRuntimeError{"no 'main' function", {}};
             }
 
             _builtin_functions["io::println"] = [](std::span<Value> args, SourceSpan)
@@ -502,7 +502,7 @@ namespace foo
                 if (!holds_alternative<std::monostate>(return_value.data))
                     std::cout << "main returned: (" << display(return_value) << ')' << std::endl;
             }
-            catch (RuntimeError& e)
+            catch (DynamicRuntimeError& e)
             {
                 return std::move(e);
             }
@@ -516,7 +516,7 @@ namespace foo
 
         [[noreturn]] static void fail(std::string msg, SourceSpan span)
         {
-            throw RuntimeError{std::move(msg), span};
+            throw DynamicRuntimeError{std::move(msg), span};
         }
 
         void safe_fail(std::string msg)
@@ -979,7 +979,7 @@ namespace foo
     };
 
 
-    std::optional<RuntimeError> run(std::span<const ast::DeclPtr> decls)
+    std::optional<DynamicRuntimeError> run(std::span<const ast::DeclPtr> decls)
     {
         Interpreter i{decls};
         return i.run();

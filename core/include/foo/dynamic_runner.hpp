@@ -11,13 +11,13 @@
 
 namespace foo
 {
-    struct RuntimeError
+    struct DynamicRuntimeError
     {
         std::string message;
         SourceSpan span;
     };
 
-    std::optional<RuntimeError> run(std::span<const ast::DeclPtr> decls);
+    std::optional<DynamicRuntimeError> run(std::span<const ast::DeclPtr> decls);
 }
 
 

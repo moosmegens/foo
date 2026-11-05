@@ -1,9 +1,13 @@
 #ifndef FOO_RUNTIME_HPP
 #define FOO_RUNTIME_HPP
 
+
+#include <foo/error.hpp>
+
 #include <deque>
 #include <foo/resolver.hpp>
 #include <foo/value.hpp>
+
 
 namespace foo
 {
@@ -52,7 +56,13 @@ namespace foo
     };
 
 
+    struct RuntimeError
+    {
+        std::string what;
 
+        int file_index;
+        SourceSpan span;
+    };
 
 
     struct RuntimeInput
@@ -68,16 +78,10 @@ namespace foo
 
         static void inject(TypeTable& types, NativeRegistry& natives, NativeTable& table);
 
-        ValueRef call(FunctionId fn, Args args);
+        Result<ValueRef, RuntimeError> call(FunctionId fn, Args args);
 
     private:
-        struct Frame
-        {
-            std::vector<ValueRef> slots;
-        };
-
         RuntimeInput _input;
-        std::deque<Frame> _frames;
     };
 }
 

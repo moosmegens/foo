@@ -1,5 +1,3 @@
-#include "foo/dynamic_runner.hpp"
-
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -141,14 +139,14 @@ void main2()
         }
     }
 
+    foo::NativeRegistry natives;
+    foo::NativeTable _t;
 
     {
         foo::scoped_timer t("resolving");
 
-        foo::NativeRegistry natives;
         r.resolver_input.natives = std::move(natives);
 
-        foo::NativeTable _t;
         foo::Runtime::inject(r.resolver_input.types, r.resolver_input.natives, _t);
 
         o = foo::resolve(r.resolver_input);
@@ -170,6 +168,31 @@ void main2()
             print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span, false,
                 r.resolver_input.sources[err.file_index].path.string());
         }
+    }
+
+    int mainid = -1;
+    for (const auto& [index, item] : std::views::enumerate(o.functions))
+    {
+        if (item.decl->name == "main")
+        {
+            mainid = static_cast<int>(index);
+            break;
+        }
+    }
+
+    foo::RuntimeInput ri{o, _t};
+    foo::Runtime runtime{ri};
+
+    {
+        foo::scoped_timer t("running");
+
+        if (mainid == -1)
+        {
+            std::cout << "Cant find main!" << std::endl;
+            return;
+        }
+
+        runtime.call(mainid, {});
     }
 
 }
