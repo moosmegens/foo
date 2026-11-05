@@ -1,4 +1,6 @@
 #include <foo/runtime.hpp>
+
+#include <cmath>
 #include <utility>
 
 namespace foo
@@ -6,10 +8,173 @@ namespace foo
 
     namespace
     {
+        using namespace ast;
+
+        ValueRef int_op(BinaryOp op, int64_t a, int64_t b)
+        {
+            const auto ua = static_cast<uint64_t>(a);
+            const auto ub = static_cast<uint64_t>(b);
+
+            switch (op)
+            {
+            case BinaryOp::Add:
+                return make_int(static_cast<int64_t>(ua + ub));
+
+            case BinaryOp::Sub:
+                return make_int(static_cast<int64_t>(ua - ub));
+
+            case BinaryOp::Mul:
+                return make_int(static_cast<int64_t>(ua * ub));
+
+            case BinaryOp::Div:
+                if (b == 0)
+                    throw std::runtime_error("division by zero");
+
+                if (b == -1)
+                    return make_int(static_cast<int64_t>(0 - ua));
+
+                return make_int(a / b);
+
+            case BinaryOp::Mod:
+                if (b == 0)
+                    throw std::runtime_error("modulo by zero");
+
+                if (b == -1)
+                    return make_int(0);
+
+                return make_int(a % b);
+
+            default:
+                throw std::runtime_error("bad integer operator");
+            }
+        }
+
+        ValueRef float_op(BinaryOp op, double a, double b)
+        {
+            switch (op)
+            {
+            case BinaryOp::Add:
+                return make_float(a + b);
+
+            case BinaryOp::Sub:
+                return make_float(a - b);
+
+            case BinaryOp::Mul:
+                return make_float(a * b);
+
+            case BinaryOp::Div:
+                return make_float(a / b);
+
+            case BinaryOp::Mod:
+                return make_float(std::fmod(a, b));
+
+            default:
+                throw std::runtime_error("bad float operator");
+            }
+        }
+
+        std::optional<double> number(const Value& v)
+        {
+            if (const auto* i = std::get_if<int64_t>(&v.v))
+                return static_cast<double>(*i);
+
+            if (const auto* d = std::get_if<double>(&v.v))
+                return *d;
+
+            return std::nullopt;
+        }
+
+        ValueRef arithmetic(BinaryOp op, const Value& l, const Value& r)
+        {
+            if (const auto* a = std::get_if<int64_t>(&l.v))
+                if (const auto* b = std::get_if<int64_t>(&r.v))
+                    return int_op(op, *a, *b);
+
+            if (const auto a = number(l))
+                if (const auto b = number(r))
+                    return float_op(op, *a, *b);
+
+            if (op == BinaryOp::Add)
+                if (const auto* a = std::get_if<std::string>(&l.v))
+                    if (const auto* b = std::get_if<std::string>(&r.v))
+                        return make_string(*a + *b);
+
+            throw std::runtime_error("cannot apply operator");
+        }
+
+        ValueRef float_comparison(BinaryOp op, double a, double b)
+        {
+            switch (op)
+            {
+            case BinaryOp::Eq:
+                return make_bool(a == b);
+
+            case BinaryOp::NotEq:
+                return make_bool(a != b);
+
+            case BinaryOp::Less:
+                return make_bool(a < b);
+
+            case BinaryOp::LessEq:
+                return make_bool(a <= b);
+
+            case BinaryOp::Greater:
+                return make_bool(a > b);
+
+            case BinaryOp::GreaterEq:
+                return make_bool(a >= b);
+
+            default:
+                throw std::runtime_error("bad comparison operator");
+            }
+        }
+
+        ValueRef comparison(BinaryOp op, const Value& l, const Value& r)
+        {
+            const bool ints = std::holds_alternative<int64_t>(l.v) && std::holds_alternative<int64_t>(r.v);
+
+            if (!ints)
+                if (const auto a = number(l))
+                    if (const auto b = number(r))
+                        return float_comparison(op, *a, *b);
+
+            const std::strong_ordering c = l <=> r;
+
+            switch (op)
+            {
+            case BinaryOp::Eq:
+                return make_bool(c == 0);
+
+            case BinaryOp::NotEq:
+                return make_bool(c != 0);
+
+            case BinaryOp::Less:
+                return make_bool(c < 0);
+
+            case BinaryOp::LessEq:
+                return make_bool(c <= 0);
+
+            case BinaryOp::Greater:
+                return make_bool(c > 0);
+
+            case BinaryOp::GreaterEq:
+                return make_bool(c >= 0);
+
+            default:
+                throw std::runtime_error("bad comparison operator");
+            }
+        }
+
         struct Frame
         {
             std::vector<ValueRef> slots;
             const FunctionInfo* fn = nullptr;
+        };
+
+        struct FramePopHelper
+        {
+            std::deque<Frame>& frames;
+            ~FramePopHelper() { frames.pop_back(); }
         };
 
         enum class Flow
