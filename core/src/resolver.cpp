@@ -230,6 +230,7 @@ namespace foo
         SlotId _next_slot = 0;
         SlotId _max_slot = 0;
         TypeId _current_return_type = -1;
+        FunctionInfo* _current_resolving_function = nullptr;
 
 
 
@@ -414,6 +415,7 @@ namespace foo
             info.file_index = _file_id;
             info.span = fn.decl_span;
             info.decl = &fn;
+            info.pub = fn.pub;
 
 
             if (add_function(info.path, id, span) == false)
@@ -462,6 +464,7 @@ namespace foo
             info.decl = &m;
             info.owner_type = s.type;
             info.is_method = !m.params.empty() && m.params[0].name == "self";
+            info.pub = m.pub;
 
             _output.to_file_index[&m] = s.file_index;
             _output.functions.push_back(std::move(info));
@@ -532,7 +535,7 @@ namespace foo
                         type = BaseTypes::Error;
                     }
 
-                    info.fields.push_back({field.name, type});
+                    info.fields.push_back({field.name, type, field.pub});
                 }
             }
 
@@ -681,6 +684,70 @@ namespace foo
 
         // ------------------------------------------
 
+        bool ensure_access_field(
+            const StructInfo& info,
+            const FieldInfo& field,
+            const SourceSpan& span,
+            const FunctionInfo* caller = nullptr,
+            const std::string& extra = "")
+        {
+            const bool is_owner = caller != nullptr && caller->owner_type == info.type;
+
+            if (field.pub || is_owner)
+                return true;
+
+            error(span,
+                "field '" + field.name +
+                "' is private" + extra);
+
+            return false;
+        }
+
+        bool ensure_access_function(
+            const FunctionInfo& fn,
+            const SourceSpan& span,
+            const FunctionInfo* caller = nullptr,
+            const std::string& extra = "")
+        {
+            println(fn.owner_type, fn.pub, fn.decl->name);
+
+            if (fn.pub)
+            {
+                println("fn.pub");
+                return true;
+            }
+
+            if (!caller)
+            {
+                println("!caller");
+                return false;
+            }
+
+            if (fn.owner_type != EmptyType)
+            {
+                println("fn.owner_type != EmptyType");
+                if (fn.owner_type != caller->owner_type)
+                {
+                    println("fn.owner_type != caller->owner_type");
+                    goto error_label;
+                }
+            }
+
+            if (path_same_start(fn.path, caller->path))
+            {
+                println("path_same_start(fn.path, caller->path)");
+                return true;
+            }
+
+
+        error_label:
+            error(span,
+                "function '" + to_string(fn.path) +
+                "' is private" + extra);
+
+            return false;
+        }
+
         void resolve_functions()
         {
             for (FunctionInfo& info : _output.functions)
@@ -693,6 +760,7 @@ namespace foo
         void resolve_function(FunctionInfo& info)
         {
             const ast::FnDecl& decl = *info.decl;
+            _current_resolving_function = &info;
 
 
             _current_return_type = info.sig.ret;
@@ -725,6 +793,8 @@ namespace foo
             pop_locals();
 
             info.slot_count = _max_slot;
+
+            _current_resolving_function = nullptr;
         }
 
         void push_locals()
@@ -1141,13 +1211,18 @@ namespace foo
                 }
 
                 const size_t index = static_cast<size_t>(field_index);
+                const FieldInfo& field = info.fields[index];
+
+                ensure_access_field(info, field, init.span, _current_resolving_function, ", make a factory function instead");
+
 
                 if (field_was_set[index])
                     error(init.span, "field '" + init.name + "' is set twice");
 
                 field_was_set[index] = true;
 
-                TypeId field_type = info.fields[index].type;
+                TypeId field_type = field.type;
+
                 TypeId value_type = resolve_expr(*init.value, field_type);
                 expect_assignable(field_type, value_type, init.value->span);
             }
@@ -1348,9 +1423,13 @@ namespace foo
 
                 if (field_index >= 0)
                 {
+                    const FieldInfo& field =
+                        info.fields[static_cast<size_t>(field_index)];
 
-                    TypeId field_type = info.fields[static_cast<size_t>(field_index)].type;
-                    return make_einfo(field_type, RefKind::Field, field_index);
+                    if (!ensure_access_field(info, field, span, _current_resolving_function))
+                        return make_einfo(BaseTypes::Error);
+
+                    return make_einfo(field.type, RefKind::Field, field_index);
                 }
             }
 
@@ -1450,6 +1529,9 @@ namespace foo
                 return std::nullopt;
             }
 
+            if (!ensure_access_function(function, span, _current_resolving_function))
+                return std::nullopt;
+
             return make_callee(function.sig, RefKind::Function, found->second);
         }
 
@@ -1485,7 +1567,14 @@ namespace foo
         {
             std::optional<FunctionId> found = lookup_function(name.path);
             if (found.has_value())
-                return make_callee(function_at(*found).sig, RefKind::Function, *found);
+            {
+                const FunctionInfo& function = function_at(*found);
+
+                if (!ensure_access_function(function, span, _current_resolving_function))
+                    return std::nullopt;
+
+                return make_callee(function.sig, RefKind::Function, *found);
+            }
 
             std::string full_name = to_string(name.path);
 
@@ -1521,6 +1610,9 @@ namespace foo
 
                         return std::nullopt;
                     }
+
+                    if (!ensure_access_function(function, span, _current_resolving_function))
+                        return std::nullopt;
 
                     return make_callee(function.sig, RefKind::Method, found->second, member.target.get());
                 }

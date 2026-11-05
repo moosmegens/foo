@@ -134,6 +134,7 @@ namespace foo
                 {"import", tok::Import{}},
                 {"check", tok::Check{}},
                 {"nil", tok::Nil{}},
+                {"priv", tok::Priv{}},
             };
 
             if (auto it = keywords.find(text); it != keywords.end())

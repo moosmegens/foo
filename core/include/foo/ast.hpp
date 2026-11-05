@@ -399,6 +399,8 @@ namespace foo::ast
         TypeExprPtr return_type;
         Block body;
 
+        bool pub = true;
+
         SourceSpan decl_span = {};
 
         bool operator==(const FnDecl& other) const
@@ -414,6 +416,7 @@ namespace foo::ast
     {
         std::string name;
         TypeExprPtr type;
+        bool pub = true;
         SourceSpan span = {};
 
         bool operator==(const StructField& other) const

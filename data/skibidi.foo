@@ -4,9 +4,25 @@ fn function(ref a: int)
 
 }
 
+struct a
+{
+    a: int
+    b: int
+
+    fn priv function() {}
+
+    fn priv function2()
+    {
+        @a.function();
+    }
+
+}
+
 fn main()
 {
-    var a = 5
+    var a = #a{a = 0, b = 0}
+    @a.function2();
+
 
     function(2);
 }

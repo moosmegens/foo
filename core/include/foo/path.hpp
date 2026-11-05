@@ -24,6 +24,14 @@ namespace foo
         return a;
     }
 
+    inline bool path_same_start(const Path& a, const Path& b)
+    {
+        if (a.empty() || b.empty())
+            return false;
+
+        return a.size() == b.size() && std::equal(a.begin(), a.end() - 1, b.begin());
+    }
+
     inline Path path_child(const Path& a, std::string name)
     {
         Path out = a;

@@ -5,6 +5,8 @@
 
 #include <foo/parser.hpp>
 
+#include "foo/debug/debug_out.hpp"
+
 #include <foo/ast.hpp>
 #include <foo/ast_printer.hpp>
 #include <source_location>
@@ -475,6 +477,13 @@ namespace foo
 
                 while (!check<tok::RBrace>() && !is_at_end())
                 {
+                    bool pub = true;
+                    if (check<tok::Priv>())
+                    {
+                        pub = false;
+                        advance();
+                    }
+
                     if (check<tok::Identifier>())
                     {
                         SourceSpan inner_span{current().source.start, 0};
@@ -486,7 +495,7 @@ namespace foo
                         if (type)
                         {
                             finish_span(inner_span);
-                            fields.push_back({std::move(field_name), std::move(type), inner_span});
+                            fields.push_back({std::move(field_name), std::move(type), pub, inner_span});
                         }
                         expect<tok::Semicolon>(true);
 
@@ -518,6 +527,14 @@ namespace foo
             std::optional<ast::FnDecl> parse_fn_decl()
             {
                 SourceSpan decl_span{current().source.start, 0};
+                bool pub = true;
+
+                if (check<tok::Priv>())
+                {
+                    pub = false;
+                    advance();
+                }
+
                 if (!check<tok::Identifier>())
                 {
                     report_error(current(), "Expected function name");
@@ -562,7 +579,7 @@ namespace foo
 
                 return ast::FnDecl{
                     std::move(name), std::move(params), std::move(return_type), std::move(*body),
-
+                    pub,
                     decl_span
                 };
             }

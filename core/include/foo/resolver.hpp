@@ -234,6 +234,8 @@ namespace foo
         //  io::filesystem::dir
         Path path;
 
+        bool pub = true;
+
         int file_index = -1;
         SourceSpan span = {};
     };
@@ -242,6 +244,7 @@ namespace foo
     {
         std::string name;
         TypeId type = EmptyType;
+        bool pub = true;
     };
 
     struct StructInfo : DeclInfo

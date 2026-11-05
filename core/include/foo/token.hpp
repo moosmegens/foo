@@ -97,6 +97,8 @@ namespace foo
 
         FOO_TOKEN(Nil, "nil");
 
+        FOO_TOKEN(Priv, "priv");
+
         FOO_TOKEN(Return, "return");
 
         FOO_TOKEN(String, "\"" + value + "\"",
@@ -159,6 +161,8 @@ namespace foo
         tok::Check,
 
         tok::Nil,
+
+        tok::Priv,
 
         tok::Return,
 
