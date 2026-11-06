@@ -211,6 +211,22 @@ namespace foo
 
             return static_cast<size_t>(i);
         }
+
+        const ParamSig* param_for(const FunctionSig& sig, size_t arg)
+        {
+            if (arg < sig.params.size())
+                return &sig.params[arg];
+
+            if (sig.variadic && !sig.params.empty())
+                return &sig.params.back();
+
+            return nullptr;
+        }
+
+        bool callable(RefKind k)
+        {
+            return k == RefKind::Function || k == RefKind::Method || k == RefKind::Native || k == RefKind::NativeMethod;
+        }
     }
 
     class Runtime::Runner
@@ -297,15 +313,15 @@ namespace foo
 
         std::vector<ValueRef>& slots() { return _frames.back().slots; }
 
-        ValueRef local(SlotId s)
+        ValueResult local(SlotId s)
         {
             auto& all = slots();
 
             if (s < 0 || static_cast<size_t>(s) >= all.size())
-                throw std::runtime_error("internal: bad slot");
+                return error("internal: bad slot");
 
             if (!all[static_cast<size_t>(s)])
-                throw std::runtime_error("internal: use of an uninitialized variable");
+                return error("internal: use of an uninitialized variable");
 
             return all[static_cast<size_t>(s)];
         }
@@ -345,7 +361,7 @@ namespace foo
         ValueResult default_value(const SourceSpan& span, TypeId t)
         {
             if (t < 0)
-                throw std::runtime_error("internal: untyped value");
+                return error("internal: untyped value");
 
             const TypeTable& types = resolved().type_table;
 
@@ -404,22 +420,20 @@ namespace foo
 
         ValueResult ref(const Expr& e)
         {
-            return make_void();
-
             return std::visit(overload{
                 [&](const IntLit& x) -> ValueResult     { return make_int(x.value); },
                 [&](const FloatLit& x) -> ValueResult   { return make_float(x.value); },
                 [&](const StringLit& x) -> ValueResult  { return make_string(x.value); },
                 [&](const BoolLit& x) -> ValueResult    { return make_bool(x.value); },
-                [&](const ArrayLit& x) -> ValueResult                 { return make_void(); },
-                [&](const StructLit& x)-> ValueResult                 { return make_void(); },
-                [&](const Name&)-> ValueResult                        { return make_void(); },
-                [&](const Unary& x)  -> ValueResult                   { return make_void(); },
-                [&](const Binary& x) -> ValueResult                   { return make_void(); },
-                [&](const Index& x)   -> ValueResult                  { return make_void(); },
-                [&](const Call& x)   -> ValueResult                   { return make_void(); },
-                [&](const Member& x)  -> ValueResult                  { return make_void(); },
-                [&](const StaticCall& x) -> ValueResult               { return make_void(); }
+                [&](const ArrayLit& x)                  { return eval_array(e, x); },
+                [&](const StructLit& x)                 { return eval_struct_lit(e, x); },
+                [&](const Name&)                        { return eval_name(e); },
+                [&](const Unary& x)                     { return eval_unary(x); },
+                [&](const Binary& x)                    { return eval_binary(e, x); },
+                [&](const Index& x)                     { return eval_index(e, x); },
+                [&](const Call& x)                      { return eval_call(e, x); },
+                [&](const Member& x)                    { return eval_member(e, x); },
+                [&](const StaticCall& x)                { return eval_static_call(e, x); }
             }, e.kind);
         }
 
@@ -446,13 +460,13 @@ namespace foo
             const ExprInfo& i = info(e);
 
             if (i.ref != RefKind::StructLit)
-                throw std::runtime_error("internal: struct literal not resolved");
+                return error("internal: struct literal not resolved");
 
             const StructInfo& s = struct_info(i.index);
             const std::vector<int>& order = lookup(resolved().struct_lit_fields, &lit, "struct literal");
 
             if (order.size() != lit.fields.size())
-                throw std::runtime_error("internal: struct literal field mismatch");
+                return error("internal: struct literal field mismatch");
 
             Struct v;
             v.fields.resize(s.fields.size());
@@ -462,7 +476,7 @@ namespace foo
                 const int idx = order[k];
 
                 if (idx < 0 || static_cast<size_t>(idx) >= s.fields.size())
-                    throw std::runtime_error("internal: bad field index");
+                    return error("internal: bad field index");
 
                 const Expr& fe = *lit.fields[k].value;
 
@@ -488,7 +502,7 @@ namespace foo
             if (i.ref == RefKind::Local)
                 return local(i.index);
 
-            throw std::runtime_error("internal: a name that is not a value");
+            return error("internal: a name that is not a value");
         }
 
         ValueResult eval_unary(const Unary& x)
@@ -507,7 +521,7 @@ namespace foo
                 return make_bool(!as_bool(v));
             }
 
-            throw std::runtime_error("internal: bad unary operator");
+            return error("internal: bad unary operator");
         }
 
         ValueResult eval_binary(const Expr& e, const Binary& b)
@@ -589,12 +603,12 @@ namespace foo
             return *result;
         }
 
-        ValueRef field(const ValueRef& target, Id index)
+        ValueResult field(const ValueRef& target, Id index)
         {
             Struct& s = expect<Struct>(*target);
 
             if (index < 0 || static_cast<size_t>(index) >= s.fields.size())
-                throw std::runtime_error("internal: bad field index");
+                return error("internal: bad field index");
 
             return s.fields[static_cast<size_t>(index)];
         }
@@ -604,7 +618,7 @@ namespace foo
             const ExprInfo& i = info(e);
 
             if (i.ref != RefKind::Field)
-                throw std::runtime_error("internal: a member that is not a field");
+                return error("internal: a member that is not a field");
 
             FOO_TRY(target, ref(*m.target));
             return field(target, i.index);
@@ -652,7 +666,7 @@ namespace foo
                 return make_string(std::string(1, (*s)[*at]));
             }
 
-            throw std::runtime_error("cannot index here");
+            return error("cannot index here");
         }
 
         ValueResult index_key(const Index& x)
@@ -676,6 +690,190 @@ namespace foo
             FOO_TRY(key, index_key(x));
 
             return index_into(e.span, target, key, info(*x.target).type, false);
+        }
+
+        ValueResult eval_call(const Expr& e, const Call& c)
+        {
+            const ExprInfo* target = find_info(*c.callee);
+
+            if (!target || !callable(target->ref))
+                target = find_info(e);
+
+            if (!target || !callable(target->ref))
+                return error("internal: call target was not resolved");
+
+            const Expr* self = nullptr;
+
+            if (target->ref == RefKind::Method || target->ref == RefKind::NativeMethod)
+            {
+                const auto* m = std::get_if<Member>(&c.callee->kind);
+
+                if (!m)
+                    return error("internal: method call without a receiver");
+
+                self = m->target.get();
+            }
+
+            return invoke(*target, self, c.args, &c, e.span);
+        }
+
+        ValueResult eval_static_call(const Expr& e, const StaticCall& c)
+        {
+            const ExprInfo& target = info(e);
+
+            if (!callable(target.ref))
+                return error("internal: static call was not resolved");
+
+            return invoke(target, nullptr, c.args, &c, e.span);
+        }
+
+        ValueResult invoke(const ExprInfo& target, const Expr* self, const std::vector<ExprPtr>& arg_exprs, const void* call_node, const SourceSpan& span)
+        {
+            std::vector<ValueRef> args;
+            args.reserve(arg_exprs.size() + 1);
+
+            if (target.ref == RefKind::Function || target.ref == RefKind::Method)
+            {
+                const FunctionInfo& f = function(target.index);
+
+                if (f.sig.params.size() != arg_exprs.size())
+                    return error("internal: wrong number of arguments");
+
+                if (self)
+                {
+                    if (f.sig.self_by_ref)
+                    {
+                        FOO_TRY(receiver, ref(*self));
+                        args.push_back(std::move(receiver));
+                    }
+                    else
+                    {
+                        FOO_TRY(receiver, val(*self));
+                        args.push_back(std::move(receiver));
+                    }
+                }
+
+                for (size_t i = 0; i < arg_exprs.size(); i++)
+                {
+                    const ParamSig& p = f.sig.params[i];
+                    const Expr& a = *arg_exprs[i];
+
+                    if (p.by_ref)
+                    {
+                        FOO_TRY(argument, ref(a));
+                        args.push_back(std::move(argument));
+                    }
+                    else
+                    {
+                        FOO_TRY(argument, val(a));
+                        args.push_back(nudge_value(std::move(argument), info(a).type, p.type));
+                    }
+                }
+
+                return call_function(target.index, std::move(args), span);
+            }
+
+            const FunctionSig& sig = lookup(resolved().native_sigs, call_node, "native signature");
+
+            if (self)
+            {
+                FOO_TRY(receiver, ref(*self));
+                args.push_back(std::move(receiver));
+            }
+
+            for (size_t i = 0; i < arg_exprs.size(); i++)
+            {
+                const ParamSig* p = param_for(sig, i);
+                const Expr& a = *arg_exprs[i];
+
+                FOO_TRY(argument, ref(a));
+
+                if (!p || p->by_ref)
+                    args.push_back(std::move(argument));
+                else
+                    args.push_back(nudge_value(std::move(argument), info(a).type, p->type));
+            }
+
+            return call_native(target.index, args, span);
+        }
+
+        ValueResult call_native(NativeFunctionId id, const std::vector<ValueRef>& args, const SourceSpan& span)
+        {
+            const NativeFn* fn = _input.native_table.get(id);
+
+            if (!fn)
+                return error("native function has no implementation", span);
+
+            try
+            {
+                ValueRef result = (*fn)(_rt, Args(args));
+
+                if (!result)
+                    return make_void();
+
+                if (result.use_count() != 1)
+                    return copy(result);
+
+                return result;
+            }
+            catch (const RuntimeError& e)
+            {
+                return std::unexpected(e);
+            }
+            catch (const std::exception& ex)
+            {
+                return error(ex.what(), span);
+            }
+        }
+
+        ValueResult call_function(FunctionId id, std::vector<ValueRef> args, const SourceSpan& call_span)
+        {
+            const FunctionInfo& f = function(id);
+
+            if (!f.decl)
+                return error("function has no body", f);
+
+            const size_t expected = f.sig.params.size() + (f.is_method ? 1 : 0);
+
+            if (args.size() != expected)
+                return error("internal: wrong number of arguments");
+
+            if (f.slot_count < 0 || static_cast<size_t>(f.slot_count) < expected)
+                return error("internal: function has too few slots");
+
+            if (_frames.size() >= _input.max_depth)
+                return error("recursion limit exceeded", call_span);
+
+            _frames.emplace_back();
+            FramePopHelper pop{_frames};
+
+            Frame& frame = _frames.back();
+            frame.fn = &f;
+            frame.slots.resize(static_cast<size_t>(f.slot_count));
+
+            for (size_t i = 0; i < expected; i++)
+                frame.slots[i] = std::move(args[i]);
+
+            FOO_TRY(flow, exec_block(f.decl->body));
+
+            ValueRef result;
+
+            switch (flow)
+            {
+            case Flow::Return:
+                result = std::move(_ret);
+                break;
+
+            case Flow::Break:
+                return error("'break' outside of a loop", f);
+
+            case Flow::Continue:
+                break;
+            }
+
+            _ret = nullptr;
+
+            return result ? result : make_void();
         }
 
         ValueResult lvalue(const Expr& e)

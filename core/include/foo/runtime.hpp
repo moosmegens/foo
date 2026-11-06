@@ -104,6 +104,8 @@ namespace foo
     {
         ResolveOutput resolver_info;
         NativeTable native_table;
+
+        size_t max_depth = 256;
     };
 
     class Runtime
