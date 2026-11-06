@@ -65,12 +65,17 @@ namespace foo
     class NativeTable
     {
     public:
-        void set(NativeFunctionId id, NativeFn fn)
+        void set(NativeFunctionId id, NativeFn fn, const std::string& info = "")
         {
             if (id >= _fns.size())
                 _fns.resize(static_cast<size_t>(id) + 1);
 
+            if (id >= _infos.size())
+                _infos.resize(static_cast<size_t>(id) + 1);
+
+
             _fns[id] = std::move(fn);
+            _infos[id] = info;
         }
 
         bool has(NativeFunctionId id) const
@@ -86,8 +91,27 @@ namespace foo
             return &_fns[id];
         }
 
+        const std::string_view get_info(NativeFunctionId id) const
+        {
+            if (id >= _fns.size())
+                return {};
+
+            return _infos[id];
+        }
+
+        [[nodiscard]] const std::vector<std::string>& get_infos() const
+        {
+            return _infos;
+        }
+
+        [[nodiscard]] const std::vector<NativeFn>& get_fns() const
+        {
+            return _fns;
+        }
+
     private:
         std::vector<NativeFn> _fns;
+        std::vector<std::string> _infos;
     };
 
 
@@ -116,7 +140,9 @@ namespace foo
 
         static void inject(TypeTable& types, NativeRegistry& natives, NativeTable& table);
 
+        std::optional<FunctionId> find_function(std::string_view name) const;
         Result<ValueRef, RuntimeError> call(FunctionId fn, Args args);
+        Result<ValueRef, RuntimeError> call(std::string_view name, Args args);
 
         Runtime(const Runtime&) = delete;
         Runtime& operator=(const Runtime&) = delete;

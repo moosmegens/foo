@@ -183,6 +183,11 @@ void main2()
     foo::RuntimeInput ri{o, _t};
     foo::Runtime runtime{ri};
 
+    for (const auto& [index, item] : std::views::enumerate(ri.native_table.get_infos()))
+    {
+        std::cout << item << std::endl;
+    }
+
     {
         foo::scoped_timer t("running");
 
@@ -192,7 +197,16 @@ void main2()
             return;
         }
 
-        runtime.call(mainid, {});
+        auto result = runtime.call(mainid, {});
+        if (result)
+            std::cout << "main returned: " << foo::to_string(*result.value()) << std::endl;
+        else
+        {
+            std::cout << "runtime error" << std::endl;
+
+            const auto& err = result.error();
+            print_diagnostics(err.what, r.resolver_input.sources[err.file_index].text, err.span);
+        }
     }
 
 }

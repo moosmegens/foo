@@ -133,7 +133,7 @@ namespace foo
                 {"false", tok::Boolean{false}},
                 {"import", tok::Import{}},
                 {"check", tok::Check{}},
-                {"nil", tok::Nil{}},
+                {"none", tok::None{}},
                 {"priv", tok::Priv{}},
             };
 

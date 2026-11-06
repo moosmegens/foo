@@ -95,7 +95,7 @@ namespace foo
         FOO_TOKEN(In, "in");
         FOO_TOKEN(Check, "check");
 
-        FOO_TOKEN(Nil, "nil");
+        FOO_TOKEN(None, "none");
 
         FOO_TOKEN(Priv, "priv");
 
@@ -160,7 +160,7 @@ namespace foo
         tok::If, tok::Else, tok::While, tok::For, tok::In,
         tok::Check,
 
-        tok::Nil,
+        tok::None,
 
         tok::Priv,
 

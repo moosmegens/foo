@@ -1,28 +1,15 @@
-
-fn function(ref a: int)
-{
-
-}
-
 struct a
 {
     a: int
-    b: int
-
-    fn priv function() {}
-
-    fn priv function2()
-    {
-        @a.function();
-    }
-
+    b: string
 }
 
-fn main()
+
+fn main() -> a
 {
-    var a = #a{a = 0, b = 0}
-    @a.function2();
+    var map = @[string, a].new()
+    // map["test"] = #a{ a = 20, b = "hello world" }
 
-
-    function(2);
+    return map.at("test")
+            .or(#a{ a = 10, b = "67" })
 }
