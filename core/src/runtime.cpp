@@ -1,5 +1,7 @@
 #include <foo/runtime.hpp>
 
+#include "foo/util/overloaded.hpp"
+
 #include <cmath>
 #include <utility>
 
@@ -191,6 +193,24 @@ namespace foo
             std::deque<Frame>& frames;
             ~FramePopHelper() { frames.pop_back(); }
         };
+
+        template<class M, class K>
+        const auto& lookup(const M& m, const K* key, const char* what)
+        {
+            auto it = m.find(key);
+            if (it == m.end())
+                throw std::runtime_error(std::format("internal: unresolved {}", what));
+
+            return it->second;
+        }
+
+        std::optional<size_t> index_in(int64_t i, size_t size)
+        {
+            if (i < 0 || static_cast<uint64_t>(i) >= size)
+                return std::nullopt;
+
+            return static_cast<size_t>(i);
+        }
     }
 
     class Runtime::Runner
@@ -371,12 +391,342 @@ namespace foo
                 return error("this type has no default value", span);
             }
         }
+
+        ValueResult val(const Expr& e)
+        {
+            FOO_TRY(r, ref(e));
+
+            if (r.use_count() == 1)
+                return r;
+
+            return copy(r);
+        }
+
+        ValueResult ref(const Expr& e)
+        {
+            return make_void();
+
+            return std::visit(overload{
+                [&](const IntLit& x) -> ValueResult     { return make_int(x.value); },
+                [&](const FloatLit& x) -> ValueResult   { return make_float(x.value); },
+                [&](const StringLit& x) -> ValueResult  { return make_string(x.value); },
+                [&](const BoolLit& x) -> ValueResult    { return make_bool(x.value); },
+                [&](const ArrayLit& x) -> ValueResult                 { return make_void(); },
+                [&](const StructLit& x)-> ValueResult                 { return make_void(); },
+                [&](const Name&)-> ValueResult                        { return make_void(); },
+                [&](const Unary& x)  -> ValueResult                   { return make_void(); },
+                [&](const Binary& x) -> ValueResult                   { return make_void(); },
+                [&](const Index& x)   -> ValueResult                  { return make_void(); },
+                [&](const Call& x)   -> ValueResult                   { return make_void(); },
+                [&](const Member& x)  -> ValueResult                  { return make_void(); },
+                [&](const StaticCall& x) -> ValueResult               { return make_void(); }
+            }, e.kind);
+        }
+
+        ValueResult eval_array(const Expr& e, const ArrayLit& x)
+        {
+            const TypeTable& types = resolved().type_table;
+            const TypeId type = info(e).type;
+            const TypeId element = (type >= 0 && types.kind(type) == TypeKind::Array) ? types.element(type) : EmptyType;
+
+            Array a;
+            a.items.reserve(x.elements.size());
+
+            for (const ExprPtr& el : x.elements)
+            {
+                FOO_TRY(value, val(*el));
+                a.items.push_back(nudge_value(std::move(value), info(*el).type, element));
+            }
+
+            return make_value(std::move(a));
+        }
+
+        ValueResult eval_struct_lit(const Expr& e, const StructLit& lit)
+        {
+            const ExprInfo& i = info(e);
+
+            if (i.ref != RefKind::StructLit)
+                throw std::runtime_error("internal: struct literal not resolved");
+
+            const StructInfo& s = struct_info(i.index);
+            const std::vector<int>& order = lookup(resolved().struct_lit_fields, &lit, "struct literal");
+
+            if (order.size() != lit.fields.size())
+                throw std::runtime_error("internal: struct literal field mismatch");
+
+            Struct v;
+            v.fields.resize(s.fields.size());
+
+            for (size_t k = 0; k < lit.fields.size(); k++)
+            {
+                const int idx = order[k];
+
+                if (idx < 0 || static_cast<size_t>(idx) >= s.fields.size())
+                    throw std::runtime_error("internal: bad field index");
+
+                const Expr& fe = *lit.fields[k].value;
+
+                FOO_TRY(value, val(fe));
+                v.fields[static_cast<size_t>(idx)] =
+                    nudge_value(std::move(value), info(fe).type, s.fields[static_cast<size_t>(idx)].type);
+            }
+
+            for (size_t idx = 0; idx < s.fields.size(); idx++)
+                if (!v.fields[idx])
+                {
+                    FOO_TRY(value, default_value(e.span, s.fields[idx].type));
+                    v.fields[idx] = std::move(value);
+                }
+
+            return make_value(std::move(v));
+        }
+
+        ValueResult eval_name(const Expr& e)
+        {
+            const ExprInfo& i = info(e);
+
+            if (i.ref == RefKind::Local)
+                return local(i.index);
+
+            throw std::runtime_error("internal: a name that is not a value");
+        }
+
+        ValueResult eval_unary(const Unary& x)
+        {
+            FOO_TRY(v, ref(*x.operant));
+
+            switch (x.op)
+            {
+            case UnaryOp::Neg:
+                if (const auto* i = std::get_if<int64_t>(&v->v))
+                    return make_int(static_cast<int64_t>(0 - static_cast<uint64_t>(*i)));
+
+                return make_float(-expect<double>(*v));
+
+            case UnaryOp::Not:
+                return make_bool(!as_bool(v));
+            }
+
+            throw std::runtime_error("internal: bad unary operator");
+        }
+
+        ValueResult eval_binary(const Expr& e, const Binary& b)
+        {
+            switch (b.op)
+            {
+            case BinaryOp::Assign:
+            {
+                FOO_TRY(place, assign_to_place(b));
+                (void)place;
+
+                return make_void();
+            }
+
+            case BinaryOp::And:
+            {
+                FOO_TRY(l, ref(*b.lhs));
+
+                if (!as_bool(l))
+                    return make_bool(false);
+
+                FOO_TRY(r, ref(*b.rhs));
+                return make_bool(as_bool(r));
+            }
+
+            case BinaryOp::Or:
+            {
+                FOO_TRY(l, ref(*b.lhs));
+
+                if (as_bool(l))
+                    return make_bool(true);
+
+                FOO_TRY(r, ref(*b.rhs));
+                return make_bool(as_bool(r));
+            }
+
+            case BinaryOp::Range:
+            case BinaryOp::RangeInclusive:
+            {
+                FOO_TRY(lo, val(*b.lhs));
+                FOO_TRY(hi, val(*b.rhs));
+
+                return make_value(Range(std::move(lo), std::move(hi), b.op == BinaryOp::RangeInclusive));
+            }
+
+            default:
+                break;
+            }
+
+            FOO_TRY(l, ref(*b.lhs));
+            FOO_TRY(r, ref(*b.rhs));
+
+            switch (b.op)
+            {
+            case BinaryOp::Eq:
+            case BinaryOp::NotEq:
+            case BinaryOp::Less:
+            case BinaryOp::LessEq:
+            case BinaryOp::Greater:
+            case BinaryOp::GreaterEq:
+            {
+                const auto result = comparison(b.op, *l, *r);
+
+                if (result)
+                    return result.value();
+
+                return error(result.error(), e.span);
+            }
+
+            default:
+                break;
+            }
+
+            auto result = arithmetic(b.op, *l, *r);
+
+            if (!result)
+                return error(result.error(), e.span);
+
+            return *result;
+        }
+
+        ValueRef field(const ValueRef& target, Id index)
+        {
+            Struct& s = expect<Struct>(*target);
+
+            if (index < 0 || static_cast<size_t>(index) >= s.fields.size())
+                throw std::runtime_error("internal: bad field index");
+
+            return s.fields[static_cast<size_t>(index)];
+        }
+
+        ValueResult eval_member(const Expr& e, const Member& m)
+        {
+            const ExprInfo& i = info(e);
+
+            if (i.ref != RefKind::Field)
+                throw std::runtime_error("internal: a member that is not a field");
+
+            FOO_TRY(target, ref(*m.target));
+            return field(target, i.index);
+        }
+
+        ValueResult index_into(const SourceSpan& span, const ValueRef& target, const ValueRef& key, TypeId target_type, bool create)
+        {
+            Value& t = *target;
+
+            if (auto* a = std::get_if<Array>(&t.v))
+            {
+                const int64_t i = as_int(key);
+                const auto at = index_in(i, a->items.size());
+
+                if (!at)
+                    return error(std::format("index {} out of range (size {})", i, a->items.size()), span);
+
+                return a->items[*at];
+            }
+
+            if (auto* m = std::get_if<Map>(&t.v))
+            {
+                auto it = m->items.find(key);
+
+                if (it != m->items.end())
+                    return it->second;
+
+                if (!create)
+                    return error(std::format("key {} not found in map", to_string(*key)), span);
+
+                FOO_TRY(value, default_value(span, resolved().type_table.value(target_type)));
+                m->items.emplace(copy(key), value);
+
+                return value;
+            }
+
+            if (auto* s = std::get_if<std::string>(&t.v))
+            {
+                const int64_t i = as_int(key);
+                const auto at = index_in(i, s->size());
+
+                if (!at)
+                    return error(std::format("index {} out of range (size {})", i, s->size()), span);
+
+                return make_string(std::string(1, (*s)[*at]));
+            }
+
+            throw std::runtime_error("cannot index here");
+        }
+
+        ValueResult index_key(const Index& x)
+        {
+            const TypeTable& types = resolved().type_table;
+            const TypeId target = info(*x.target).type;
+            const TypeId from = info(*x.indexer).type;
+
+            if (target >= 0 && types.kind(target) == TypeKind::Map && from != types.key(target))
+            {
+                FOO_TRY(key, val(*x.indexer));
+                return nudge_value(std::move(key), from, types.key(target));
+            }
+
+            return ref(*x.indexer);
+        }
+
+        ValueResult eval_index(const Expr& e, const Index& x)
+        {
+            FOO_TRY(target, ref(*x.target));
+            FOO_TRY(key, index_key(x));
+
+            return index_into(e.span, target, key, info(*x.target).type, false);
+        }
+
+        ValueResult lvalue(const Expr& e)
+        {
+            if (std::holds_alternative<Name>(e.kind))
+            {
+                const ExprInfo& i = info(e);
+
+                if (i.ref == RefKind::Local)
+                    return local(i.index);
+            }
+            else if (const auto* m = std::get_if<Member>(&e.kind))
+            {
+                const ExprInfo& i = info(e);
+
+                if (i.ref == RefKind::Field)
+                {
+                    FOO_TRY(target, lvalue(*m->target));
+                    return field(target, i.index);
+                }
+            }
+            else if (const auto* x = std::get_if<Index>(&e.kind))
+            {
+                FOO_TRY(target, lvalue(*x->target));
+                FOO_TRY(key, index_key(*x));
+
+                return index_into(e.span, target, key, info(*x->target).type, true);
+            }
+
+            return error("expression cannot be assigned to", e.span);
+        }
+
+        ValueResult assign_to_place(const Binary& b)
+        {
+            FOO_TRY(value, val(*b.rhs));
+
+            ValueRef r = nudge_value(std::move(value), info(*b.rhs).type, info(*b.lhs).type);
+
+            FOO_TRY(place, lvalue(*b.lhs));
+
+            place->v = std::move(r->v);
+            return place;
+        }
     };
 
 
     Runtime::Runtime(RuntimeInput input)
         : _runner(std::make_unique<Runner>(*this, std::move(input)))
     { }
+
+    Runtime::~Runtime() = default;
 
     Result<ValueRef, RuntimeError> Runtime::call(FunctionId fn, Args args)
     {
