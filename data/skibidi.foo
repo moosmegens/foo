@@ -1,13 +1,18 @@
 struct a
 {
-    a: int
-    b: string
+    str: string
 }
 
-
-fn main() -> int
+fn function(ref i: int) -> a?
 {
-    var a: int? = none
+    return none
+}
 
-    return a.or(-1)
+fn main() -> any
+{
+    var arr = [1, 2, 3]
+
+    println( function([ [1, 2], [3, 4] ][0].at(3).or(-1)).or(#a{str="string"}) )
+
+    return function(arr)
 }

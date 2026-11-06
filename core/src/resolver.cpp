@@ -1101,11 +1101,11 @@ namespace foo
                 if (to == BaseTypes::Float && from == BaseTypes::Int)
                     return true;
 
-                if (types().kind(to) == TypeKind::Optional)
-                    return assignable(types().element(to), from, strict);
-
                 if (types().kind(to) == TypeKind::Optional && from == BaseTypes::None)
                     return true;
+
+                if (types().kind(to) == TypeKind::Optional)
+                    return assignable(types().element(to), from, strict);
             } else
             {
                 return (to == from);
