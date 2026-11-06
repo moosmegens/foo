@@ -98,6 +98,7 @@ namespace foo
     {
     public:
         Runtime(RuntimeInput input);
+        ~Runtime();
 
         static void inject(TypeTable& types, NativeRegistry& natives, NativeTable& table);
 

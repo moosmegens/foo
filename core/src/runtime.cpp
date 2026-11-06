@@ -10,7 +10,16 @@ namespace foo
     {
         using namespace ast;
 
-        ValueRef int_op(BinaryOp op, int64_t a, int64_t b)
+        enum class Flow
+        {
+            Continue, Return, Break
+        };
+
+        using ValueResult = Result<ValueRef, RuntimeError>;
+        using FlowResult = Result<Flow, RuntimeError>;
+        using OpResult = Result<ValueRef, std::string>;
+
+        OpResult int_op(BinaryOp op, int64_t a, int64_t b)
         {
             const auto ua = static_cast<uint64_t>(a);
             const auto ub = static_cast<uint64_t>(b);
@@ -28,7 +37,7 @@ namespace foo
 
             case BinaryOp::Div:
                 if (b == 0)
-                    throw std::runtime_error("division by zero");
+                    return std::unexpected(std::string("division by zero"));
 
                 if (b == -1)
                     return make_int(static_cast<int64_t>(0 - ua));
@@ -37,7 +46,7 @@ namespace foo
 
             case BinaryOp::Mod:
                 if (b == 0)
-                    throw std::runtime_error("modulo by zero");
+                    return std::unexpected(std::string("modulo by zero"));
 
                 if (b == -1)
                     return make_int(0);
@@ -45,11 +54,11 @@ namespace foo
                 return make_int(a % b);
 
             default:
-                throw std::runtime_error("bad integer operator");
+                return std::unexpected(std::string("internal int_op: bad op"));
             }
         }
 
-        ValueRef float_op(BinaryOp op, double a, double b)
+        OpResult float_op(BinaryOp op, double a, double b)
         {
             switch (op)
             {
@@ -69,7 +78,7 @@ namespace foo
                 return make_float(std::fmod(a, b));
 
             default:
-                throw std::runtime_error("bad float operator");
+                return std::unexpected(std::string("internal float_op: bad op"));
             }
         }
 
@@ -84,7 +93,7 @@ namespace foo
             return std::nullopt;
         }
 
-        ValueRef arithmetic(BinaryOp op, const Value& l, const Value& r)
+        OpResult arithmetic(BinaryOp op, const Value& l, const Value& r)
         {
             if (const auto* a = std::get_if<int64_t>(&l.v))
                 if (const auto* b = std::get_if<int64_t>(&r.v))
@@ -99,10 +108,10 @@ namespace foo
                     if (const auto* b = std::get_if<std::string>(&r.v))
                         return make_string(*a + *b);
 
-            throw std::runtime_error("cannot apply operator");
+            return std::unexpected(std::string("internal arithmetic: bad op"));
         }
 
-        ValueRef float_comparison(BinaryOp op, double a, double b)
+        OpResult float_comparison(BinaryOp op, double a, double b)
         {
             switch (op)
             {
@@ -125,11 +134,11 @@ namespace foo
                 return make_bool(a >= b);
 
             default:
-                throw std::runtime_error("bad comparison operator");
+                return std::unexpected(std::string("internal float_comparison: bad cmp"));
             }
         }
 
-        ValueRef comparison(BinaryOp op, const Value& l, const Value& r)
+        OpResult comparison(BinaryOp op, const Value& l, const Value& r)
         {
             const bool ints = std::holds_alternative<int64_t>(l.v) && std::holds_alternative<int64_t>(r.v);
 
@@ -161,7 +170,7 @@ namespace foo
                 return make_bool(c >= 0);
 
             default:
-                throw std::runtime_error("bad comparison operator");
+                return std::unexpected(std::string("internal comparison: bad cmp op"));
             }
         }
 
@@ -176,18 +185,16 @@ namespace foo
             std::deque<Frame>& frames;
             ~FramePopHelper() { frames.pop_back(); }
         };
-
-        enum class Flow
-        {
-            Continue, Return, Break
-        };
     }
 
     class Runtime::Runner
     {
     public:
         Runner(Runtime& rt, RuntimeInput input)
-            : _rt(rt), _input(std::move(input)) {}
+            : _rt(rt), _input(std::move(input))
+        {
+
+        }
 
         Result<ValueRef, RuntimeError> call_function(FunctionId id, std::vector<ValueRef> args)
         {
