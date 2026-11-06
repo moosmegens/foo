@@ -251,6 +251,11 @@ namespace foo
             return std::nullopt;
         }
 
+        const RuntimeInput& get_input() const
+        {
+            return _input;
+        }
+
         ValueResult call(FunctionId fn, Args args)
         {
             const auto& functions = resolved().functions;
@@ -374,7 +379,7 @@ namespace foo
                 if (v.use_count() != 1)
                     v = copy(v);
 
-                return make_value(Boxed{std::move(v)});
+                return make_value(Boxed{std::move(v), from});
             }
 
             if (to == BaseTypes::Float && from == BaseTypes::Int)
@@ -819,10 +824,10 @@ namespace foo
                     args.push_back(nudge_value(std::move(argument), info(a).type, p->type));
             }
 
-            return call_native(target.index, args, span);
+            return call_native(target.index, args, sig, span);
         }
 
-        ValueResult call_native(NativeFunctionId id, const std::vector<ValueRef>& args, const SourceSpan& span)
+        ValueResult call_native(NativeFunctionId id, const std::vector<ValueRef>& args, const FunctionSig& sig, const SourceSpan& span)
         {
             const NativeFn* fn = _input.native_table.get(id);
 
@@ -831,7 +836,7 @@ namespace foo
 
             try
             {
-                ValueRef result = (*fn)(_rt, Args(args));
+                ValueRef result = (*fn)(_rt, args, sig);
 
                 if (!result)
                     return make_void();
@@ -1173,9 +1178,10 @@ namespace foo
         return call(*fn, args);
     }
 
-
-
-
+    const TypeTable& Runtime::types() const
+    {
+        return _runner->get_input().resolver_info.type_table;
+    }
 
     void Runtime::inject(TypeTable& types, NativeRegistry& natives, NativeTable& table)
     {
@@ -1208,11 +1214,11 @@ namespace foo
 
         auto printer = [](bool newline)
         {
-            return [newline](Runtime& rt, Args a)
+            return [newline](Runtime& rt, Args a, const auto&)
             {
                 std::string line;
 
-                for (size_t i = 0; i < a.size(); ++i)
+                for (size_t i = 0; i < a.size(); i++)
                 {
                     if (i)
                         line += ' ';
@@ -1243,18 +1249,34 @@ namespace foo
 
                 return signature({}, receiver);
             },
-            [](Runtime&, Args a)
+            [](Runtime&, Args a, const auto&)
             {
                 return make_value(Map{});
             },
             "(map).new() -> (map)");
 
-        def_static("unbox", [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-        {
-            return signature({ParamSig{BaseTypes::Any, false}}, ts.optional_of(receiver));
-        },
-        nullptr,
-        "T.unbox(any) -> T?");
+        def_static("unbox",
+            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+            {
+                return signature(
+                    {ParamSig{BaseTypes::Any, false}},
+                    ts.optional_of(receiver));
+            },
+            [](Runtime& rt, Args a, const FunctionSig& sig) -> ValueRef
+            {
+                const TypeTable& types = rt.types();
+                const TypeId requested = types.element(sig.ret);
+
+                if (std::holds_alternative<std::monostate>(a[0]->v))
+                    return make_void();
+
+                const auto* boxed = std::get_if<Boxed>(&a[0]->v);
+                if (!boxed || boxed->type != requested)
+                    return make_void();
+
+                return copy(boxed->v);
+            },
+            "T.unbox(any) -> T?");
 
 
 
@@ -1266,7 +1288,7 @@ namespace foo
 
                 return std::nullopt;
             },
-            [](Runtime&, Args a)
+            [](Runtime&, Args a, const auto&)
             {
                 if (std::holds_alternative<std::monostate>(a[0]->v))
                     return copy(a[1]);
@@ -1290,7 +1312,7 @@ namespace foo
 
                 return std::nullopt;
             },
-            [](Runtime&, Args a)
+            [](Runtime&, Args a, const auto&)
             {
 
                 if (const auto* map = std::get_if<Map>(&a[0]->v))
@@ -1337,7 +1359,7 @@ namespace foo
                     return std::nullopt;
                 }
             },
-            [](Runtime&, Args a)
+            [](Runtime&, Args a, const auto&)
             {
                 const Value& v = *a[0];
 
@@ -1359,7 +1381,7 @@ namespace foo
 
                 return signature({ParamSig{ts.element(receiver), false}}, BaseTypes::Void, true);
             },
-            [](Runtime&, Args a)
+            [](Runtime&, Args a, const auto&)
             {
                 as_array(a[0]).items.push_back(copy(a[1]));
                 return make_void();
@@ -1374,7 +1396,7 @@ namespace foo
 
                 return signature({}, ts.optional_of(ts.element(receiver)), true);
             },
-            [](Runtime&, Args a)
+            [](Runtime&, Args a, const auto&)
             {
                 auto& items = as_array(a[0]).items;
 
@@ -1395,7 +1417,7 @@ namespace foo
 
                 return signature({}, BaseTypes::Void, true);
             },
-            [](Runtime&, Args a)
+            [](Runtime&, Args a, const auto&)
             {
                 if (auto* arr = std::get_if<Array>(&a[0]->v))
                     arr->items.clear();
@@ -1414,7 +1436,7 @@ namespace foo
 
                 return signature({ParamSig{ts.key(receiver), false}}, BaseTypes::Bool, true);
             },
-            [](Runtime&, Args a)
+            [](Runtime&, Args a, const auto&)
             {
                 return make_bool(as_map(a[0]).items.erase(a[1]) > 0);
             },
@@ -1431,7 +1453,7 @@ namespace foo
 
                 return std::nullopt;
             },
-            [](Runtime&, Args a)
+            [](Runtime&, Args a, const auto&)
             {
                 if (const auto* m = std::get_if<Map>(&a[0]->v))
                     return make_bool(m->items.contains(a[1]));

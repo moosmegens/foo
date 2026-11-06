@@ -1,6 +1,8 @@
 #ifndef FOO_VALUE_HPP
 #define FOO_VALUE_HPP
 
+#include "resolver.hpp"
+
 #include <compare>
 #include <cstdint>
 #include <map>
@@ -57,6 +59,7 @@ namespace foo
     struct Boxed
     {
         ValueRef v;
+        TypeId type = EmptyType;
     };
 
     struct Native

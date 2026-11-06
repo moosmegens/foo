@@ -60,7 +60,8 @@ namespace foo
     }
 
     using Args = std::span<const ValueRef>;
-    using NativeFn = std::function<ValueRef(Runtime&, Args)>;
+    using NativeFn =
+        std::function<ValueRef(Runtime&, Args, const FunctionSig&)>;
 
     class NativeTable
     {
@@ -143,6 +144,8 @@ namespace foo
         std::optional<FunctionId> find_function(std::string_view name) const;
         Result<ValueRef, RuntimeError> call(FunctionId fn, Args args);
         Result<ValueRef, RuntimeError> call(std::string_view name, Args args);
+
+        const TypeTable& types() const;
 
         Runtime(const Runtime&) = delete;
         Runtime& operator=(const Runtime&) = delete;

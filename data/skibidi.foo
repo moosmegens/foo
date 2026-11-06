@@ -5,11 +5,9 @@ struct a
 }
 
 
-fn main() -> a
+fn main() -> int
 {
-    var map = @[string, a].new()
-    // map["test"] = #a{ a = 20, b = "hello world" }
+    var a: any = 0
 
-    return map.at("test")
-            .or(#a{ a = 10, b = "67" })
+    return @int.unbox(a).or(-1)
 }
