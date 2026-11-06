@@ -357,6 +357,7 @@ namespace foo
             {
                 Struct s;
 
+                s.fields.reserve(struct_info(types.struct_id(t)).fields.size());
                 for (const FieldInfo& f : struct_info(types.struct_id(t)).fields)
                 {
                     FOO_TRY(value, default_value(span, f.type));
