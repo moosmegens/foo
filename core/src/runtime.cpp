@@ -719,6 +719,200 @@ namespace foo
             place->v = std::move(r->v);
             return place;
         }
+
+
+        FlowResult exec_block(const Block& b)
+        {
+            for (const StmtPtr& s : b.statements)
+            {
+                FOO_TRY(flow, exec(*s));
+
+                if (flow != Flow::Continue)
+                    return flow;
+            }
+
+            return Flow::Continue;
+        }
+
+        FlowResult exec(const Stmt& s)
+        {
+            return std::visit(overload{
+                [&](const Block& b)     { return exec_block(b); },
+                [&](const VarDecl& v)   { return exec_var_decl(s, v); },
+                [&](const Return& r)    { return exec_return(r); },
+                [&](const If& i)        { return exec_if(i); },
+                [&](const While& w)     { return exec_while(w); },
+                [&](const ForIn& f)     { return exec_for(s, f); },
+                [&](const ExprStmt& x)  { return exec_expr(x); },
+                [&](const Check& c)     { return exec_check(c); }
+            }, s.kind);
+        }
+
+        FlowResult exec_var_decl(const Stmt& s, const VarDecl& v)
+        {
+            const LocalInfo& li = lookup(resolved().var_decls, &v, "variable");
+
+            if (v.init)
+            {
+                FOO_TRY(value, val(*v.init));
+                bind(li.slot, nudge_value(std::move(value), info(*v.init).type, li.type));
+            }
+            else
+            {
+                FOO_TRY(value, default_value(s.span, li.type));
+                bind(li.slot, std::move(value));
+            }
+
+            return Flow::Continue;
+        }
+
+        FlowResult exec_return(const Return& r)
+        {
+            if (!r.value)
+            {
+                _ret = make_void();
+                return Flow::Return;
+            }
+
+            FOO_TRY(value, val(*r.value));
+
+            _ret = nudge_value(std::move(value), info(*r.value).type, _frames.back().fn->sig.ret);
+            return Flow::Return;
+        }
+
+        FlowResult exec_if(const If& i)
+        {
+            FOO_TRY(cond, ref(*i.cond));
+
+            if (as_bool(cond))
+                return exec(*i.then_branch);
+
+            if (i.else_branch)
+                return exec(*i.else_branch);
+
+            return Flow::Continue;
+        }
+
+
+        static bool leaves_loop(Flow flow)
+            { return flow != Flow::Continue; }
+
+        static Flow flow_after_loop(Flow flow)
+            { return flow == Flow::Break ? Flow::Continue : flow; }
+
+        FlowResult exec_while(const While& w)
+        {
+            while (true)
+            {
+                FOO_TRY(cond, ref(*w.cond));
+
+                if (!as_bool(cond))
+                    break;
+
+                FOO_TRY(flow, exec(*w.body));
+
+                if (leaves_loop(flow))
+                    return flow_after_loop(flow);
+            }
+
+            return Flow::Continue;
+        }
+
+        FlowResult exec_expr(const ExprStmt& x)
+        {
+            const Expr& e = *x.expr;
+
+            if (const auto* b = std::get_if<Binary>(&e.kind); b && b->op == BinaryOp::Assign)
+            {
+                FOO_TRY(place, assign_to_place(*b));
+                (void)place;
+            }
+            else
+            {
+                FOO_TRY(value, ref(e));
+                (void)value;
+            }
+
+            return Flow::Continue;
+        }
+
+        FlowResult exec_check(const Check& c)
+        {
+            FOO_TRY(value, val(*c.expr));
+
+            if (!std::holds_alternative<std::monostate>(value->v))
+            {
+                bind(lookup(resolved().check_vars, &c, "check variable").slot, std::move(value));
+                return exec(*c.good_branch);
+            }
+
+            if (c.bad_branch)
+                return exec(*c.bad_branch);
+
+            return Flow::Continue;
+        }
+
+        FlowResult exec_for(const Stmt& s, const ForIn& f)
+        {
+            const LocalInfo& li = lookup(resolved().for_vars, &f, "loop variable");
+
+            FOO_TRY(it, val(*f.iterable));
+
+            if (const auto* r = std::get_if<Range>(&it->v))
+            {
+                const int64_t lo = as_int(r->lo);
+                const int64_t hi = as_int(r->hi);
+                const bool inclusive = r->inclusive;
+
+                if (inclusive ? lo > hi : lo >= hi)
+                    return Flow::Continue;
+
+                for (int64_t i = lo;; i++)
+                {
+                    bind(li.slot, make_int(i));
+
+                    FOO_TRY(flow, exec(*f.body));
+
+                    if (leaves_loop(flow))
+                        return flow_after_loop(flow);
+
+                    if (inclusive ? i == hi : i + 1 == hi)
+                        return Flow::Continue;
+                }
+            }
+
+            if (const auto* a = std::get_if<Array>(&it->v))
+            {
+                for (const ValueRef& element : a->items)
+                {
+                    bind(li.slot, copy(element));
+
+                    FOO_TRY(flow, exec(*f.body));
+
+                    if (leaves_loop(flow))
+                        return flow_after_loop(flow);
+                }
+
+                return Flow::Continue;
+            }
+
+            if (const auto* m = std::get_if<Map>(&it->v))
+            {
+                for (const auto& entry : m->items)
+                {
+                    bind(li.slot, copy(entry.first));
+
+                    FOO_TRY(flow, exec(*f.body));
+
+                    if (leaves_loop(flow))
+                        return flow_after_loop(flow);
+                }
+
+                return Flow::Continue;
+            }
+
+            return error(std::format("cannot iterate over this"), s.span);
+        }
     };
 
 
