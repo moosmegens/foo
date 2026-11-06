@@ -136,6 +136,10 @@ namespace foo::ast
             return ptr_range_equal(elements, other.elements);
         }
     };
+    struct NoneLit
+    {
+        bool operator==(const NoneLit&) const { return true; };
+    };
 
     struct FieldInit
     {
@@ -231,7 +235,7 @@ namespace foo::ast
     };
 
     using ExprKind = std::variant<
-        IntLit, FloatLit, StringLit, BoolLit, ArrayLit,
+        IntLit, FloatLit, StringLit, BoolLit, ArrayLit, NoneLit,
         StructLit,
         Name,
         Unary, Binary,

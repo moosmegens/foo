@@ -701,6 +701,7 @@ namespace foo
         Value eval(const Expr& e)
         {
             return std::visit(overload{
+                [&](const NoneLit) -> Value { fail("none not supported", e.span); },
                 [&](const IntLit& n)    -> Value { return Value(n.value); },
                 [&](const FloatLit& n)  -> Value { return Value(n.value); },
                 [&](const StringLit& n) -> Value { return Value(n.value); },

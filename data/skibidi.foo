@@ -7,7 +7,7 @@ struct a
 
 fn main() -> int
 {
-    var a: any = 0
+    var a: int? = none
 
-    return @int.unbox(a).or(-1)
+    return a.or(-1)
 }

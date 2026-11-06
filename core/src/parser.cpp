@@ -905,6 +905,11 @@ namespace foo
                     advance();
                     return std::make_unique<ast::Expr>(ast::BoolLit{value}, span);
                 }
+                if (auto* t = std::get_if<tok::None>(&v))
+                {
+                    advance();
+                    return std::make_unique<ast::Expr>(ast::NoneLit{}, span);
+                }
                 if (std::get_if<tok::Hash>(&v))
                 {
                     advance();

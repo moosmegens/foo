@@ -456,6 +456,7 @@ namespace foo
                 [&](const StringLit& x) -> ValueResult  { return make_string(x.value); },
                 [&](const BoolLit& x) -> ValueResult    { return make_bool(x.value); },
                 [&](const ArrayLit& x)                  { return eval_array(e, x); },
+                [&](const NoneLit&) -> ValueResult      { return make_void(); },
                 [&](const StructLit& x)                 { return eval_struct_lit(e, x); },
                 [&](const Name&)                        { return eval_name(e); },
                 [&](const Unary& x)                     { return eval_unary(x); },

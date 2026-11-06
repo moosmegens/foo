@@ -116,6 +116,9 @@ namespace foo
             [](const ArrayLit& n)
                 { return "[" + list(n.elements) + "]"; },
 
+            [](const NoneLit&) -> std::string
+                { return "none"; },
+
             [](const Name& n)
                 { return join(n.path, "::"); },
 

@@ -137,6 +137,7 @@ namespace foo
             case TypeKind::Float:   return "float";
             case TypeKind::String:  return "string";
             case TypeKind::Any:     return "any";
+            case TypeKind::None:    return "none";
 
             case TypeKind::Range:
                 return "range<" + type_name(types.element(type), output) + ">";
@@ -1086,7 +1087,8 @@ namespace foo
 
         bool assignable(TypeId to, TypeId from, bool strict = false)
         {
-            if (!strict) {
+            if (!strict)
+            {
                 if (to == BaseTypes::Error || from == BaseTypes::Error)
                     return true;
 
@@ -1102,6 +1104,8 @@ namespace foo
                 if (types().kind(to) == TypeKind::Optional)
                     return assignable(types().element(to), from, strict);
 
+                if (types().kind(to) == TypeKind::Optional && from == BaseTypes::None)
+                    return true;
             } else
             {
                 return (to == from);
@@ -1125,6 +1129,7 @@ namespace foo
             const SourceSpan& span = expr.span;
 
             ExprInfo info = std::visit(overload{
+            [&](const ast::NoneLit& )           { return make_einfo(BaseTypes::None); },
             [&](const ast::IntLit&)             { return make_einfo(BaseTypes::Int); },
             [&](const ast::FloatLit&)           { return make_einfo(BaseTypes::Float); },
             [&](const ast::StringLit&)          { return make_einfo(BaseTypes::String); },
