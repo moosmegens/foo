@@ -16,6 +16,8 @@ fn main() -> int
 
     println( io::read_lines("foo.log").unwrap().reversed().join("\n") )
 
+    testing::assert_eq(1, 1)
+
 
     return a.unwrap()
 }

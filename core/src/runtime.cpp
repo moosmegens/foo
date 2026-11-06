@@ -1550,5 +1550,36 @@ namespace foo
                 return make_value(std::move(result));
             },
             "(T[]).reversed() -> T[]   (returns a reversed copy)");
+
+
+
+
+        NativeDef def(types, natives, table);
+
+        def.function("testing::assert", {{ParamSig{BaseTypes::Bool}}},
+            [](Runtime&, Args a, const auto&)
+            {
+                bool cond = as_bool(a[0]);
+
+                if (cond == false)
+                    throw std::runtime_error("testing: assertion failed!");
+
+                return make_void();
+            },
+            "testing::assert(cond: bool)");
+
+        def.function("testing::assert_eq", {{ParamSig{BaseTypes::Any}, ParamSig{BaseTypes::Any}}},
+            [](Runtime&, Args a, const auto&)
+            {
+                const auto& _1 = a[0];
+                const auto& _2 = a[1];
+
+                if (*_1 != *_2)
+                    throw std::runtime_error("testing: assertion eq failed!");
+
+
+                return make_void();
+            },
+            "testing::assert_eq(any, any)");
     }
 }
