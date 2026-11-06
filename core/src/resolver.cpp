@@ -1468,9 +1468,9 @@ namespace foo
                 _output.native_sigs[&call] = callee->sig;
 
 
-            bool needs_variable = (callee->receiver != nullptr) && callee->sig.self_by_ref;
-            if (needs_variable && is_lvalue(*callee->receiver) == false)
-                error(callee->receiver->span, "this method takes self by reference, the receiver must be a lvalue");
+            //bool needs_variable = (callee->receiver != nullptr) && callee->sig.self_by_ref;
+            // if (needs_variable && is_lvalue(*callee->receiver) == false)
+            //     error(callee->receiver->span, "this method takes self by reference, the receiver must be a lvalue");
 
             resolve_args(callee->sig, call.args, span);
 

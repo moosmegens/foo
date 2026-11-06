@@ -6,6 +6,8 @@
 #include <iostream>
 #include <utility>
 
+#include "foo/natives.hpp"
+
 namespace foo
 {
 
@@ -1241,7 +1243,6 @@ namespace foo
         def_function("println", print_sig, printer(true), "println(any...) -> void");
         def_function("print", print_sig, printer(false), "print(any...) -> void");
 
-
         def_static("new",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
@@ -1297,6 +1298,57 @@ namespace foo
                 return copy(a[0]);
             },
             "(T?).or(T) -> T");
+
+        def_method("unwrap",
+            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+            {
+                if (ts.kind(receiver) == TypeKind::Optional)
+                    return signature({}, ts.element(receiver));
+
+                return std::nullopt;
+            },
+            [](Runtime&, Args a, const auto&)
+            {
+                if (std::holds_alternative<std::monostate>(a[0]->v))
+                    throw std::runtime_error{"unwrap failed!"};
+
+                return copy(a[0]);
+            },
+            "(T?).unwrap(T) -> T  (wil throw on unwrap failed)");
+
+        def_method("join",
+            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+            {
+                if (ts.kind(receiver) != TypeKind::Array)
+                    return std::nullopt;
+
+                if (ts.element(receiver) != BaseTypes::String)
+                    return std::nullopt;
+
+                return NativeDef::sig(
+                    { ParamSig{BaseTypes::String, false} },
+                    BaseTypes::String,
+                    true
+                );
+            },
+            [](Runtime&, Args a, const auto&)
+            {
+                const auto& items = as_array(a[0]).items;
+                const std::string& separator = as_string(a[1]);
+
+                std::string result;
+
+                for (size_t i = 0; i < items.size(); ++i)
+                {
+                    if (i != 0)
+                        result += separator;
+
+                    result += as_string(items[i]);
+                }
+
+                return make_string(std::move(result));
+            },
+            "(string[]).join(separator: string) -> string");
 
 
         def_method("at",
@@ -1466,5 +1518,37 @@ namespace foo
                 return make_bool(false);
             },
             "(map | array).contains((key | element)) -> bool");
+
+        def_method("reverse",
+            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+            {
+                if (ts.kind(receiver) != TypeKind::Array)
+                    return std::nullopt;
+
+                return signature({}, BaseTypes::Void, true);
+            },
+            [](Runtime&, Args a, const auto&)
+            {
+                auto& items = as_array(a[0]).items;
+                std::reverse(items.begin(), items.end());
+                return make_void();
+            },
+            "(T[]).reverse() -> void   (reverses in place)");
+
+        def_method("reversed",
+            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+            {
+                if (ts.kind(receiver) != TypeKind::Array)
+                    return std::nullopt;
+
+                return signature({}, receiver);
+            },
+            [](Runtime&, Args a, const auto&)
+            {
+                Array result = as_array(copy(a[0]));
+                std::reverse(result.items.begin(), result.items.end());
+                return make_value(std::move(result));
+            },
+            "(T[]).reversed() -> T[]   (returns a reversed copy)");
     }
 }

@@ -25,6 +25,8 @@
 
 #include <foo/value.hpp>
 
+#include "foo/natives.hpp"
+
 #define CLR_BLACK   "\033[1;30m"
 #define CLR_RED     "\033[1;31m"
 #define CLR_GREEN   "\033[1;32m"
@@ -148,6 +150,9 @@ void main2()
         r.resolver_input.natives = std::move(natives);
 
         foo::Runtime::inject(r.resolver_input.types, r.resolver_input.natives, _t);
+        foo::inject_rng(r.resolver_input.types, r.resolver_input.natives, _t);
+        foo::inject_io(r.resolver_input.types, r.resolver_input.natives, _t);
+        foo::inject_os(r.resolver_input.types, r.resolver_input.natives, _t);
 
         o = foo::resolve(r.resolver_input);
         if (o.errors.empty())

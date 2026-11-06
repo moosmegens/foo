@@ -8,11 +8,14 @@ fn function(ref i: int) -> a?
     return none
 }
 
-fn main() -> any
+fn main() -> int
 {
-    var arr = [1, 2, 3]
-
     println( function([ [1, 2], [3, 4] ][0].at(3).or(-1)).or(#a{str="string"}) )
 
-    return function(arr)
+    var a: int? = 5;
+
+    println( io::read_lines("foo.log").unwrap().reversed().join("\n") )
+
+
+    return a.unwrap()
 }
