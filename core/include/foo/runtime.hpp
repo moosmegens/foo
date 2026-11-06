@@ -47,6 +47,18 @@ namespace foo
         throw std::runtime_error("wrong native type");
     }
 
+    inline bool&        as_bool  (const ValueRef& r) { return expect<bool>(*r); }
+    inline int64_t&     as_int   (const ValueRef& r) { return expect<int64_t>(*r); }
+    inline double&      as_float (const ValueRef& r) { return expect<double>(*r); }
+    inline std::string& as_string(const ValueRef& r) { return expect<std::string>(*r); }
+    inline Array&       as_array (const ValueRef& r) { return expect<Array>(*r); }
+    inline Map&         as_map   (const ValueRef& r) { return expect<Map>(*r); }
+
+    inline ValueRef copy(const ValueRef& r)
+    {
+        return make<Value>(r->clone());
+    }
+
     using Args = std::span<const ValueRef>;
     using NativeFn = std::function<ValueRef(Runtime&, Args)>;
 
