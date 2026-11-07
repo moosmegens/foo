@@ -435,6 +435,8 @@ fn main() -> int
     var a = 5
 
     double(a)
+
+    return a; // should return 10
 }
 )AAA"
     },
@@ -596,7 +598,7 @@ fn main() -> int
 {
     var a: any = 5;
 
-    check @int.from(a) => is_int
+    check @int.unbox(a) => is_int
     {
         return is_int
     } else {
@@ -729,61 +731,194 @@ static void show_syntax(const std::vector<std::string>& kinds)
             || ((std::ranges::find(kinds, std::string_view{names}) != kinds.end()) || ...);
     };
 
-    constexpr int name_width = 10;
+    const int row_width = 34;
+    const int label_width = 10;
 
     auto indent = [](int depth) { foo::print(foo::str_repeat("  ", depth)); };
 
+    bool first_header = true;
+    bool first_sheader = true;
     auto header = [&](std::string_view h)
     {
+        if (!first_header)
+            foo::println("");
+
+        first_header = false;
+        first_sheader = true;
+
         foo::println(colored(std::string{h}, clr::bright_magenta));
     };
 
     auto sheader = [&](std::string_view h)
     {
+        if (!first_sheader)
+            foo::println("");
+
+        first_sheader = false;
+
         indent(1);
         foo::println(colored(std::string{h}, clr::bright_cyan));
     };
 
-    auto rule = [&](std::string_view name, std::string_view body)
+    auto row = [&](std::string_view syntax, std::string_view text)
     {
         indent(2);
-        foo::println(std::format("{:<{}} = {}", name, name_width, body));
+        foo::println(colored(std::format("{:<{}}", syntax, row_width), clr::green) + " " + std::string{text});
+    };
+
+    auto form = [&](std::string_view f)
+    {
+        indent(2);
+        foo::println(colored(std::string{f}, clr::green));
+    };
+
+    auto part = [&](std::string_view label, std::string_view text)
+    {
+        indent(3);
+        foo::println(std::format("{:<{}} {}", label, label_width, text));
+    };
+
+    auto more = [&](std::string_view text)
+    {
+        part("", text);
     };
 
     {
-        header("base");
+        header("");
 
-        rule("name", R"AAA([a-zA-Z_] [a-zA-Z0-9_]*)AAA");
+        sheader("how to read this");
+        row("<name>",                               "something you fill in");
+
+        sheader("names");
+        row("counter   _tmp   player_2",            "letters, digits and _, not starting with a digit");
+        row("a::b::c",                              ":: reaches into the names of another file");
+
+        sheader("comments (C style)");
+        row("// text",                              "ignored until the end of the line");
+        row("/* text */",                           "");
+
+        sheader("semicolons");
+        row(";",                                    "optional");
     }
 
     if (wants("types"))
     {
         header("types");
 
-        rule("type", R"AAA(name ("[]" | "?")*)AAA");
+        row("int  float  bool  string  any",        "built-in types");
+        row("void",                                 "only for functions");
+        row("<type>[]",                             "array of <type>: int[]   int[][]");
+        row("<type>?",                              "a <type> or nothing: int?   (int?? is not allowed)");
+        row("[<key>, <value>]",                     "map from one type to another: [string, int]");
+        row("<path>::<name>",                       "a named type from another file: lib_b::Point");
     }
 
     if (wants("decls"))
     {
         header("declarations");
 
+        sheader("imports");
+        form(R"AAA(import "<path>", ...)AAA");
+        part(R"AAA("<path>")AAA",   "a file from the project root, written without .foo");
+        part("then",                R"AAA(import "lib/b" gives you the names lib::b::<name>)AAA");
+        part("e.g.",                R"AAA(import "lib/b")AAA");
+        more(R"AAA(import "a", "b")AAA");
+
         sheader("functions");
-        rule("param",    R"AAA("ref"? name ":" type)AAA");
-        rule("function", R"AAA("fn" name "(" (param ("," param)*)? ")" "->" type block)AAA");
+        form("fn <name>(<params>) -> <type> { ... }");
+        part("<params>",            "name: type, separated by commas");
+        more("put ref in front of a name to let the function edit the caller's value");
+        part("<type>",              "what it gives back, void for nothing");
+        part("e.g.",                "fn add(a: int, b: int) -> int { ... }");
+        more("fn double(ref a: int) -> void { ... }");
 
         sheader("structs");
-        rule("field",  R"AAA(name ":" type)AAA");
-        rule("struct", R"AAA("struct" name "{" (field | function)* "}")AAA");
+        form("struct <name> { <fields> <methods> }");
+        part("field",               "<name>: <type>");
+        part("method",              "a function inside the struct");
+        more("its first parameter is the struct itself, usually ref self: <name>");
+        part("e.g.",                "struct Point");
+        more("{");
+        more("    x: int");
+        more("    y: int");
+        more("");
+        more("    fn sum(ref self: Point) -> int { ... }");
+        more("}");
+    }
+
+    if (wants("stmts"))
+    {
+        header("statements");
+
+        sheader("variables");
+        form("var <name>: <type> = <expr>");
+        part(": <type>",            "can be left out when there is a value");
+        part("= <expr>",            "can be left out when there is a type");
+        part("note",                "you need at least one of the two");
+        part("e.g.",                "var count = 5");
+        more("var names: string[] = []");
+        more("var total: int");
+
+        sheader("if");
+        form("if <expr> { ... } else if <expr> { ... } else { ... }");
+        part("<expr>",              "must be true or false; parentheses around it are optional");
+        part("else",                "can be left out, and else if can repeat");
+
+        sheader("while");
+        form("while <expr> { ... }");
+        part("<expr>",              "the block repeats as long as it is true");
+
+        sheader("for");
+        form("for <name> in <expr> { ... }");
+        part("<name>",              "holds the next value each time round");
+        part("<expr>",              "what to loop over, such as the range 0..10");
+        more("0..10 stops before 10, 0..=10 includes it");
+
+        sheader("check");
+        form("check <expr> => <name> { ... } else { ... }");
+        part("<expr>",              "an optional value, such as a variable of type int?");
+        part("<name>",              "what the value is called inside the first block");
+        part("else",                "runs when there was no value, can be left out");
+
+        sheader("return");
+        form("return <expr>");
+        part("<expr>",              "the value to give back");
+        part("alone",               "return;  leaves without a value (the ; is needed here)");
+
+        sheader("blocks and expressions");
+        form("{ ... }");
+        part("block",               "variables declared inside end at the }");
+        part("alone",               "any expression can be a statement, e.g. println(a)");
     }
 
     if (wants("exprs"))
     {
+        header("expressions");
 
-    }
+        sheader("values");
+        row(R"AAA(5   1.5   "text"   true)AAA",      "int, float, string, bool");
+        row("[<expr>, ...]",                         "an array: [1, 2, 3]");
+        row("#<type>{ <name> = <expr>, ... }",       "a struct: #Point{ x = 1, y = 2 }");
+        row("",                                      "fields use =, types use :");
 
-    if (wants("stmns"))
-    {
+        sheader("using values");
+        row("<expr>.<name>",                         "a field of a struct: p.x");
+        row("<expr>(<args>)",                        "a call: add(1, 2)   p.sum()");
+        row("<expr>[<expr>]",                        "an element of an array: list[0]");
+        row("@<type>.<name>(<args>)",                "a function of a type: @int.from(a)");
+        row("(<expr>)",                              "grouping: (a + b) * c");
 
+        sheader("operators (strongest first)");
+        row(". () []",                               "field, call, element");
+        row("-a   !a",                               "negative, not");
+        row("*  /  %",                               "multiply, divide, remainder");
+        row("+  -",                                  "add, subtract");
+        row("<  <=  >  >=",                          "compare");
+        row("==  !=",                                "equal, not equal");
+        row("&&",                                    "and");
+        row("||",                                    "or");
+        row("..  ..=",                               "a range of numbers");
+        row("=",                                     "assign (weakest)");
     }
 }
 

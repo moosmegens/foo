@@ -387,7 +387,7 @@ namespace foo
                 if (!d)
                 {
                     foo::println("DeclPtr is NULL!");
-                    return;
+                    continue;
                 }
 
                 std::visit(overload{
@@ -710,33 +710,33 @@ namespace foo
             const FunctionInfo* caller = nullptr,
             const std::string& extra = "")
         {
-            println(fn.owner_type, fn.pub, fn.decl->name);
+            //println(fn.owner_type, fn.pub, fn.decl->name);
 
             if (fn.pub)
             {
-                println("fn.pub");
+                //println("fn.pub");
                 return true;
             }
 
             if (!caller)
             {
-                println("!caller");
+                //println("!caller");
                 return false;
             }
 
             if (fn.owner_type != EmptyType)
             {
-                println("fn.owner_type != EmptyType");
+                //println("fn.owner_type != EmptyType");
                 if (fn.owner_type != caller->owner_type)
                 {
-                    println("fn.owner_type != caller->owner_type");
+                    //println("fn.owner_type != caller->owner_type");
                     goto error_label;
                 }
             }
 
             if (path_same_start(fn.path, caller->path))
             {
-                println("path_same_start(fn.path, caller->path)");
+                //println("path_same_start(fn.path, caller->path)");
                 return true;
             }
 
