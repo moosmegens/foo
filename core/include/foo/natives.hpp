@@ -37,22 +37,22 @@ namespace foo
             return s;
         }
 
-        void function(std::string name, FunctionSig sig, NativeFn fn, const std::string& info = "")
+        void function(std::string name, FunctionSig sig, NativeFn fn, const NativeTable::Info& info = {})
         {
             table.set(natives.add_function(std::move(name), std::move(sig)), std::move(fn), info);
         }
 
-        void method(std::string name, TypeId receiver, FunctionSig sig, NativeFn fn, const std::string& info = "")
+        void method(std::string name, TypeId receiver, FunctionSig sig, NativeFn fn, const NativeTable::Info& info = {})
         {
             table.set(natives.add_method(std::move(name), receiver, std::move(sig)), std::move(fn), info);
         }
 
-        void method(std::string name, NativeResolver resolve, NativeFn fn, const std::string& info = "")
+        void method(std::string name, NativeResolver resolve, NativeFn fn, const NativeTable::Info& info = {})
         {
             table.set(natives.add_method(std::move(name), std::move(resolve)), std::move(fn), info);
         }
 
-        void static_function(std::string name, NativeResolver resolve, NativeFn fn, const std::string& info = "")
+        void static_function(std::string name, NativeResolver resolve, NativeFn fn, const NativeTable::Info& info = {})
         {
             table.set(natives.add_static_function(std::move(name), std::move(resolve)), std::move(fn), info);
         }

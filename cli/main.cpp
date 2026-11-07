@@ -1,12 +1,14 @@
 #include "vendor/argparse.hpp"
 
-#include <foo/dynamic_runner.hpp>
+#include <foo/runtime.hpp>
 
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <ostream>
 #include <ranges>
+#include <string_view>
+#include <algorithm>
 
 #include <foo/lexer.hpp>
 #include <foo/util/scoped_timer.hpp>
@@ -16,43 +18,63 @@
 
 #include <foo/collector.hpp>
 
-#include "foo/runtime.hpp"
-#include "foo/util/str.hpp"
+#include <foo/runtime.hpp>
+#include <foo/util/str.hpp>
 
-#define CLR_BLACK   "\033[1;30m"
-#define CLR_RED     "\033[1;31m"
-#define CLR_GREEN   "\033[1;32m"
-#define CLR_YELLOW  "\033[1;33m"
-#define CLR_BLUE    "\033[1;34m"
-#define CLR_MAGENTA "\033[1;35m"
-#define CLR_CYAN    "\033[1;36m"
-#define CLR_WHITE   "\033[1;37m"
-#define CLR_RESET   "\033[0m"
+#include "foo/natives.hpp"
+#include "foo/debug/debug_out.hpp"
 
-#define CLR_BRIGHT_BLACK   "\033[1;90m"
-#define CLR_BRIGHT_RED     "\033[1;91m"
-#define CLR_BRIGHT_GREEN   "\033[1;92m"
-#define CLR_BRIGHT_YELLOW  "\033[1;93m"
-#define CLR_BRIGHT_BLUE    "\033[1;94m"
-#define CLR_BRIGHT_MAGENTA "\033[1;95m"
-#define CLR_BRIGHT_CYAN    "\033[1;96m"
-#define CLR_BRIGHT_WHITE   "\033[1;97m"
+namespace fs = std::filesystem;
 
-static void print_diagnostics(const std::string& error, std::string_view src, foo::SourceSpan span, bool is_error = true, const std::string file = "")
+namespace clr
 {
-    auto lines = foo::get_diagnostic_lines(src, span, is_error ? 2 : 1);
+    inline constexpr std::string_view black   = "\033[1;30m";
+    inline constexpr std::string_view red     = "\033[1;31m";
+    inline constexpr std::string_view green   = "\033[1;32m";
+    inline constexpr std::string_view yellow  = "\033[1;33m";
+    inline constexpr std::string_view blue    = "\033[1;34m";
+    inline constexpr std::string_view magenta = "\033[1;35m";
+    inline constexpr std::string_view cyan    = "\033[1;36m";
+    inline constexpr std::string_view white   = "\033[1;37m";
+    inline constexpr std::string_view reset   = "\033[0m";
 
-    std::string_view col = is_error ? CLR_RED : CLR_YELLOW;
+    inline constexpr std::string_view bright_black   = "\033[1;90m";
+    inline constexpr std::string_view bright_red     = "\033[1;91m";
+    inline constexpr std::string_view bright_green   = "\033[1;92m";
+    inline constexpr std::string_view bright_yellow  = "\033[1;93m";
+    inline constexpr std::string_view bright_blue    = "\033[1;94m";
+    inline constexpr std::string_view bright_magenta = "\033[1;95m";
+    inline constexpr std::string_view bright_cyan    = "\033[1;96m";
+    inline constexpr std::string_view bright_white   = "\033[1;97m";
+}
 
-    if (is_error)
-        std::cout << col << "error" << CLR_RESET << ": " << error << "\n";
-    else
-        std::cout << col << "warning" << CLR_RESET << ": " << error << "\n";
+static std::string colored(std::string_view v, std::string_view color)
+{
+    return std::string{color} + std::string{v} + std::string{clr::reset};
+}
+
+enum class Severity
+{
+    Error,
+    Warning,
+};
+
+static void print_diagnostics(
+    std::string_view message,
+    std::string_view src,
+    foo::SourceSpan span,
+    Severity severity,
+    const fs::path& file = {})
+{
+    const bool is_error = severity == Severity::Error;
+    const std::string_view col = is_error ? clr::red : clr::yellow;
+
+    std::cout << col << (is_error ? "error" : "warning") << clr::reset << ": " << message << '\n';
 
     if (!file.empty())
-    {
-        std::cout << file << "\n";
-    }
+        std::cout << file.string() << '\n';
+
+    const auto lines = foo::get_diagnostic_lines(src, span, is_error ? 2 : 1);
 
     if (lines.empty())
     {
@@ -60,77 +82,198 @@ static void print_diagnostics(const std::string& error, std::string_view src, fo
         return;
     }
 
-    int max_line = lines.back().line_number;
-    int pad_len = std::to_string(max_line).length();
-
-    std::string pad(pad_len, ' ');
+    const auto pad_len = std::to_string(lines.back().line_number).size();
+    const std::string pad(pad_len, ' ');
 
     for (const auto& dl : lines)
     {
-        std::string num_str = std::to_string(dl.line_number);
-        std::string num_pad(pad_len - num_str.length(), ' ');
+        const std::string num = std::to_string(dl.line_number);
 
-        std::cout << CLR_CYAN << num_str << num_pad
-                  << " |" << CLR_BRIGHT_WHITE << " "
-                  << dl.text << CLR_RESET << '\n';
+        std::cout << clr::cyan << num << std::string(pad_len - num.size(), ' ')
+                  << " |" << clr::bright_white << ' ' << dl.text << clr::reset << '\n';
 
         if (dl.underline_length > 0)
         {
-            std::cout << pad << " " << CLR_CYAN << "|" << CLR_RESET << " ";
-            std::cout << std::string(dl.underline_start, ' ');
-            std::cout << col << std::string(dl.underline_length, '^');
-            std::cout << " " << error << CLR_RESET << '\n';
+            std::cout << pad << ' ' << clr::cyan << '|' << clr::reset << ' '
+                      << std::string(dl.underline_start, ' ')
+                      << col << std::string(dl.underline_length, '^') << ' ' << message
+                      << clr::reset << '\n';
         }
     }
 }
 
-void check_script(std::filesystem::path path, bool list_decls = false)
+static void inject(foo::TypeTable& types, foo::NativeRegistry& natives, foo::NativeTable& table)
 {
-    bool check_is_ok = true;
+    foo::Runtime::inject(types, natives, table);
 
-    std::cout << CLR_BLUE << "checking: " << path.string() <<CLR_RESET << std::endl;
+    foo::inject_io(types, natives, table);
+    foo::inject_os(types, natives, table);
+    foo::inject_rng(types, natives, table);
+}
+
+static void inject(foo::TypeTable& types, foo::NativeRegistry& natives)
+{
+    foo::NativeTable table{};
+
+    foo::Runtime::inject(types, natives, table);
+
+    foo::inject_io(types, natives, table);
+    foo::inject_os(types, natives, table);
+    foo::inject_rng(types, natives, table);
+}
+
+struct Prepared
+{
+    foo::RuntimeInput runtime_input;
+    foo::CollectorOutput collector_output;
+};
+
+static std::optional<Prepared> prepare(const fs::path& path, bool show_warn = true)
+{
+    bool ok = true;
 
     auto co = foo::collect(path.parent_path(), path.filename().string());
+    const auto& sources = co.resolver_input.sources;
+
+    auto report = [&](auto file_index, const auto& item, Severity severity)
+    {
+        const auto& source = sources[file_index];
+        print_diagnostics(item.message, source.text, item.span, severity, source.path);
+    };
 
     for (const auto& err : co.errors)
     {
-        check_is_ok = false;
+        ok = false;
+
         if (err.file_id == -1)
         {
-            std::cout << CLR_BRIGHT_RED << "error: " << err.message << CLR_RESET << std::endl;
+            std::cout << clr::bright_red << "error: " << err.message << clr::reset << std::endl;
             continue;
         }
 
-        print_diagnostics(err.message, co.resolver_input.sources[err.file_id].text, err.span, true,
-            co.resolver_input.sources[err.file_id].path.string());
+        report(err.file_id, err, Severity::Error);
     }
 
+    if (!ok)
+        return {};
 
-    foo::Runtime::inject(co.resolver_input.types, co.resolver_input.natives);
+    foo::NativeTable ntable;
+    inject(co.resolver_input.types, co.resolver_input.natives, ntable);
 
     auto ro = foo::resolve(co.resolver_input);
 
-    for (const auto& wrng : ro.warnings)
-    {
-        print_diagnostics(wrng.message, co.resolver_input.sources[wrng.file_index].text, wrng.span, false,
-            co.resolver_input.sources[wrng.file_index].path.string());
+    if (show_warn)
+        for (const auto& warning : ro.warnings)
+        {
+            if (warning.file_index == -1)
+            {
+                std::cout << clr::bright_yellow << "error: " << warning.message << clr::reset << std::endl;
+                continue;
+            }
 
-    }
+            report(warning.file_index, warning, Severity::Warning);
+        }
 
     for (const auto& err : ro.errors)
     {
-        check_is_ok = false;
-        print_diagnostics(err.message, co.resolver_input.sources[err.file_index].text, err.span, true,
-            co.resolver_input.sources[err.file_index].path.string());
+        ok = false;
+        report(err.file_index, err, Severity::Error);
     }
 
-    if (check_is_ok)
+    if (!ok)
+        return {};
+
+    foo::RuntimeInput runtime_input;
+
+    runtime_input.resolver_info = ro;
+    runtime_input.native_table = ntable;
+
+    return Prepared{runtime_input, std::move(co)};
+}
+
+static bool check_script(const fs::path& path)
+{
+    std::cout << clr::blue << "checking: " << path.string() << clr::reset << std::endl;
+
+    auto r = prepare(path);
+
+    if (r.has_value())
     {
-        std::cout << CLR_GREEN << "check: is ok" << CLR_RESET << std::endl;
+        std::cout << clr::bright_green << "checking: ok" << clr::reset << std::endl;
+        return true;
     } else
     {
-        std::cout << CLR_RED << "check: not ok" << CLR_RESET << std::endl;
+        std::cout << clr::blue << "checking: failed" << clr::reset << std::endl;
+        return false;
     }
+}
+
+static int setup_script(const std::string& script)
+{
+    const fs::path file_path = script + ".foo";
+
+    if (fs::exists(file_path))
+    {
+        std::cout << "script " << script << " already exists" << std::endl;
+        return 0;
+    }
+
+    std::ofstream file(file_path);
+    if (!file)
+    {
+        std::cerr << "could not create " << file_path.string() << std::endl;
+        return 1;
+    }
+
+    file << "fn main() -> void\n"
+            "{\n"
+            "    // this prints hello world\n"
+            "    println(\"Hello, World!\")\n"
+            "}\n";
+
+    return 0;
+}
+
+static bool run_script(const fs::path& path)
+{
+    auto r = prepare(path, true);
+
+    if (r)
+    {
+        int mainid = -1;
+        for (const auto& [index, item] : std::views::enumerate(r->runtime_input.resolver_info.functions))
+        {
+            if (item.decl->name == "main")
+            {
+                mainid = static_cast<int>(index);
+                break;
+            }
+        }
+
+        if (mainid == -1)
+        {
+            std::cout << clr::bright_red << "error: no main()" << clr::reset << std::endl;
+            return false;
+        }
+
+        foo::Runtime runtime{r->runtime_input};
+        auto result = runtime.call(static_cast<foo::FunctionId>(mainid), {});
+        if (result)
+        {
+            std::cout << "main returned: " << foo::to_string(*result.value()) << std::endl;
+            return true;
+        }
+        else
+        {
+            std::cout << clr::bright_red << "runtime error" << clr::reset << std::endl;
+
+            const auto& err = result.error();
+            print_diagnostics(err.what, r->collector_output.resolver_input.sources[err.file_index].text, err.span, Severity::Error);
+            return false;
+        }
+    }
+
+    return false;
 }
 
 struct Example
@@ -163,11 +306,11 @@ static void create_example_files(const Example& e, std::filesystem::path root = 
     }
 }
 
-static void check_example(const Example& e, std::filesystem::path root = "")
+static bool check_example(const Example& e, std::filesystem::path root = "")
 {
     std::filesystem::path path_to_script = root / e.suite / "main";
 
-    check_script(path_to_script);
+    return check_script(path_to_script);
 }
 
 static std::vector<Example> create_examples()
@@ -527,41 +670,158 @@ fn main() -> int
     return examples;
 }
 
+static bool run_examples(const fs::path& root, bool check)
+{
+    fs::create_directories(root);
+
+    const auto examples = create_examples();
+
+    if (fs::is_empty(root))
+    {
+        for (const auto& e : examples)
+            create_example_files(e, root);
+    }
+    else
+    {
+        std::cout << clr::yellow
+                  << "no new examples were added, clear the directory or give a unique one"
+                  << clr::reset << std::endl;
+    }
+
+    bool ok = true;
+    if (check)
+    {
+        for (const auto& e : examples)
+            ok = check_example(e, root) && ok;
+    }
+    return ok;
+}
+
+static void show_api()
+{
+    foo::TypeTable tt;
+    foo::NativeRegistry nr;
+
+    foo::NativeTable native_table;
+
+    inject(tt, nr, native_table);
+
+    for (const auto& [index, item] : std::views::enumerate(native_table.get_infos()))
+    {
+        std::cout << clr::magenta << item.api << clr::reset << std::endl;
+
+        if (!item.explanation.empty())
+            std::cout << "    " << item.explanation << clr::reset << std::endl;
+
+        if (!item.example.empty())
+            std::cout << clr::bright_black << "    example usage: ("
+                << item.example
+                << ")"
+                << clr::reset << std::endl;
+    }
+}
+
+static void show_syntax(const std::vector<std::string>& kinds)
+{
+    auto wants = [&](auto... names)
+    {
+        return kinds.empty()
+            || ((std::ranges::find(kinds, std::string_view{names}) != kinds.end()) || ...);
+    };
+
+    constexpr int name_width = 10;
+
+    auto indent = [](int depth) { foo::print(foo::str_repeat("  ", depth)); };
+
+    auto header = [&](std::string_view h)
+    {
+        foo::println(colored(std::string{h}, clr::bright_magenta));
+    };
+
+    auto sheader = [&](std::string_view h)
+    {
+        indent(1);
+        foo::println(colored(std::string{h}, clr::bright_cyan));
+    };
+
+    auto rule = [&](std::string_view name, std::string_view body)
+    {
+        indent(2);
+        foo::println(std::format("{:<{}} = {}", name, name_width, body));
+    };
+
+    {
+        header("base");
+
+        rule("name", R"AAA([a-zA-Z_] [a-zA-Z0-9_]*)AAA");
+    }
+
+    if (wants("types"))
+    {
+        header("types");
+
+        rule("type", R"AAA(name ("[]" | "?")*)AAA");
+    }
+
+    if (wants("decls"))
+    {
+        header("declarations");
+
+        sheader("functions");
+        rule("param",    R"AAA("ref"? name ":" type)AAA");
+        rule("function", R"AAA("fn" name "(" (param ("," param)*)? ")" "->" type block)AAA");
+
+        sheader("structs");
+        rule("field",  R"AAA(name ":" type)AAA");
+        rule("struct", R"AAA("struct" name "{" (field | function)* "}")AAA");
+    }
+
+    if (wants("exprs"))
+    {
+
+    }
+
+    if (wants("stmns"))
+    {
+
+    }
+}
+
+static void add_flag(argparse::ArgumentParser& program, const char* help, const char* name)
+{
+    program.add_argument(name).default_value(false).implicit_value(true).help(help);
+}
 
 int main(int argc, char** argv)
 {
     argparse::ArgumentParser program("foo", "0.1");
+    std::vector<std::string> syntax_kinds;
 
     program.add_argument("script")
-        .default_value("main")
+        .default_value(std::string{"main"})
         .help("script file to use");
-
-    program.add_argument("--ast")
-        .default_value(false)
-        .implicit_value(true)
-        .help("prints the AST");
 
     program.add_argument("-c", "--check")
         .default_value(false)
         .implicit_value(true)
         .help("checks if script is executable");
 
-    program.add_argument("--setup")
-        .default_value(false)
-        .implicit_value(true)
-        .help("sets up single file project");
+    program.add_argument("--syntax")
+        .nargs(argparse::nargs_pattern::any)
+        .choices("stmts", "decls", "types", "exprs")
+        .action([&](const std::string& v)
+        {
+            if (!v.empty()) syntax_kinds.push_back(v);
+        })
+        .help("show syntax parts (bare --syntax = all)");
+
+    add_flag(program, "sets up single file project",    "--setup");
+    add_flag(program, "sets up single file project",    "--api");
 
     program.add_argument("--examples")
         .default_value(std::string{""})
         .implicit_value(std::string{"examples"})
         .help("creates an example folder with all the examples");
-
-    program.add_argument("--decls")
-        .default_value(false)
-        .implicit_value(true)
-        .help("List the resolved declarations");
-
-
 
     try
     {
@@ -573,142 +833,37 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    const auto script = program.get<std::string>("script");
-    const bool ast = program.get<bool>("--ast");
-    const bool setup = program.get<bool>("--setup");
-    const bool check = program.get<bool>("--check");
-    const std::string examples = program.get<std::string>("--examples");
-    const bool list_decls = program.get<bool>("--decls");
+    const std::string script    = program.get<std::string>("script");
+    const std::string examples  = program.get<std::string>("--examples");
+    const bool setup        = program.get<bool>("--setup");
+    const bool check        = program.get<bool>("--check");
+    const bool api          = program.get<bool>("--api");
 
-    bool should_run = !check && examples.empty() && !setup && !ast;
+    const bool want_syntax = program.is_used("--syntax");
 
-    if (!examples.empty())
-    {
-        std::filesystem::create_directories(examples);
+    const bool has_examples = !examples.empty();
+    const bool should_run   = !check && !has_examples && !setup && !api && !want_syntax;
 
-        if (!std::filesystem::is_empty(examples))
-        {
-            auto example_list = create_examples();
-            if (check)
-            {
-                for (const auto& e : example_list)
-                {
-                    check_example(e, examples);
-                }
-            }
+    int exit_code = 0;
 
-            std::cout << CLR_YELLOW << "no new examples were added, clear the directory or give a unique one" << CLR_RESET << std::endl;
-        } else
-        {
-            auto example_list = create_examples();
-            for (const auto& e : example_list)
-            {
-                create_example_files(e,examples);
-            }
-
-            if (check)
-            {
-                for (const auto& e : example_list)
-                {
-                    check_example(e, examples);
-                }
-            }
-        }
-    }
-
-    if (ast)
-    {
-        std::filesystem::path path = script;
-
-        auto co = foo::collect(path.parent_path(), path.filename().string());
-
-        for (const auto& file : co.resolver_input.files)
-        {
-            std::cout << CLR_YELLOW << "[" << file.path << "]" << CLR_RESET <<'\n';
-
-            std::cout << CLR_GREEN;
-            for (const auto& decl : file.decls)
-            {
-                std::cout << foo::to_string(decl, 1) << '\n';
-            }
-            std::cout << CLR_RESET;
-
-            std::cout << std::endl;
-        }
-    }
+    if (has_examples && !run_examples(examples, check))
+        exit_code = 1;
 
     if (setup)
-    {
-        std::filesystem::path path = script;
+        return setup_script(script);
 
-        auto co = foo::collect(path.parent_path(), path.filename().string());
-
-        if (std::filesystem::exists(script + ".foo"))
-        {
-            std::cout << "script " << script << " already exists" << std::endl;
-        } else
-        {
-            std::ofstream file(script + ".foo");
-
-            file << "fn main() -> void" << std::endl;
-            file << "{" << std::endl;
-            file << "    // this prints hello world" << std::endl;
-            file << "    io::println(\"Hello, World!\")" << std::endl;
-            file << "    " << std::endl;
-            file << "    return \"ok\" " << std::endl;
-            file << "}" << std::endl;
-
-            file.close();
-        }
-
-        return 0;
-    }
-
-    if (check && examples.empty())
-    {
-        std::filesystem::path path = script;
-
-        check_script(path);
-        std::cout << std::endl;
-    }
-
-    if (list_decls)
-    {
-        std::cout << "declarations: " << std::endl;
-
-        std::filesystem::path path = script;
-
-        auto co = foo::collect(path.parent_path(), path.filename().string());
-
-        auto ro = foo::resolve(co.resolver_input);
-
-
-        std::cout << CLR_BRIGHT_MAGENTA << "native types" << CLR_RESET << std::endl;
-        for (const auto& s : ro.natives.type_names())
-        {
-            std::cout << s << std::endl;
-        }
-        std::cout << std::endl;
-
-        std::cout << CLR_BRIGHT_MAGENTA << "functions" << CLR_RESET << std::endl;
-        for (const auto& fn : ro.functions)
-        {
-            std::cout << foo::to_string(ro, fn) << std::endl;
-        }
-        std::cout << std::endl;
-
-        std::cout << CLR_BRIGHT_MAGENTA << "structs" << CLR_RESET << std::endl;
-        for (const auto& s : ro.structs)
-        {
-            std::cout << foo::to_string(ro, s, true) << std::endl;
-        }
-        std::cout << std::endl;
-    }
+    if (check && !has_examples && !check_script(script))
+        exit_code = 1;
 
     if (should_run)
-    {
-        std::filesystem::path path = script;
+        run_script(script);
 
-        auto r = foo::collect(path.parent_path(), path.filename().string());
-    }
+    if (api)
+        show_api();
+
+    if (want_syntax)
+        show_syntax(syntax_kinds);
+
+
+    return exit_code;
 }

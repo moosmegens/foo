@@ -77,7 +77,7 @@ namespace foo
             {
                 return make_string(*last_error);
             },
-            "io::last_error() -> string   (why the last failed io call failed)");
+            {"io::last_error() -> string", "why the last failed io call failed"});
 
         def.function("io::open", NativeDef::sig({ParamSig{String, false}, ParamSig{String, false}}, file_opt),
             [last_error](Runtime&, Args a, const auto&)
@@ -95,7 +95,7 @@ namespace foo
 
                 return make_value(Rc<Native>(handle));
             },
-            R"(io::open(path: string, mode: string) -> io::file?   (mode: "r", "w" or "a"))");
+            {"io::open(path: string, mode: string) -> io::file", R"OO(mode: "r", "w" or "a")OO"});
 
         def.method("read_all", file_type, NativeDef::sig({}, String),
             [](Runtime&, Args a, const auto&)
@@ -112,7 +112,7 @@ namespace foo
 
                 return make_string(std::move(result));
             },
-            "(io::file).read_all() -> string");
+            {"(io::file).read_all() -> string"});
 
         def.method("read_line", file_type, NativeDef::sig({}, string_opt),
             [](Runtime&, Args a, const auto&)
@@ -127,7 +127,7 @@ namespace foo
 
                 return make_string(std::move(line));
             },
-            "(io::file).read_line() -> string?   (none at the end of the file)");
+            {"(io::file).read_line() -> string?"});
 
         def.function("io::read_lines",
             NativeDef::sig({ParamSig{String, false}}, strings_opt),
@@ -162,7 +162,7 @@ namespace foo
                 *last_error = "";
                 return make_value(std::move(result));
             },
-            "io::read_lines(path: string) -> string[]?   (reads all lines)");
+            {"io::read_lines(path: string) -> string[]?"});
 
         def.method("write", file_type, NativeDef::sig({ParamSig{String, false}}, BaseTypes::Void),
             [](Runtime&, Args a, const auto&)
@@ -176,7 +176,7 @@ namespace foo
 
                 return make_void();
             },
-            "(io::file).write(string) -> void");
+            {"(io::file).write(string) -> void"});
 
         def.method("write_line", file_type,
             NativeDef::sig({ParamSig{String, false}}, BaseTypes::Void),
@@ -191,7 +191,7 @@ namespace foo
 
                 return make_void();
             },
-            "(io::file).write_line(string) -> void");
+            {"(io::file).write_line(string) -> void"});
 
         def.function("io::append_file",
             NativeDef::sig({ParamSig{String, false}, ParamSig{String, false}}, BaseTypes::Bool),
@@ -216,7 +216,7 @@ namespace foo
                 *last_error = "";
                 return make_bool(true);
             },
-            "io::append_file(path: string, content: string) -> bool");
+            {"io::append_file(path: string, content: string) -> bool"});
 
         def.function("io::copy",
             NativeDef::sig({ParamSig{String, false}, ParamSig{String, false}}, BaseTypes::Bool),
@@ -238,7 +238,7 @@ namespace foo
 
                 return make_bool(copied);
             },
-            "io::copy(from: string, to: string) -> bool");
+            {"io::copy(from: string, to: string) -> bool"});
 
         def.function("io::rename",
             NativeDef::sig({ParamSig{String, false}, ParamSig{String, false}}, BaseTypes::Bool),
@@ -257,7 +257,7 @@ namespace foo
                 *last_error = "";
                 return make_bool(true);
             },
-            "io::rename(from: string, to: string) -> bool");
+            {"io::rename(from: string, to: string) -> bool"});
 
         def.method("close", file_type, NativeDef::sig({}, BaseTypes::Void),
             [](Runtime&, Args a, const auto&)
@@ -265,7 +265,7 @@ namespace foo
                 native_cast<FileHandle>(*a[0]).stream.close();
                 return make_void();
             },
-            "(io::file).close() -> void");
+            {"(io::file).close() -> void"});
 
         def.function("io::read_file", NativeDef::sig({ParamSig{String, false}}, string_opt),
             [last_error](Runtime&, Args a, const auto&)
@@ -281,7 +281,7 @@ namespace foo
 
                 return make_string(std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()));
             },
-            "io::read_file(path: string) -> string?");
+            {"io::read_file(path: string) -> string?"});
 
         def.function("io::write_file",
             NativeDef::sig({ParamSig{String, false}, ParamSig{String, false}}, BaseTypes::Bool),
@@ -299,7 +299,7 @@ namespace foo
                 out << as_string(a[1]);
                 return make_bool(static_cast<bool>(out));
             },
-            "io::write_file(path: string, content: string) -> bool");
+            {"io::write_file(path: string, content: string) -> bool"});
 
         def.function("io::exists", NativeDef::sig({ParamSig{String, false}}, BaseTypes::Bool),
             [](Runtime&, Args a, const auto&)
@@ -308,7 +308,7 @@ namespace foo
 
                 return make_bool(fs::exists(as_string(a[0]), ec));
             },
-            "io::exists(path: string) -> bool");
+            {"io::exists(path: string) -> bool"});
 
         def.function("io::remove", NativeDef::sig({ParamSig{String, false}}, BaseTypes::Bool),
             [last_error](Runtime&, Args a, const auto&)
@@ -320,7 +320,7 @@ namespace foo
 
                 return make_bool(removed);
             },
-            "io::remove(path: string) -> bool");
+            {"io::remove(path: string) -> bool"});
 
         def.function("io::mkdir", NativeDef::sig({ParamSig{String, false}}, BaseTypes::Bool),
             [last_error](Runtime&, Args a, const auto&)
@@ -337,7 +337,7 @@ namespace foo
 
                 return make_bool(true);
             },
-            "io::mkdir(path: string) -> bool   (creates the parents too)");
+            {"io::mkdir(path: string) -> bool", "creates folders recursively"});
 
         def.function("io::list_dir", NativeDef::sig({ParamSig{String, false}}, strings_opt),
             [last_error](Runtime&, Args a, const auto&)
@@ -365,7 +365,7 @@ namespace foo
 
                 return make_value(std::move(result));
             },
-            "io::list_dir(path: string) -> string[]?");
+            {"io::list_dir(path: string) -> string[]?"});
 
         def.function("io::join", NativeDef::variadic({{BaseTypes::String}}, BaseTypes::String),
             [](Runtime&, Args a, const auto&)
@@ -384,7 +384,7 @@ namespace foo
 
                 return make_string(result.string());
             },
-            "io::join(string...) -> string");
+            {"io::join(string...) -> string", "turns (folder, folder, file) into os specific path"});
 
         def.function("io::filename",
             NativeDef::sig({ParamSig{String, false}}, String),
@@ -394,7 +394,7 @@ namespace foo
                     fs::path(as_string(a[0])).filename().string()
                 );
             },
-            "io::filename(path: string) -> string");
+            {"io::filename(path: string) -> string"});
 
         def.function("io::extension",
             NativeDef::sig({ParamSig{String, false}}, String),
@@ -404,7 +404,7 @@ namespace foo
                     fs::path(as_string(a[0])).extension().string()
                 );
             },
-            "io::extension(path: string) -> string");
+            {"io::extension(path: string) -> string"});
 
         def.function("io::parent",
             NativeDef::sig({ParamSig{String, false}}, String),
@@ -414,7 +414,7 @@ namespace foo
                     fs::path(as_string(a[0])).parent_path().string()
                 );
             },
-            "io::parent(path: string) -> string");
+            {"io::parent(path: string) -> string"});
 
         def.function("io::absolute",
             NativeDef::sig({ParamSig{String, false}}, string_opt),
@@ -432,7 +432,7 @@ namespace foo
                 *last_error = "";
                 return make_string(path.string());
             },
-            "io::absolute(path: string) -> string?");
+            {"io::absolute(path: string) -> string?"});
 
 
         def.function("io::cwd", NativeDef::sig({}, BaseTypes::String),
@@ -440,7 +440,7 @@ namespace foo
             {
                 return make_string(std::filesystem::current_path().string());
             },
-            "io::cwd() -> string");
+            {"io::cwd() -> string", "current working directory"});
     }
 
     void inject_os(TypeTable& types, NativeRegistry& natives, NativeTable& table)
@@ -462,7 +462,7 @@ namespace foo
 
                 return make_string(value);
             },
-            "os::getenv(name: string) -> string?");
+            {"os::getenv(name: string) -> string?"});
 
         def.function("os::time", NativeDef::sig({}, BaseTypes::Float),
             [](Runtime&, Args a, const auto&)
@@ -470,14 +470,14 @@ namespace foo
                 const auto since_epoch = std::chrono::system_clock::now().time_since_epoch();
                 return make_float(std::chrono::duration<double>(since_epoch).count());
             },
-            "os::time() -> float   (seconds since 1970)");
+            {"os::time() -> float", "seconds since 1970"});
 
         def.function("os::clock", NativeDef::sig({}, BaseTypes::Float),
             [start](Runtime&, Args a, const auto&)
             {
                 return make_float(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
             },
-            "os::clock() -> float   (monotonic seconds, for timing)");
+            {"os::clock() -> float", "monotonic seconds, for timing}"});
 
         def.function("os::sleep", NativeDef::sig({ParamSig{BaseTypes::Float, false}}, BaseTypes::Void),
             [](Runtime&, Args a, const auto&)
@@ -485,7 +485,7 @@ namespace foo
                 std::this_thread::sleep_for(std::chrono::duration<double>(std::max(0.0, as_float(a[0]))));
                 return make_void();
             },
-            "os::sleep(seconds: float) -> void");
+            {"os::sleep(seconds: float) -> void"});
 
         def.function("os::cmd", NativeDef::sig({ParamSig{BaseTypes::String, false}}, BaseTypes::Void),
             [](Runtime&, Args a, const auto&)
@@ -494,7 +494,7 @@ namespace foo
 
                 return make_void();
             },
-            "os::cmd(string)");
+            {"os::cmd(string)"});
     }
 
     void inject_rng(TypeTable& types, NativeRegistry& natives, NativeTable& table)
@@ -509,7 +509,7 @@ namespace foo
                 engine->seed(static_cast<uint64_t>(as_int(a[0])));
                 return make_void();
             },
-            "rng::seed(int) -> void");
+            {"rng::seed(int) -> void"});
 
         def.function("rng::range",
             NativeDef::sig({ParamSig{BaseTypes::Int, false}, ParamSig{BaseTypes::Int, false}}, BaseTypes::Int),
@@ -524,7 +524,7 @@ namespace foo
                 std::uniform_int_distribution<int64_t> dist(lo, hi);
                 return make_int(dist(*engine));
             },
-            "rng::range(lo: int, hi: int) -> int   (lo and hi included)");
+            {"rng::range(lo: int, hi: int) -> int", "random range, inclusive (lo cannot be greater than hi)"});
 
         def.method("shuffle",
             [](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
@@ -541,6 +541,6 @@ namespace foo
                 std::shuffle(items.begin(), items.end(), *engine);
                 return make_void();
             },
-            "(array).shuffle() -> void");
+            {"(array).shuffle() -> void", "shuffles any array type inplace"});
     }
 }

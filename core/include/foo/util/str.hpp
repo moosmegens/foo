@@ -30,6 +30,21 @@ namespace foo
         return str;
     }
 
+    inline std::string str_repeat(std::string_view str, int count)
+    {
+        std::string out;
+
+        if (count <= 0 || str.empty())
+            return out;
+
+        out.reserve(str.size() * static_cast<std::size_t>(count));
+
+        for (int i = 0; i < count; i++)
+            out += str;
+
+        return out;
+    }
+
     inline std::string join(std::span<const std::string> strs, std::string_view separator = ", ")
     {
         std::string result;

@@ -190,7 +190,7 @@ void main2()
 
     for (const auto& [index, item] : std::views::enumerate(ri.native_table.get_infos()))
     {
-        std::cout << item << std::endl;
+        std::cout << item.api << std::endl;
     }
 
     {

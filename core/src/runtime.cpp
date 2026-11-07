@@ -1199,20 +1199,7 @@ namespace foo
             return s;
         };
 
-        auto def_function = [&](std::string name, FunctionSig sig, NativeFn fn, const std::string& info = "")
-        {
-            table.set(natives.add_function(std::move(name), std::move(sig)), std::move(fn), info);
-        };
-
-        auto def_static = [&](std::string name, NativeResolver resolve, NativeFn fn, const std::string& info = "")
-        {
-            table.set(natives.add_static_function(std::move(name), std::move(resolve)), std::move(fn), info);
-        };
-
-        auto def_method = [&](std::string name, NativeResolver resolve, NativeFn fn, const std::string& info = "")
-        {
-            table.set(natives.add_method(std::move(name), std::move(resolve)), std::move(fn), info);
-        };
+        NativeDef def(types, natives, table);
 
 
         auto printer = [](bool newline)
@@ -1240,10 +1227,10 @@ namespace foo
         FunctionSig print_sig = signature({ParamSig{BaseTypes::Any, false}}, BaseTypes::Void);
         print_sig.variadic = true;
 
-        def_function("println", print_sig, printer(true), "println(any...) -> void");
-        def_function("print", print_sig, printer(false), "print(any...) -> void");
+        def.function("println", print_sig, printer(true), {"println(any...) -> void"});
+        def.function("print", print_sig, printer(false), {"print(any...) -> void"});
 
-        def_static("new",
+        def.static_function("new",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) != TypeKind::Map)
@@ -1255,9 +1242,9 @@ namespace foo
             {
                 return make_value(Map{});
             },
-            "(map).new() -> (map)");
+            {"(map).new() -> (map)"});
 
-        def_static("unbox",
+        def.static_function("unbox",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 return signature(
@@ -1278,11 +1265,11 @@ namespace foo
 
                 return copy(boxed->v);
             },
-            "T.unbox(any) -> T?");
+            {"T.unbox(any) -> T?", "use to safely convert any to T"});
 
 
 
-        def_method("or",
+        def.method("or",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) == TypeKind::Optional)
@@ -1297,9 +1284,9 @@ namespace foo
 
                 return copy(a[0]);
             },
-            "(T?).or(T) -> T");
+            {"(T?).or(T) -> T", "safe default value for T?", "maybe_int().or(-1)"});
 
-        def_method("unwrap",
+        def.method("unwrap",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) == TypeKind::Optional)
@@ -1314,9 +1301,9 @@ namespace foo
 
                 return copy(a[0]);
             },
-            "(T?).unwrap(T) -> T  (wil throw on unwrap failed)");
+            {"(T?).unwrap(T) -> T", "force unwrap T?, (throws if none)"});
 
-        def_method("join",
+        def.method("join",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) != TypeKind::Array)
@@ -1348,10 +1335,10 @@ namespace foo
 
                 return make_string(std::move(result));
             },
-            "(string[]).join(separator: string) -> string");
+            {"(string[]).join(separator: string) -> string"});
 
 
-        def_method("at",
+        def.method("at",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) == TypeKind::Array)
@@ -1395,10 +1382,10 @@ namespace foo
 
                 return make_string(std::string(1, s[static_cast<size_t>(i)]));
             },
-            "(array | string).at(int) -> element | (map).at(key) -> map.value?");
+            {"(array | string).at(int) -> element | (map).at(key) -> map.value?"});
 
 
-        def_method("length",
+        def.method("length",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 switch (ts.kind(receiver))
@@ -1424,9 +1411,9 @@ namespace foo
 
                 return make_int(static_cast<int64_t>(as_string(a[0]).size()));
             },
-            "(map | array | string).length() -> int");
+            {"(map | array | string).length() -> int"});
 
-        def_method("push",
+        def.method("push",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) != TypeKind::Array)
@@ -1439,9 +1426,9 @@ namespace foo
                 as_array(a[0]).items.push_back(copy(a[1]));
                 return make_void();
             },
-            "(array).push(array.element) -> void");
+            {"(array).push(array.element) -> void"});
 
-        def_method("pop",
+        def.method("pop",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) != TypeKind::Array)
@@ -1460,9 +1447,9 @@ namespace foo
                 items.pop_back();
                 return last;
             },
-             "(array).pop() -> void");
+            {"(array).pop() -> void"});
 
-        def_method("clear",
+        def.method("clear",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) != TypeKind::Array && ts.kind(receiver) != TypeKind::Map)
@@ -1479,9 +1466,9 @@ namespace foo
 
                 return make_void();
             },
-            "(array | string).clear() -> void");
+            {"(array | map).clear() -> void"});
 
-        def_method("remove",
+        def.method("remove",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) != TypeKind::Map)
@@ -1493,9 +1480,9 @@ namespace foo
             {
                 return make_bool(as_map(a[0]).items.erase(a[1]) > 0);
             },
-            "(map).remove() -> bool");
+            {"(map).remove() -> bool"});
 
-        def_method("contains",
+        def.method("contains",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) == TypeKind::Map)
@@ -1517,9 +1504,9 @@ namespace foo
 
                 return make_bool(false);
             },
-            "(map | array).contains((key | element)) -> bool");
+            {"(map | array).contains((key | element)) -> bool"});
 
-        def_method("reverse",
+        def.method("reverse",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) != TypeKind::Array)
@@ -1533,9 +1520,9 @@ namespace foo
                 std::reverse(items.begin(), items.end());
                 return make_void();
             },
-            "(T[]).reverse() -> void   (reverses in place)");
+            {"(T[]).reverse() -> void", "reverses in place"});
 
-        def_method("reversed",
+        def.method("reversed",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
                 if (ts.kind(receiver) != TypeKind::Array)
@@ -1549,12 +1536,8 @@ namespace foo
                 std::reverse(result.items.begin(), result.items.end());
                 return make_value(std::move(result));
             },
-            "(T[]).reversed() -> T[]   (returns a reversed copy)");
+            {"(T[]).reversed() -> T[]", "returns a reversed copy"});
 
-
-
-
-        NativeDef def(types, natives, table);
 
         def.function("testing::assert", {{ParamSig{BaseTypes::Bool}}},
             [](Runtime&, Args a, const auto&)
@@ -1566,7 +1549,7 @@ namespace foo
 
                 return make_void();
             },
-            "testing::assert(cond: bool)");
+            {"testing::assert(cond: bool)"});
 
         def.function("testing::assert_eq", {{ParamSig{BaseTypes::Any}, ParamSig{BaseTypes::Any}}},
             [](Runtime&, Args a, const auto&)
@@ -1580,6 +1563,6 @@ namespace foo
 
                 return make_void();
             },
-            "testing::assert_eq(any, any)");
+            {"testing::assert_eq(any, any)"});
     }
 }

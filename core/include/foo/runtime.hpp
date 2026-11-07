@@ -66,7 +66,14 @@ namespace foo
     class NativeTable
     {
     public:
-        void set(NativeFunctionId id, NativeFn fn, const std::string& info = "")
+        struct Info
+        {
+            std::string api;
+            std::string explanation;
+            std::string example;
+        };
+
+        void set(NativeFunctionId id, NativeFn fn, const Info& info = {})
         {
             if (id >= _fns.size())
                 _fns.resize(static_cast<size_t>(id) + 1);
@@ -92,7 +99,7 @@ namespace foo
             return &_fns[id];
         }
 
-        const std::string_view get_info(NativeFunctionId id) const
+        const Info get_info(NativeFunctionId id) const
         {
             if (id >= _fns.size())
                 return {};
@@ -100,7 +107,7 @@ namespace foo
             return _infos[id];
         }
 
-        [[nodiscard]] const std::vector<std::string>& get_infos() const
+        [[nodiscard]] const std::vector<Info>& get_infos() const
         {
             return _infos;
         }
@@ -112,7 +119,7 @@ namespace foo
 
     private:
         std::vector<NativeFn> _fns;
-        std::vector<std::string> _infos;
+        std::vector<Info> _infos;
     };
 
 

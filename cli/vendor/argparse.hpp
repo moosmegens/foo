@@ -1287,11 +1287,23 @@ public:
       }
     }
 
-    // print nargs spec
-    if (!argument.m_help.empty()) {
-      stream << " ";
-    }
-    stream << argument.m_num_args_range;
+      // if (!argument.m_help.empty()) {
+      //     stream << " ";
+      // }
+      // stream << argument.m_num_args_range;
+
+      // modded
+      if (argument.m_choices.has_value())
+      {
+          stream << " [choices: ";
+          bool first = true;
+          for (const auto &c : *argument.m_choices)
+          {
+              stream << (first ? "" : ", ") << c;
+              first = false;
+          }
+          stream << "] ";
+      }
 
     bool add_space = false;
     if (argument.m_default_value.has_value() &&
