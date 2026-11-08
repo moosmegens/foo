@@ -1509,24 +1509,10 @@ namespace foo
 
             std::optional<Callee> callee;
 
-            if (is_struct_type(type)) // user defined
-            {
+            if (is_struct_type(type))
                 callee = find_static_function(type, call.method, span);
-            }
-            else if (types().kind(type) == TypeKind::Native) // native function on native type
-            {
+            else
                 callee = find_native_static_function(type, call.method, span);
-            }
-            else // native function on real type
-            {
-                auto match = natives().find_static_function(types(), type, call.method);
-                if (match.has_value())
-                {
-                    callee = make_callee(match->sig, RefKind::Native, match->id);
-                }
-                else
-                    error(span, "'" + type_name(type) + "' has no static function '" + call.method + "'");
-            }
 
             if (callee.has_value() == false)
                 return fail_call(call.args);
@@ -1565,17 +1551,20 @@ namespace foo
             return make_callee(function.sig, RefKind::Function, found->second);
         }
 
-        std::optional<Callee> find_native_static_function(TypeId native_type, const std::string& name, const SourceSpan& span)
+        std::optional<Callee> find_native_static_function(TypeId type, const std::string& name, const SourceSpan& span)
         {
-            std::string full_name = type_name(native_type) + "::" + name;
+            if (types().kind(type) == TypeKind::Native)
+            {
+                const std::string full_name = type_name(type) + "::" + name;
 
+                if (auto match = natives().find_function(types(), full_name))
+                    return make_callee(match->sig, RefKind::Native, match->id);
+            }
 
-            auto match = natives().find_function(types(), full_name);
-            if (match.has_value())
+            if (auto match = natives().find_static_function(types(), type, name))
                 return make_callee(match->sig, RefKind::Native, match->id);
 
-
-            error(span, "unknown native function '" + full_name + "'");
+            error(span, "'" + type_name(type) + "' has no static function '" + name + "'");
             return std::nullopt;
         }
 
