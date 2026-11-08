@@ -141,8 +141,14 @@ static std::optional<Prepared> prepare(const fs::path& path, bool show_warn = tr
         print_diagnostics(item.message, source.text, item.span, severity, source.path);
     };
 
+    bool first = true;
     for (const auto& err : co.errors)
     {
+        if (!first)
+            std::cout << std::endl;
+
+        first = false;
+
         ok = false;
 
         if (err.file_id == -1)
@@ -150,6 +156,7 @@ static std::optional<Prepared> prepare(const fs::path& path, bool show_warn = tr
             std::cout << clr::bright_red << "error: " << err.message << clr::reset << std::endl;
             continue;
         }
+
 
         report(err.file_id, err, Severity::Error);
     }
@@ -162,9 +169,15 @@ static std::optional<Prepared> prepare(const fs::path& path, bool show_warn = tr
 
     auto ro = foo::resolve(co.resolver_input);
 
+    first = true;
     if (show_warn)
         for (const auto& warning : ro.warnings)
         {
+            if (!first)
+                std::cout << std::endl;
+
+            first = false;
+
             if (warning.file_index == -1)
             {
                 std::cout << clr::bright_yellow << "error: " << warning.message << clr::reset << std::endl;
@@ -176,6 +189,11 @@ static std::optional<Prepared> prepare(const fs::path& path, bool show_warn = tr
 
     for (const auto& err : ro.errors)
     {
+        if (!first)
+            std::cout << std::endl;
+
+        first = false;
+
         ok = false;
         report(err.file_index, err, Severity::Error);
     }
