@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <sstream>
 #include <vector>
+#include <string_view>
+#include <string>
 
 
 namespace foo
@@ -98,6 +100,7 @@ namespace foo
         const size_t start = std::min(span.start, source.size());
         const size_t end = std::min(span.end(), source.size());
 
+
         size_t current = 0;
         if (start > 0)
         {
@@ -105,17 +108,29 @@ namespace foo
             current = (nl == std::string_view::npos) ? 0 : nl + 1;
         }
 
+
         for (size_t i = 0; i < context_lines && current > 0; i++)
         {
+
+            if (current == 1)
+            {
+                current = 0;
+                break;
+            }
+
             size_t prev_nl = source.rfind('\n', current - 2);
             current = (prev_nl == std::string_view::npos) ? 0 : prev_nl + 1;
         }
 
-        size_t last_line_start = start;
-        if (end > 0)
+
+        size_t last_line_start = 0;
         {
-            size_t nl = source.rfind('\n', end - 1);
-            last_line_start = (nl == std::string_view::npos) ? 0 : nl + 1;
+            const size_t last_char = end > start ? end - 1 : start;
+            if (last_char > 0)
+            {
+                size_t nl = source.rfind('\n', last_char - 1);
+                last_line_start = (nl == std::string_view::npos) ? 0 : nl + 1;
+            }
         }
 
         size_t last_line_end = source.find('\n', last_line_start);
@@ -149,9 +164,11 @@ namespace foo
             size_t u_end = std::min(text_end, end);
             size_t u_len = u_end > u_start ? u_end - u_start : 0;
 
-            if (u_len == 0 && start == end && start >= current && start <= text_end)
+            if (u_len == 0 &&
+                start >= current && start <= line_end &&
+                (start == end || end > text_end))
             {
-                u_start = start;
+                u_start = std::min(start, text_end);
                 u_len = 1;
             }
 
