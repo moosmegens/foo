@@ -936,11 +936,12 @@ namespace foo
                 return index_into(e.span, target, key, info(*x->target).type, true);
             }
 
-            return error("expression cannot be assigned to", e.span);
+            return error("internal: expression cannot be assigned to", e.span);
         }
 
         ValueResult assign_to_place(const Binary& b)
         {
+
             FOO_TRY(value, val(*b.rhs));
 
             ValueRef r = nudge_value(std::move(value), info(*b.rhs).type, info(*b.lhs).type);

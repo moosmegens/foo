@@ -104,10 +104,10 @@ namespace foo
             {
                 auto& stream = open_file(a[0]).stream;
 
-                std::string result{
-                    std::istreambuf_iterator<char>(stream),
-                    std::istreambuf_iterator<char>()
-                };
+                stream.seekg(0, std::ios::end);
+                std::string result(stream.tellg(), '\0');
+                stream.seekg(0);
+                stream.read(result.data(), result.size());
 
                 if (stream.bad())
                     throw std::runtime_error("could not read from the file");
