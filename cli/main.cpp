@@ -936,7 +936,7 @@ static void show_syntax(const std::vector<std::string>& kinds)
         row("&&",                                    "and");
         row("||",                                    "or");
         row("..  ..=",                               "a range of numbers");
-        row("=",                                     "assign (weakest)");
+        row("=",                                     "assign");
     }
 }
 
@@ -969,7 +969,7 @@ int main(int argc, char** argv)
         .help("show syntax parts (bare --syntax = all)");
 
     add_flag(program, "sets up single file project",    "--setup");
-    add_flag(program, "sets up single file project",    "--api");
+    add_flag(program, "shows all the builtin functions","--api");
 
     program.add_argument("--examples")
         .default_value(std::string{""})

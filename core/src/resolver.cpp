@@ -323,7 +323,7 @@ namespace foo
             _file_id = info.file_index;
 
             _scope = info.path;
-            _scope.pop_back();
+            _scope.pop_back(); // i remove the struct from the path, so lib::struct to just lib
         }
 
         void enter(const FunctionInfo& info)
@@ -331,11 +331,11 @@ namespace foo
             _file_id = info.file_index;
 
             _scope = info.path;
-            _scope.pop_back();
+            _scope.pop_back();  // i remove the function from the path, so lib::function to just lib
 
             bool is_in_struct = (info.owner_type != EmptyType);
             if (is_in_struct)
-                _scope.pop_back();
+                _scope.pop_back(); // i remove the struct from the path, so lib::struct::function to just lib
         }
 
         static int find_field(const StructInfo& info, const std::string& name)
@@ -548,6 +548,14 @@ namespace foo
 
         void check_struct_contains_itself(StructId id, std::vector<StructVisitState>& states)
         {
+            // i have a state per struct
+
+            // when checking my fields, i set my structs state to visiting
+            // and after checking i set it to done.
+
+            // and then call check_struct_contains_itself,
+            // this means that when i encounter a struct whose state is visiting it must mean that i have already seen it from the original struct
+
             const size_t index = static_cast<size_t>(id);
             StructInfo& info = struct_at(id);
 
@@ -1030,6 +1038,12 @@ namespace foo
 
         static bool stmt_always_returns(const ast::Stmt& stmt)
         {
+            // this works by making sure stmnt ALWAYS returns, recusivly
+
+            // so for block it must have a return,
+            // but for branchable statments it means that both need to be true
+            // and then return is the only place where it pushes up true
+
             return std::visit(overload{
                 [](const ast::Return&)
                 {
@@ -1063,8 +1077,10 @@ namespace foo
 
         // exprs
 
+        // lvalues, this is true for anything on the left side of =
         static bool is_lvalue(const ast::Expr& expr)
         {
+
             return std::visit(overload{
                 [](const ast::Name&)
                 {
@@ -1085,6 +1101,9 @@ namespace foo
             }, expr.kind);
         }
 
+        // this checks if its assignable,
+        // it has some leeway in that int's can be converted to floats, and T's to T?'s etc
+        // strict means strict
         bool assignable(TypeId to, TypeId from, bool strict = false)
         {
             if (!strict)
@@ -1162,6 +1181,8 @@ namespace foo
             {
                 TypeId type = resolve_expr(*element, element_type);
 
+                // if no type hint, just take the type from the first expression
+                // so ["string",1,2] would take the first, string, as the arrays type, so erroring on the ints
                 if (element_type == EmptyType)
                     element_type = type;
                 else
@@ -1232,10 +1253,12 @@ namespace foo
                 expect_assignable(field_type, value_type, init.value->span);
             }
 
+
             for (size_t i = 0; i < field_was_set.size(); i++)
             {
                 if (field_was_set[i] == false)
                     error(span, "missing field '" + info.fields[i].name + "'");
+                    // maybe turn into warning
             }
 
             _output.struct_lit_fields[&lit] = std::move(field_indices);
@@ -1486,15 +1509,15 @@ namespace foo
 
             std::optional<Callee> callee;
 
-            if (is_struct_type(type))
+            if (is_struct_type(type)) // user defined
             {
                 callee = find_static_function(type, call.method, span);
             }
-            else if (types().kind(type) == TypeKind::Native)
+            else if (types().kind(type) == TypeKind::Native) // native function on native type
             {
                 callee = find_native_static_function(type, call.method, span);
             }
-            else
+            else // native function on real type
             {
                 auto match = natives().find_static_function(types(), type, call.method);
                 if (match.has_value())
@@ -1508,6 +1531,8 @@ namespace foo
             if (callee.has_value() == false)
                 return fail_call(call.args);
 
+            // this needs saving as natives are generated
+            // and their types arent pushed to the runtime
             if (callee->ref == RefKind::Native || callee->ref == RefKind::NativeMethod)
                 _output.native_sigs[&call] = callee->sig;
 

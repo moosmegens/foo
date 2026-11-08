@@ -5,7 +5,7 @@
 
 #include <foo/parser.hpp>
 
-#include "foo/debug/debug_out.hpp"
+#include <foo/debug/debug_out.hpp>
 
 #include <foo/ast.hpp>
 #include <foo/ast_printer.hpp>
@@ -127,6 +127,7 @@ namespace foo
                 return true;
             }
 
+            // phantom == true: doesnt report error, but still checks
             template <class T>
             bool expect(bool phantom = false)
             {
@@ -270,22 +271,22 @@ namespace foo
             {
                 using Op = ast::BinaryOp;
 
-                if (token_variant_is<tok::PlusOp>(v))         return Op::Add;
-                if (token_variant_is<tok::MinusOp>(v))        return Op::Sub;
-                if (token_variant_is<tok::MultiplyOp>(v))     return Op::Mul;
-                if (token_variant_is<tok::DivideOp>(v))       return Op::Div;
-                if (token_variant_is<tok::ModuloOp>(v))       return Op::Mod;
-                if (token_variant_is<tok::EqualOp>(v))        return Op::Eq;
-                if (token_variant_is<tok::NotEqualOp>(v))     return Op::NotEq;
-                if (token_variant_is<tok::LessOp>(v))         return Op::Less;
-                if (token_variant_is<tok::LessEqualOp>(v))    return Op::LessEq;
-                if (token_variant_is<tok::GreaterOp>(v))      return Op::Greater;
-                if (token_variant_is<tok::GreaterEqualOp>(v)) return Op::GreaterEq;
-                if (token_variant_is<tok::AndOp>(v))          return Op::And;
-                if (token_variant_is<tok::OrOp>(v))           return Op::Or;
-                if (token_variant_is<tok::AssignOp>(v))       return Op::Assign;
-                if (token_variant_is<tok::DotDot>(v))         return Op::Range;
-                if (token_variant_is<tok::DotDotEq>(v))       return Op::RangeInclusive;
+                if (token_variant_is<tok::PlusOp>(v))           return Op::Add;
+                if (token_variant_is<tok::MinusOp>(v))          return Op::Sub;
+                if (token_variant_is<tok::MultiplyOp>(v))       return Op::Mul;
+                if (token_variant_is<tok::DivideOp>(v))         return Op::Div;
+                if (token_variant_is<tok::ModuloOp>(v))         return Op::Mod;
+                if (token_variant_is<tok::EqualOp>(v))          return Op::Eq;
+                if (token_variant_is<tok::NotEqualOp>(v))       return Op::NotEq;
+                if (token_variant_is<tok::LessOp>(v))           return Op::Less;
+                if (token_variant_is<tok::LessEqualOp>(v))      return Op::LessEq;
+                if (token_variant_is<tok::GreaterOp>(v))        return Op::Greater;
+                if (token_variant_is<tok::GreaterEqualOp>(v))   return Op::GreaterEq;
+                if (token_variant_is<tok::AndOp>(v))            return Op::And;
+                if (token_variant_is<tok::OrOp>(v))             return Op::Or;
+                if (token_variant_is<tok::AssignOp>(v))         return Op::Assign;
+                if (token_variant_is<tok::DotDot>(v))           return Op::Range;
+                if (token_variant_is<tok::DotDotEq>(v))         return Op::RangeInclusive;
 
                 return std::nullopt;
             }
@@ -310,6 +311,9 @@ namespace foo
                 ast::TypeExprPtr base = nullptr;
 
 
+                // 2 core types, named and map
+
+                // map
                 if (check<tok::LBracket>())
                 {
                     advance(); // consume '['
@@ -340,6 +344,9 @@ namespace foo
                 }
                 else if (check<tok::Identifier>())
                 {
+                    // named
+
+
                     std::vector<std::string> parts;
                     parts.push_back(std::get<tok::Identifier>(current().variant).value);
 
@@ -368,10 +375,12 @@ namespace foo
                     return nullptr;
                 }
 
+                // 2 modifiers, optional and array
+
                 bool last_was_optional = false;
                 while (true)
                 {
-                    if (match<tok::LBracket>())
+                    if (match<tok::LBracket>()) // array
                     {
                         if (!expect<tok::RBracket>())
                             break;
@@ -386,7 +395,7 @@ namespace foo
                         last_was_optional = false;
                     }
                     else
-                    if (match<tok::QuestionMark>())
+                    if (match<tok::QuestionMark>()) // optional
                     {
                         if (last_was_optional)
                         {
@@ -658,7 +667,7 @@ namespace foo
 
                 if (check<tok::LBrace>())   return parse_block_stmt(span);
 
-
+                // when not met with keyword, it is an expression
                 return parse_expr_stmt();
             }
 
@@ -714,14 +723,16 @@ namespace foo
                 if (match<tok::Colon>())
                 {
                     type = parse_type();
-                    if (!type) return nullptr;
+                    if (!type)
+                        return nullptr;
                 }
 
                 ast::ExprPtr init;
                 if (match<tok::AssignOp>())
                 {
                     init = parse_expr();
-                    if (!init) return nullptr;
+                    if (!init)
+                        return nullptr;
                 }
 
                 if (!type && !init)
@@ -738,7 +749,8 @@ namespace foo
                 if (!check<tok::Semicolon>())
                 {
                     value = parse_expr();
-                    if (!value) return nullptr;
+                    if (!value)
+                        return nullptr;
                 }
 
                 expect<tok::Semicolon>(true);
@@ -772,8 +784,8 @@ namespace foo
                     SourceSpan else_span = current().source;
                     advance();
 
-                    else_branch = match<tok::If>() ? parse_if_stmt(else_span)
-                                                   : parse_block_stmt(else_span);
+                    else_branch = match<tok::If>()  ? parse_if_stmt(else_span)
+                                                    : parse_block_stmt(else_span);
 
                     if (!else_branch)
                         return nullptr;
@@ -844,6 +856,7 @@ namespace foo
             // parse:
             //      expressions
 
+            // https://en.wikipedia.org/wiki/Operator-precedence_parser
             ast::ExprPtr parse_expr(int min_bp = 0)
             {
                 auto left = parse_primary();
@@ -854,6 +867,7 @@ namespace foo
                 {
                     const TokenVariant& next = peek().variant;
 
+                    // (call, index, .member) binds tighter than any binary op
                     if (is_postfix(next))
                     {
                         if (postfix_bp < min_bp)
@@ -1089,6 +1103,7 @@ namespace foo
             {
                 SourceSpan span = target->span;
 
+                // function call
                 if (match<tok::LParen>())
                 {
                     std::vector<ast::ExprPtr> args;
@@ -1108,6 +1123,7 @@ namespace foo
                     return std::make_unique<ast::Expr>(ast::Call{std::move(target), std::move(args)}, span);
                 }
 
+                // index
                 if (match<tok::LBracket>())
                 {
                     auto indexer = parse_expr();
@@ -1121,6 +1137,7 @@ namespace foo
                     return std::make_unique<ast::Expr>(ast::Index{std::move(target), std::move(indexer)}, span);
                 }
 
+                // member
                 if (match<tok::Dot>())
                 {
                     if (!check<tok::Identifier>())

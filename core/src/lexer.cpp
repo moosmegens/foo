@@ -233,6 +233,7 @@ namespace foo
                 skip();
                 const size_t start = _offset;
 
+                // if at the end of the source, emit a end token.
                 if (_offset >= _source.size())
                     return make(tok::End{}, _source.size()-1, _source.size());
 

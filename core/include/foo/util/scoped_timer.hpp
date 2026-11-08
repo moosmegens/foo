@@ -6,6 +6,8 @@
 #include <iostream>
 #include <ostream>
 #include <string>
+#include <sstream>
+#include <iomanip>
 
 
 namespace foo
@@ -71,11 +73,12 @@ namespace foo
             if (n < 1'000)
                 os << n << " ns";
             else if (n < 1'000'000)
-                os << static_cast<double>(n) / 1e3 << " us";
+                os << static_cast<double>(n) / 1'000 << " us";
             else if (n < 1'000'000'000)
-                os << static_cast<double>(n) / 1e6 << " ms";
+                os << static_cast<double>(n) / 1'000'000 << " ms";
             else
-                os << static_cast<double>(n) / 1e9 << " s";
+                os << static_cast<double>(n) / 1'000'000'000 << " s";
+
             return os.str();
         }
     };

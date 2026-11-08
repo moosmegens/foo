@@ -1,6 +1,7 @@
 #ifndef FOO_FILE_UTIL_HPP
 #define FOO_FILE_UTIL_HPP
 
+
 #include <cerrno>
 #include <cstring>
 #include <expected>
@@ -10,19 +11,9 @@
 #include <sstream>
 #include <string>
 
+
 namespace foo
 {
-    // inline std::optional<std::string> read_entire_file(const std::filesystem::path& path)
-    // {
-    //     std::ifstream in(path, std::ios::binary);
-    //     if (!in)
-    //         return std::nullopt;
-    //
-    //     std::ostringstream ss;
-    //     ss << in.rdbuf();
-    //     return ss.str();
-    // }
-
     inline std::vector<std::string> list_dir(const std::filesystem::path& path)
     {
         std::vector<std::string> files;

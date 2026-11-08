@@ -17,7 +17,7 @@ namespace foo
         SourceSpan span;
     };
 
-    std::optional<DynamicRuntimeError> run(std::span<const ast::DeclPtr> decls);
+    //std::optional<DynamicRuntimeError> run(std::span<const ast::DeclPtr> decls);
 }
 
 
