@@ -693,6 +693,52 @@ namespace foo
 
         // ------------------------------------------
 
+        bool has_default(TypeId type, std::vector<StructId>& visiting)
+        {
+            switch (types().kind(type))
+            {
+                case TypeKind::Bool:
+                case TypeKind::Int:
+                case TypeKind::Float:
+                case TypeKind::String:
+                case TypeKind::Array:
+                case TypeKind::Map:
+                case TypeKind::Optional:
+                case TypeKind::Void:
+                    return true;
+
+                case TypeKind::Error:
+                    return true;
+
+                case TypeKind::Struct:
+                {
+                    const StructId id = types().struct_id(type);
+
+                    if (std::ranges::find(visiting, id) != visiting.end())
+                        return true;
+
+                    visiting.push_back(id);
+
+                    bool ok = true;
+                    for (const FieldInfo& f : struct_at(id).fields)
+                        ok = ok && has_default(f.type, visiting);
+
+                    visiting.pop_back();
+
+                    return ok;
+                }
+
+                default:
+                    return false;
+            }
+        }
+
+        bool has_default(TypeId type)
+        {
+            std::vector<StructId> visiting;
+            return has_default(type, visiting);
+        }
+
         bool ensure_access_field(
             const StructInfo& info,
             const FieldInfo& field,
@@ -913,7 +959,11 @@ namespace foo
             }
             else
             {
-                warn(span, "variable '" + var.name + "' doesn't have a initial value");
+                if (!has_default(written_type))
+                    error(span, "variable '" + var.name + "' has type '" + type_name(written_type)
+                        + "' which has no default value, give it an initializer");
+                else
+                    warn(span, "variable '" + var.name + "' doesn't have a initial value");
             }
 
             _output.var_decls[&var] = declare_local(var.name, type, span);
@@ -1256,9 +1306,14 @@ namespace foo
 
             for (size_t i = 0; i < field_was_set.size(); i++)
             {
-                if (field_was_set[i] == false)
-                    error(span, "missing field '" + info.fields[i].name + "'");
-                    // maybe turn into warning
+                if (field_was_set[i])
+                    continue;
+
+                if (!has_default(info.fields[i].type))
+                {
+                    error(span, "missing field '" + info.fields[i].name + "', type '"
+                        + type_name(info.fields[i].type) + "' has no default value");
+                }
             }
 
             _output.struct_lit_fields[&lit] = std::move(field_indices);

@@ -245,7 +245,7 @@ namespace foo
         {
             const auto& functions = resolved().functions;
 
-            for (size_t i = 0; i < functions.size(); ++i)
+            for (size_t i = 0; i < functions.size(); i++)
                 if (!functions[i].is_method && functions[i].owner_type == EmptyType
                     && functions[i].decl && functions[i].decl->name == name)
                     return static_cast<FunctionId>(i);
@@ -436,7 +436,7 @@ namespace foo
             }
 
             default:
-                return error("this type has no default value", span);
+                return error("internal: this type has no default value", span);
             }
         }
 
@@ -1301,7 +1301,7 @@ namespace foo
 
                 return copy(a[0]);
             },
-            {"(T?).unwrap(T) -> T", "force unwrap T?, (throws if none)"});
+            {"(T?).unwrap() -> T", "force unwrap T?, (throws if none)"});
 
         def.method("join",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
