@@ -409,6 +409,30 @@ fn main() -> void
         },
     });
 
+    add("for_loops",
+{
+{"main",
+R"AAA(
+fn main() -> void
+{
+    // 0..3 gives 0, 1, 2 (end excluded), 0..=3 includes the end
+    for i in 0..3
+    {
+        println(i)
+    }
+
+    // loop over the items of an array
+    var names = ["a", "b", "c"]
+
+    for name in names
+    {
+        println(name)
+    }
+}
+)AAA"
+},
+});
+
     add("returning",
 {
     {"main",
@@ -507,6 +531,41 @@ fn main() -> int
 },
 });
 
+    add("optional_helpers",
+{
+{"main",
+R"AAA(
+fn find_even(numbers: int[]) -> int?
+{
+    for n in numbers
+    {
+        if n % 2 == 0
+        {
+            return n
+        }
+    }
+
+    return none
+}
+
+fn main() -> int
+{
+    var maybe = find_even([1, 3, 4])    // 4
+    var nothing = find_even([1, 3, 5])  // none
+
+    // or() gives a default when it's none
+    println(maybe.or(-1))
+    println(nothing.or(-1))
+
+    // unwrap() gives the value, but is a runtime error when it's none
+    println(maybe.unwrap())
+
+    return maybe.or(0)
+}
+)AAA"
+},
+});
+
     add("multiple_files",
 {
 {"main",
@@ -589,6 +648,126 @@ fn main() -> void
 
     // times itself
     a.times(a)
+}
+)AAA"
+},
+});
+
+    add("files",
+{
+{"main",
+R"AAA(
+fn main() -> int
+{
+    io::mkdir("example_output")
+    var path = io::join("example_output", "notes.txt")
+
+    // open gives an io::file?, so it's none when it failed
+    check io::open(path, "w") => file
+    {
+        file.write_line("first line")
+        file.write("second ")
+        file.write_line("line")
+        file.close()
+    } else
+    {
+        println("could not open:", io::last_error())
+        return 1
+    }
+
+    // the whole file at once
+    println(io::read_file(path).or(""))
+
+    // or line by line
+    check io::read_lines(path) => lines
+    {
+        for line in lines
+        {
+            println(line)
+        }
+    }
+
+    // helpers that work on a path directly return true / false
+    io::append_file(path, "appended\n")
+    println(io::exists(path))
+
+    io::remove(path)
+    println(io::exists(path))
+
+    return 0
+}
+)AAA"
+},
+});
+
+    add("paths",
+{
+{"main",
+R"AAA(
+fn main() -> void
+{
+    // join uses the right separator for the os
+    var path = io::join("folder", "sub", "file.txt")
+
+    println(path)
+    println(io::filename(path))     // file.txt
+    println(io::extension(path))    // .txt
+    println(io::parent(path))       // folder/sub
+
+    println(io::cwd())
+
+    // list_dir gives string[]?, none when the folder can't be read
+    check io::list_dir(".") => names
+    {
+        for name in names
+        {
+            println(name)
+        }
+    } else
+    {
+        println("cannot read folder:", io::last_error())
+    }
+}
+)AAA"
+},
+});
+
+    add("os",
+{
+{"main",
+R"AAA(
+fn main() -> void
+{
+    // getenv gives string?, none when the variable isn't set
+    println(os::getenv("PATH").or("no path"))
+
+    // clock is for timing, time is seconds since 1970
+    var start = os::clock()
+
+    os::sleep(0.25)
+
+    println("slept for", os::clock() - start)
+    println(os::time())
+}
+)AAA"
+},
+});
+
+    add("rng",
+{
+{"main",
+R"AAA(
+fn main() -> void
+{
+    // same seed, same numbers
+    rng::seed(42)
+
+    // range includes both ends
+    println(rng::range(1, 6))
+
+    var deck = [1, 2, 3, 4, 5]
+    deck.shuffle()          // in place, works on any array
+    println(deck)
 }
 )AAA"
 },
