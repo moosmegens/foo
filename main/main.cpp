@@ -94,12 +94,7 @@ void print_diagnostics(const std::string& error, std::string_view src, foo::Sour
 
 std::filesystem::path foo_root()
 {
-    const char* root = std::getenv("FOO_ROOT");
-
-    if (!root)
-        throw std::runtime_error("FOO_ROOT is not set");
-
-    return root;
+    return { DEV__FOO_ROOT };
 }
 
 std::string load_file(const std::filesystem::path& path)
