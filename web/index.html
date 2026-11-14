@@ -1,695 +1,538 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>foo — Interpreter IDE</title>
-
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>foo playground</title>
     <style>
         :root {
-            color-scheme: dark;
-            font-family: system-ui, sans-serif;
-            background: #111114;
-            color: #e4e4e7;
+            --select-color: #ff7878;
+            --pri-color: #f5f5f5;
+            --sec-color: #ffed70;
+            --bac-color: #0a0a0a;
+            --hov-color: darkgray;
+            --muted: #777777;
 
-            --code-font: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
-            --line-h: 22px;
-            --pad: 12px;
+            --err:  #dd5555;
+            --warn: #dddd55;
+            --ok:   #55dd55;
 
-            --c-keyword: #c792ea;
-            --c-type: #4fc1b0;
-            --c-fn: #82aaff;
-            --c-string: #c3e88d;
-            --c-number: #f78c6c;
-            --c-bool: #ff9cac;
-            --c-comment: #6b7280;
-            --c-op: #89a4c7;
+            --body-padding: 16px;
+            --footer-height: 48px;
+            --mono: "Fira Mono", "Courier New", monospace;
         }
 
-        * { box-sizing: border-box; }
-        body { margin: 0; min-height: 100vh; }
-
-        header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 24px;
-            background: #19191e;
-            border-bottom: 1px solid #303038;
+        * {
+            margin: 0; padding: 0; box-sizing: border-box;
+            cursor: default;
+            scrollbar-width: thin;
+            scrollbar-color: var(--pri-color) rgba(0, 0, 0, 0);
         }
-        header h1 { margin: 0; font-size: 20px; }
-        header span { color: #a1a1aa; font-size: 13px; }
 
-        main { max-width: 1100px; margin: auto; padding: 24px; }
-
-        .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-
-        button {
-            padding: 9px 16px;
-            border: 1px solid #3f3f46;
-            border-radius: 7px;
-            background: #27272a;
-            color: #fafafa;
-            font-size: 14px;
-            cursor: pointer;
-        }
-        button:hover:not(:disabled) { background: #3f3f46; }
-        button:disabled { cursor: not-allowed; opacity: .5; }
-        button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
-
-        #run { background: #2563eb; border-color: #2563eb; }
-        #run:hover:not(:disabled) { background: #1d4ed8; }
-
-        .hint { color: #71717a; font-size: 12px; }
-        .status { margin-left: auto; color: #a1a1aa; font-size: 13px; }
-
-        .panel {
+        body {
+            height: 100dvh;
+            display: flex; flex-direction: column;
+            padding: var(--body-padding) calc(var(--body-padding) * 0.5);
+            background: var(--bac-color); color: var(--pri-color);
+            font-family: var(--mono); font-size: 100%;
             overflow: hidden;
-            margin-bottom: 20px;
-            border: 1px solid #303038;
-            border-radius: 10px;
-            background: #18181b;
         }
-        .panel-title {
-            padding: 11px 14px;
-            border-bottom: 1px solid #303038;
-            color: #a1a1aa;
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: .08em;
-            text-transform: uppercase;
+
+        #body {
+            flex: 1; min-height: 0; width: 100%;
+            display: flex; gap: calc(var(--body-padding) / 1.5);
         }
+
+        /* ---- panels ---- */
+        .panel {
+            border: 0.1px solid var(--pri-color);
+            background: var(--bac-color);
+            min-width: 0; min-height: 0;
+            display: flex; flex-direction: column;
+        }
+        .panel legend { margin-left: 1rem; padding: 0 .2rem; }
+        .panel:focus-within { border-color: var(--select-color); }
+        .panel:focus-within legend { color: var(--select-color); }
+        .fill { flex: 1; min-height: 0; }
+
+        #editor-panel { flex: 1; }
+        .side { width: 26rem; display: flex; flex-direction: column; gap: calc(var(--body-padding) / 1.5); }
+        .side .panel { flex: 1; }
 
         /* ---- editor ---- */
-        .editor {
-            display: flex;
-            height: 380px;
-            min-height: 160px;
-            resize: vertical;
-            overflow: hidden;
-            background: #111114;
+        .editor { display: flex; height: 100%; overflow: hidden; }
+        .editor pre, .editor textarea {
+            margin: 0; border: 0;
+            font-family: var(--mono); font-size: 14px; line-height: 1.5;
+            tab-size: 4; white-space: pre;
         }
 
-        .gutter {
-            flex: none;
-            width: 52px;
-            overflow: hidden;
-            border-right: 1px solid #26262c;
-            background: #151519;
-            color: #52525b;
-            font: 13px/var(--line-h) var(--code-font);
-            text-align: right;
-            user-select: none;
+        #gutter {
+            flex: none; min-width: 3.5rem; overflow: hidden; user-select: none;
+            padding: 8px 10px 28px 8px; text-align: right;
+            color: var(--muted); border-right: 0.1px solid var(--muted);
         }
-        .gutter-inner { padding: var(--pad) 10px var(--pad) 0; }
-        .gutter div.err { color: #f87171; font-weight: 700; }
-        .gutter div.cur { color: #d4d4d8; }
+        #gutter .err  { color: var(--err);  font-weight: 700; }
+        #gutter .warn { color: var(--warn); font-weight: 700; }
 
         .code { position: relative; flex: 1; min-width: 0; }
+        .code pre, .code textarea { position: absolute; inset: 0; width: 100%; height: 100%; }
 
-        #highlight, #source {
-            position: absolute;
-            inset: 0;
-            margin: 0;
-            border: 0;
-            padding: var(--pad) 14px;
-            font: 14px/var(--line-h) var(--code-font);
-            letter-spacing: 0;
-            tab-size: 4;
-            white-space: pre;
-            word-wrap: normal;
-        }
-
+        /* layers, bottom to top: colored text, underlines, the real textarea.
+           the two pre layers get extra bottom padding so they never scroll less than the textarea */
         #highlight {
-            overflow: hidden;
-            pointer-events: none;
-            color: #e4e4e7;
+            padding: 8px 8px 28px 12px; overflow: hidden;
+            color: var(--pri-color); pointer-events: none;
         }
-        #highlight code { font: inherit; padding-bottom: 40px; display: block; }
-
-        #source {
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            resize: none;
-            outline: none;
-            background: transparent;
-            color: transparent;
-            caret-color: #fafafa;
+        #backdrop {
+            padding: 8px 8px 28px 12px; overflow: hidden;
+            color: transparent; pointer-events: none;
         }
-        #source::selection { background: rgba(96, 165, 250, .35); }
+        #src {
+            padding: 8px 8px 8px 12px; overflow: auto; resize: none; outline: none;
+            background: transparent; color: var(--pri-color);
+            caret-color: var(--sec-color); cursor: text;
+        }
+        /* only hide the textarea's own text once the highlighter has rendered */
+        #src.hl { color: transparent; }
+        #src::selection { background: var(--pri-color); color: var(--bac-color); }
+        #src.hl::selection { background: rgba(245, 245, 245, 0.3); color: transparent; }
 
-        .k { color: var(--c-keyword); }
-        .t { color: var(--c-type); }
-        .f { color: var(--c-fn); }
-        .s { color: var(--c-string); }
-        .n { color: var(--c-number); }
-        .b { color: var(--c-bool); }
-        .c { color: var(--c-comment); font-style: italic; }
-        .o { color: var(--c-op); }
-        .e {
-            text-decoration: underline wavy #f87171;
+        .err-mark, .warn-mark {
+            text-decoration-line: underline;
+            text-decoration-style: wavy;
+            text-decoration-thickness: 1.2px;
+            text-underline-offset: 4px;
             text-decoration-skip-ink: none;
-            text-underline-offset: 3px;
-            background: rgba(248, 113, 113, .12);
         }
 
-        .e.eol {
-            text-decoration: none;
-            box-shadow: inset 0 -2px #f87171;
+        .err-mark {
+            text-decoration-color: #E87585;
         }
 
-        /* ---- diagnostics ---- */
-        #diagnostics {
-            border-top: 1px solid #303038;
-            font: 13px/1.6 var(--code-font);
-            max-height: 150px;
-            overflow: auto;
-        }
-        #diagnostics .ok { padding: 8px 14px; color: #4ade80; }
-        #diagnostics .muted { padding: 8px 14px; color: #a1a1aa; }
-        #diagnostics button {
-            display: block;
-            width: 100%;
-            padding: 5px 14px;
-            border: 0;
-            border-radius: 0;
-            background: none;
-            color: #f87171;
-            font: inherit;
-            text-align: left;
-        }
-        #diagnostics button:hover { background: #222228; }
-        #diagnostics .pos { color: #a1a1aa; margin-right: 10px; }
-
-        .statusbar {
-            display: flex;
-            gap: 18px;
-            padding: 6px 14px;
-            border-top: 1px solid #303038;
-            color: #71717a;
-            font: 12px var(--code-font);
+        .warn-mark {
+            text-decoration-color: #D9BD65;
         }
 
-        #output {
-            min-height: 120px;
-            max-height: 400px;
-            overflow: auto;
-            margin: 0;
-            padding: 16px;
-            color: #d4d4d8;
-            font: 14px/1.6 var(--code-font);
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
+        /* syntax colors */
+        .t-kw      { color: #D875D8; } /* vibrant soft magenta */
+        .t-type    { color: #65C9D0; } /* balanced turquoise */
+        .t-lit     { color: #72C4D5; } /* softer cyan */
+        .t-const   { color: #D5CF72; } /* muted golden yellow */
+        .t-number  { color: #D5CF72; } /* matching yellow */
+        .t-string  { color: #75CC83; } /* fresh green */
+        .t-fn      { color: #9999F5; } /* periwinkle */
+        .t-comment { color: #858585; } /* neutral grey */
+
+        /* ---- output + problems ---- */
+        #out, #problems {
+            height: 100%; padding: 8px 12px; overflow: auto;
+            font-family: var(--mono); font-size: 14px; line-height: 1.5;
         }
+        #out { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+        #out .returned { color: var(--ok); }
 
-        footer { padding: 0 24px 24px; color: #71717a; text-align: center; font-size: 12px; }
+        .problem { padding: 1px 0; cursor: pointer; overflow-wrap: anywhere; }
+        .problem:hover { color: var(--hov-color); }
+        .problem .tag  { margin-right: 8px; }
+        .problem.err  .tag { color: var(--err); }
+        .problem.warn .tag { color: var(--warn); }
+        .problem .loc  { color: var(--muted); margin-right: 8px; }
+        .empty { color: var(--muted); }
 
-        @media (max-width: 600px) {
-            main { padding: 14px; }
-            header { padding: 14px; }
-            .toolbar { flex-wrap: wrap; }
+        /* ---- footer ---- */
+        #footer {
+            height: calc(var(--footer-height) - var(--body-padding));
+            margin-top: var(--body-padding); width: 100%;
+            flex-direction: row; align-items: center; justify-content: space-evenly;
+        }
+        button {
+            font: inherit; color: var(--pri-color); background: none; border: 0; cursor: pointer;
+        }
+        button:hover { color: var(--hov-color); }
+        button.primary { color: var(--sec-color); }
+        button.primary:hover { color: var(--hov-color); }
+        .hint { color: var(--muted); }
+        #status.err  { color: var(--err); }
+        #status.warn { color: var(--warn); }
+        #status.ok   { color: var(--ok); }
+
+        /* narrow screens: stack everything */
+        @media (max-width: 900px) {
+            #body { flex-direction: column; }
+            .side { width: 100%; flex-direction: row; height: 38%; }
             .hint { display: none; }
         }
     </style>
 </head>
-
 <body>
-<header>
-    <h1>foo <span>Interpreter IDE</span></h1>
-    <span>WebAssembly</span>
-</header>
 
-<main>
-    <div class="toolbar">
-        <button id="run" disabled>Loading...</button>
-        <button id="clear">Clear output</button>
-        <span class="hint">Ctrl+Enter to run</span>
-        <span class="status" id="status">Initializing...</span>
-    </div>
-
-    <section class="panel">
-        <div class="panel-title">Source code</div>
-
-        <div class="editor">
-            <div class="gutter" id="gutter"><div class="gutter-inner" id="gutterInner"></div></div>
-            <div class="code">
-                <pre id="highlight" aria-hidden="true"><code id="highlightCode"></code></pre>
-                <textarea
-                        id="source"
-                        wrap="off"
-                        spellcheck="false"
-                        autocapitalize="off"
-                        autocomplete="off"
-                        autocorrect="off"
-                        aria-label="foo source code"
-                ></textarea>
+<div id="body">
+    <fieldset class="panel" id="editor-panel">
+        <legend>\MAIN.FOO</legend>
+        <div class="fill">
+            <div class="editor">
+                <pre id="gutter" aria-hidden="true"></pre>
+                <div class="code">
+                    <pre id="highlight" aria-hidden="true"></pre>
+                    <pre id="backdrop" aria-hidden="true"></pre>
+                    <textarea id="src" spellcheck="false" wrap="off" autocomplete="off" autocapitalize="off">fn main() -> int
+{
+    println("Hello from foo!")
+    return 42
+}</textarea>
+                </div>
             </div>
         </div>
+    </fieldset>
 
-        <div class="statusbar">
-            <span id="cursorPos">Ln 1, Col 1</span>
-            <span id="errorCount"></span>
-        </div>
-        <div id="diagnostics"><div class="muted">Diagnostics will appear here.</div></div>
-    </section>
+    <div class="side">
+        <fieldset class="panel">
+            <legend>\OUTPUT</legend>
+            <div class="fill"><pre id="out"></pre></div>
+        </fieldset>
+        <fieldset class="panel">
+            <legend>\PROBLEMS</legend>
+            <div class="fill" id="problems"></div>
+        </fieldset>
+    </div>
+</div>
 
-    <section class="panel">
-        <div class="panel-title">Output</div>
-        <pre id="output">Waiting for WebAssembly...</pre>
-    </section>
-</main>
-
-<footer>foo interpreter · Runs locally in your browser</footer>
+<fieldset class="panel" id="footer">
+    <button id="run" class="primary">[ run ]</button>
+    <button id="check">[ check ]</button>
+    <span id="status">loading…</span>
+    <span class="hint">ctrl+enter runs · tab indents</span>
+</fieldset>
 
 <script type="module">
-    import createFoo from "./web/foo_web.js";
+    import createModule from "./foo_web.js";   // adjust the path to where your .js lives
+    const mod = await createModule();
 
-    // ---- language definition (edit these as foo grows) ----
-    const KEYWORDS = new Set([
-        "var", "fn", "struct", "ref", "if", "else", "while",
-        "for", "in", "check", "return", "import"
-    ]);
-    const TYPES = new Set(["int", "float", "bool", "string", "str"]);
-    const BOOLS = new Set(["true", "false"]);
+    const $ = id => document.getElementById(id);
+    const src = $("src"), backdrop = $("backdrop"), gutter = $("gutter"), highlight = $("highlight");
+    const out = $("out"), problems = $("problems"), status = $("status");
 
-    const STORAGE_KEY = "foo-ide-source";
-    const DEFAULT_SOURCE = `// Press Ctrl+Enter to run
+    const INDENT = "    ";
+    const CHECK_DELAY_MS = 300;
+    let checkTimer = 0;
 
-fn fib(n: int) -> int
-{
-    var a: int = 0;
-    var b: int = 1;
+    // ---------- helpers ----------
 
-    for i in 0..n
-    {
-        var next: int = a + b;
-        a = b;
-        b = next;
-    }
-
-    return a;
-}
-
-fn main() -> int
-{
-    io::println("Hello, World!");
-
-    for i in 0..=10
-    {
-        io::println(fib(i));
-    }
-
-    return 0;
-}
-`;
-
-    // ---- elements ----
-    const $ = (id) => document.getElementById(id);
-    const source = $("source");
-    const highlightEl = $("highlight");
-    const highlightCode = $("highlightCode");
-    const gutter = $("gutter");
-    const gutterInner = $("gutterInner");
-    const output = $("output");
-    const runButton = $("run");
-    const clearButton = $("clear");
-    const status = $("status");
-    const diagnosticsEl = $("diagnostics");
-    const cursorPos = $("cursorPos");
-    const errorCount = $("errorCount");
-
-    let interpreter = null;
-    let checkTimeout = null;
-    let errors = []; // { message, start, end } in UTF-16 indices
-
-    // ---- helpers ----
-    const escapeHtml = (s) =>
-        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-    function byteToIndexMap(text) {
-        const map = [];
-        let index = 0;
-        for (const ch of text) {
-            const cp = ch.codePointAt(0);
-            const bytes = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
-            for (let i = 0; i < bytes; i++) map.push(index);
-            index += ch.length;
+    // run a module call; if a C++ exception escapes, report it instead of dying silently
+    function guarded(fn) {
+        try {
+            return fn();
+        } catch (e) {
+            console.error(e);
+            out.textContent = "internal error: a C++ exception escaped the module (see the console).\nreload the page to reset it.";
+            status.className = "err";
+            status.textContent = "internal error";
+            return null;
         }
-        map.push(index);
+    }
+
+    // copy an embind vector into a plain array, then free it
+    function readDiags(vec) {
+        const list = [];
+        for (let i = 0; i < vec.size(); i++) {
+            const d = vec.get(i);
+            list.push({ message: d.message, start: d.start, end: d.end, isError: d.isError });
+        }
+        vec.delete();
+        return list;
+    }
+
+    // offsets from C++ are UTF-8 byte offsets, JS strings are UTF-16
+    function byteToCharMap(text) {
+        const enc = new TextEncoder();
+        const map = [];
+        let byte = 0;
+        for (let i = 0; i < text.length; ) {
+            const ch = String.fromCodePoint(text.codePointAt(i));
+            const len = enc.encode(ch).length;
+            for (let b = 0; b < len; b++) map[byte + b] = i;
+            byte += len;
+            i += ch.length;
+        }
+        map[byte] = text.length;
         return map;
     }
 
-    // Robust Embind vector-to-array converter
-    function toArray(vec) {
-        if (!vec) return [];
-        if (Array.isArray(vec)) return vec;
+    const hasLocation = d => !(d.start === 0 && d.end === 0);
+    const lineOf = (text, index) => text.slice(0, index).split("\n").length;
+    const colOf  = (text, index) => index - text.lastIndexOf("\n", index - 1);
 
-        const out = [];
-        try {
-            if (typeof vec.size === "function" && typeof vec.get === "function") {
-                for (let i = 0; i < vec.size(); i++) out.push(vec.get(i));
-            } else if (typeof vec.length === "number" && typeof vec.get === "function") {
-                for (let i = 0; i < vec.length; i++) out.push(vec.get(i));
-            } else if (typeof vec[Symbol.iterator] === "function") {
-                for (const item of vec) out.push(item);
-            } else if (typeof vec === "object" && ("message" in vec || "start" in vec)) {
-                out.push(vec); // Fallback for single diagnostic object
+    // diagnostics -> non-overlapping character ranges to underline
+    function toMarks(text, diags, map) {
+        const raw = diags
+            .filter(hasLocation)
+            .map(d => {
+                const start = map[d.start] ?? text.length;
+                const end = Math.max(map[d.end] ?? text.length, start);
+                return { start, end, isError: d.isError };
+            })
+            .sort((a, b) => a.start - b.start);
+
+        const marks = [];
+        let last = 0;
+        for (const m of raw) {
+            if (m.start < last && m.end <= last) continue;
+            const start = Math.max(m.start, last);
+            let end = m.end;
+
+            // on a newline or at the very end there is no character to underline
+            const atEol = start >= text.length || text[start] === "\n";
+            if (!atEol && end <= start) end = start + 1;
+            if (atEol && marks.some(x => x.pad && x.start === start)) continue;
+
+            end = Math.max(end, start);
+            marks.push({ start, end, isError: m.isError, pad: atEol });
+            last = end;
+        }
+        return marks;
+    }
+
+    // ---------- syntax highlighting ----------
+
+    const KEYWORDS  = new Set(["fn", "struct", "import", "var", "if", "else", "while", "for", "in", "check", "return", "ref"]);
+    const CONSTANTS = new Set(["true", "false", "none", "self"]);
+    const TYPES     = new Set(["int", "float", "bool", "string", "any", "void"]);
+
+    // one pass over the text; anything that doesn't match stays plain
+    const TOKEN = new RegExp([
+        String.raw`(?<comment>\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$))`,
+        String.raw`(?<string>"(?:[^"\\\n]|\\.)*(?:"|(?=\n)|$))`,   // also colors unterminated strings
+        String.raw`(?<number>\d+(?:\.\d+)?)`,
+        String.raw`(?<lit>[#@][A-Za-z_]\w*)`,                      // #Point{...}  @int.unbox(...)
+        String.raw`(?<word>[A-Za-z_]\w*)`,
+        String.raw`(?<op>=>|->|\.\.=|\.\.|::)`,
+    ].join("|"), "g");
+
+    function renderHighlight(text) {
+        const frag = document.createDocumentFragment();
+        let pos = 0;
+        let prev = "";    // last significant thing before the current token
+
+        const plain = s => {
+            if (!s) return;
+            frag.append(s);
+            const t = s.trim();
+            if (t) prev = t.slice(-1);
+        };
+
+        for (const m of text.matchAll(TOKEN)) {
+            plain(text.slice(pos, m.index));
+            pos = m.index + m[0].length;
+
+            const g = m.groups;
+            let cls = "";
+
+            if (g.comment !== undefined)      cls = "t-comment";
+            else if (g.string !== undefined)  cls = "t-string";
+            else if (g.number !== undefined)  cls = "t-number";
+            else if (g.lit !== undefined)     cls = "t-lit";
+            else if (g.word !== undefined) {
+                const w = g.word;
+                if (KEYWORDS.has(w))            cls = "t-kw";
+                else if (CONSTANTS.has(w))      cls = "t-const";
+                else if (TYPES.has(w))          cls = "t-type";
+                else if (text[pos] === "(")     cls = "t-fn";      // calls and fn names
+                else if (prev === "struct" || prev === ":" || prev === "->") cls = "t-type";
             }
-        } finally {
-            if (typeof vec.delete === "function") vec.delete();
-        }
-        return out;
-    }
 
-    function lineCol(text, index) {
-        const before = text.slice(0, index);
-        const line = before.split("\n").length;
-        const col = index - (before.lastIndexOf("\n") + 1) + 1;
-        return { line, col };
-    }
-
-    // ---- syntax highlighting ----
-    const TOKEN_RE = new RegExp(
-        [
-            String.raw`(\/\/[^\n]*)`,
-            String.raw`("(?:\\.|[^"\\\n])*"?)`,
-            String.raw`(\d+\.\d+|\d+)`,
-            String.raw`([A-Za-z_][A-Za-z0-9_]*)`,
-            String.raw`(\.\.=|\.\.|::|->|<-|=>|>>|<<|\?\?|[=!<>]=|&&|\|\||[+\-]=|[+\-*\/%^#@|~?!<>=:.,;])`
-        ].join("|"),
-        "g"
-    );
-
-    function classify(text) {
-        const cls = new Array(text.length).fill("");
-        let m;
-        TOKEN_RE.lastIndex = 0;
-        while ((m = TOKEN_RE.exec(text)) !== null) {
-            let c = "";
-            if (m[1] !== undefined) c = "c";
-            else if (m[2] !== undefined) c = "s";
-            else if (m[3] !== undefined) c = "n";
-            else if (m[4] !== undefined) {
-                const w = m[4];
-                if (KEYWORDS.has(w)) c = "k";
-                else if (BOOLS.has(w)) c = "b";
-                else if (TYPES.has(w)) c = "t";
-                else if (/^\s*\(/.test(text.slice(m.index + w.length, m.index + w.length + 20))) c = "f";
-            } else if (m[5] !== undefined) c = "o";
-
-            if (c) cls.fill(c, m.index, m.index + m[0].length);
-            if (m[0].length === 0) TOKEN_RE.lastIndex++;
-        }
-        return cls;
-    }
-
-    function render() {
-        const text = source.value;
-        const cls = classify(text);
-        const err = new Uint8Array(text.length);
-
-        const eol = new Set();
-        const isNl = (ch) => ch === "\n" || ch === "\r";
-
-        for (const e of errors) {
-            let s = Math.min(e.start, text.length);
-            let end = Math.min(Math.max(e.end, s), text.length);
-
-            while (end > s && isNl(text[end - 1])) end--;
-
-            if (end > s) {
-                err.fill(1, s, end);
-            } else if (s >= text.length || isNl(text[s])) {
-                eol.add(s);
+            if (cls) {
+                const span = document.createElement("span");
+                span.className = cls;
+                span.textContent = m[0];
+                frag.append(span);
             } else {
-                err.fill(1, s, s + 1);
+                frag.append(m[0]);
             }
+            prev = m[0];
         }
 
-        const marker = '<span class="e eol"> </span>';
-        let html = "";
-        let i = 0;
-        while (i < text.length) {
-            if (eol.has(i)) html += marker;
-            let j = i + 1;
-            while (j < text.length && cls[j] === cls[i] && err[j] === err[i] && !eol.has(j)) j++;
-            const chunk = escapeHtml(text.slice(i, j));
-            const c = (cls[i] + (err[i] ? " e" : "")).trim();
-            html += c ? `<span class="${c}">${chunk}</span>` : chunk;
-            i = j;
+        plain(text.slice(pos));
+        frag.append("\n");
+        highlight.replaceChildren(frag);
+        src.classList.add("hl");
+    }
+
+    // ---------- rendering ----------
+
+    function renderBackdrop(text, marks) {
+        backdrop.textContent = "";
+        let pos = 0;
+        for (const m of marks) {
+            if (m.start > pos) backdrop.append(text.slice(pos, m.start));
+            const span = document.createElement("span");
+            span.className = m.isError ? "err-mark" : "warn-mark";
+            span.textContent = (m.pad ? "\u00A0" : "") + text.slice(m.start, m.end);
+            backdrop.append(span);
+            pos = Math.max(pos, m.end);
         }
-        if (eol.has(text.length)) html += marker;
-        highlightCode.innerHTML = html + "\n";
-
-        renderGutter();
-        syncScroll();
+        backdrop.append(text.slice(pos) + "\n");
     }
 
-    function renderGutter() {
-        const text = source.value;
-        const lineCount = text.split("\n").length;
-        const errLines = new Set(errors.map((e) => lineCol(text, e.start).line));
-        const cur = lineCol(text, source.selectionStart).line;
-
-        let html = "";
-        for (let n = 1; n <= lineCount; n++) {
-            const c = errLines.has(n) ? "err" : n === cur ? "cur" : "";
-            html += `<div class="${c}">${n}</div>`;
+    function renderGutter(text, marks) {
+        const level = new Map();     // line number -> "err" | "warn"
+        for (const m of marks) {
+            const line = lineOf(text, m.start);
+            if (level.get(line) !== "err") level.set(line, m.isError ? "err" : "warn");
         }
-        gutterInner.innerHTML = html;
+
+        const count = text.split("\n").length;
+        gutter.textContent = "";
+        for (let i = 1; i <= count; i++) {
+            const span = document.createElement("span");
+            span.className = level.get(i) ?? "";
+            span.textContent = i + "\n";
+            gutter.append(span);
+        }
     }
 
-    function syncScroll() {
-        highlightEl.scrollTop = source.scrollTop;
-        highlightEl.scrollLeft = source.scrollLeft;
-        gutterInner.style.transform = `translateY(${-source.scrollTop}px)`;
+    function jumpTo(start, end) {
+        src.focus();
+        src.setSelectionRange(start, end);
     }
 
-    function updateCursor() {
-        const { line, col } = lineCol(source.value, source.selectionStart);
-        cursorPos.textContent = `Ln ${line}, Col ${col}`;
-        renderGutter();
-    }
+    function renderProblems(text, diags, map) {
+        problems.textContent = "";
 
-    function showDiagnostics() {
-        diagnosticsEl.replaceChildren();
-        const text = source.value;
-
-        if (errors.length === 0) {
-            const ok = document.createElement("div");
-            ok.className = "ok";
-            ok.textContent = "✓ No syntax errors";
-            diagnosticsEl.appendChild(ok);
-            errorCount.textContent = "";
+        if (diags.length === 0) {
+            const p = document.createElement("p");
+            p.className = "empty";
+            p.textContent = "no problems";
+            problems.append(p);
             return;
         }
 
-        errorCount.textContent = errors.length + (errors.length === 1 ? " error" : " errors");
+        for (const d of diags) {
+            const p = document.createElement("p");
+            p.className = "problem " + (d.isError ? "err" : "warn");
 
-        for (const e of errors) {
-            const { line, col } = lineCol(text, e.start);
-            const btn = document.createElement("button");
-            btn.type = "button";
+            const tag = document.createElement("span");
+            tag.className = "tag";
+            tag.textContent = d.isError ? "error" : "warn";
+            p.append(tag);
 
-            const pos = document.createElement("span");
-            pos.className = "pos";
-            pos.textContent = `${line}:${col}`;
+            if (hasLocation(d)) {
+                const start = map[d.start] ?? text.length;
+                const end = Math.max(map[d.end] ?? text.length, start);
+                const loc = document.createElement("span");
+                loc.className = "loc";
+                loc.textContent = `${lineOf(text, start)}:${colOf(text, start)}`;
+                p.append(loc);
+                p.onclick = () => jumpTo(start, end);
+            }
 
-            btn.append(pos, document.createTextNode(e.message));
-            btn.addEventListener("click", () => {
-                source.focus();
-                source.setSelectionRange(e.start, Math.max(e.end, e.start));
-                const target = (line - 1) * 22 - source.clientHeight / 2;
-                source.scrollTop = Math.max(0, target);
-                updateCursor();
-            });
-            diagnosticsEl.appendChild(btn);
+            p.append(d.message);
+            problems.append(p);
         }
     }
 
-    function runCheck() {
-        if (!interpreter || typeof interpreter.checkCode !== "function") return;
+    function renderStatus(diags) {
+        const errors = diags.filter(d => d.isError).length;
+        const warnings = diags.length - errors;
 
-        const text = source.value;
-        try {
-            const raw = toArray(interpreter.checkCode(text));
-            const map = byteToIndexMap(text);
-            const at = (b) => map[Math.min(b, map.length - 1)];
-
-            errors = raw.map((e) => ({
-                message: e.message ?? String(e),
-                start: at(e.start ?? 0),
-                end: at(e.end ?? e.start ?? 0)
-            }));
-            showDiagnostics();
-        } catch (error) {
-            errors = [];
-            diagnosticsEl.textContent = "Diagnostic error: " + String(error);
-        }
-        render();
-    }
-
-    function onInput() {
-        try { localStorage.setItem(STORAGE_KEY, source.value); } catch {}
-        render();
-        updateCursor();
-
-        if (interpreter && typeof interpreter.checkCode === "function") {
-            clearTimeout(checkTimeout);
-            checkTimeout = setTimeout(runCheck, 200);
-        }
-    }
-
-    // ---- editing behavior ----
-    function insertText(text) {
-        if (!document.execCommand("insertText", false, text)) {
-            source.setRangeText(text, source.selectionStart, source.selectionEnd, "end");
-            onInput();
-        }
-    }
-
-    source.addEventListener("keydown", (event) => {
-        if (event.key === "Tab" && !event.shiftKey) {
-            event.preventDefault();
-            insertText("    ");
-            return;
-        }
-
-        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-            event.preventDefault();
-            if (!runButton.disabled) runButton.click();
-            return;
-        }
-
-        if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
-            const pos = source.selectionStart;
-            const before = source.value.slice(0, pos);
-            const lineStart = before.lastIndexOf("\n") + 1;
-            const line = before.slice(lineStart);
-            let indent = line.match(/^[ \t]*/)[0];
-            if (/\{\s*$/.test(line)) indent += "    ";
-            event.preventDefault();
-            insertText("\n" + indent);
-        }
-    });
-
-    source.addEventListener("input", onInput);
-    source.addEventListener("scroll", syncScroll);
-    source.addEventListener("keyup", updateCursor);
-    source.addEventListener("click", updateCursor);
-    source.addEventListener("focus", updateCursor);
-
-    // ---- initial content ----
-    try {
-        source.value = localStorage.getItem(STORAGE_KEY) ?? DEFAULT_SOURCE;
-    } catch {
-        source.value = DEFAULT_SOURCE;
-    }
-    render();
-    updateCursor();
-
-    // ---- interpreter ----
-    try {
-        interpreter = await createFoo();
-
-        runButton.disabled = false;
-        runButton.textContent = "▶ Run";
-        status.textContent = "Ready";
-        output.textContent = "Interpreter loaded successfully.";
-
-        if (typeof interpreter.checkCode === "function") {
-            runCheck();
+        if (errors > 0) {
+            status.className = "err";
+            status.textContent = `${errors} error${errors === 1 ? "" : "s"}` +
+                (warnings ? `, ${warnings} warning${warnings === 1 ? "" : "s"}` : "");
+        } else if (warnings > 0) {
+            status.className = "warn";
+            status.textContent = `${warnings} warning${warnings === 1 ? "" : "s"}`;
         } else {
-            diagnosticsEl.innerHTML = '<div class="muted">Live diagnostics unavailable (checkCode not exported).</div>';
+            status.className = "ok";
+            status.textContent = "✓ no problems";
         }
-    } catch (error) {
-        status.textContent = "Load failed";
-        output.textContent = "Could not load WebAssembly:\n" + String(error);
-        console.error(error);
     }
 
-    // ---- RUN BUTTON HANDLER (FIXED) ----
-    runButton.addEventListener("click", () => {
-        if (!interpreter) return;
+    // update everything that depends on the diagnostics
+    function show(text, diags) {
+        const map = byteToCharMap(text);
+        const marks = toMarks(text, diags, map);
+        renderBackdrop(text, marks);
+        renderGutter(text, marks);
+        renderProblems(text, diags, map);
+        renderStatus(diags);
+    }
 
-        clearTimeout(checkTimeout);
-        checkTimeout = null;
+    // ---------- actions ----------
 
-        runButton.disabled = true;
-        status.textContent = "Running...";
-        output.textContent = "";
-        errors = [];
-        errorCount.textContent = "";
-        render();
+    function check() {
+        clearTimeout(checkTimer);
+        const text = src.value;
+        const vec = guarded(() => mod.verify(text));
+        if (!vec) return;
+        show(text, readDiags(vec));
+    }
 
-        setTimeout(() => {
-            const t0 = performance.now();
-            try {
-                const result = interpreter.runCode(source.value);
-                console.log("🔍 [DEBUG] 1. Raw result from C++:", result);
+    function run() {
+        clearTimeout(checkTimer);
+        const text = src.value;
+        const r = guarded(() => mod.run(text));
+        if (!r) return;
 
-                let out = result?.output;
-                if (typeof out !== 'string') {
-                    out = String(out ?? "");
-                }
-                output.textContent = out;
+        const diags = readDiags(r.diagnostics);
 
-                const rawErrors = result?.errors ?? result?.runtime_errors;
-                console.log("🔍 [DEBUG] 2. Raw errors object:", rawErrors);
+        out.textContent = r.output;
+        if (r.ok) {
+            const line = document.createElement("div");
+            line.className = "returned";
+            line.textContent = `→ main returned ${r.returned}`;
+            out.append(line);
+        }
+        show(text, diags);
+    }
 
-                const runtimeErrors = toArray(rawErrors);
-                console.log("🔍 [DEBUG] 3. Processed runtimeErrors array:", runtimeErrors);
+    // ---------- editor behaviour ----------
 
-                if (runtimeErrors.length > 0) {
-                    const text = source.value;
-                    const map = byteToIndexMap(text);
-                    const maxByteOffset = map.length - 1;
-                    const at = (value) => {
-                        const n = Number(value);
-                        if (!Number.isFinite(n)) return 0;
-                        const byteOffset = Math.max(0, Math.min(Math.trunc(n), maxByteOffset));
-                        return map[byteOffset] ?? text.length;
-                    };
+    // execCommand keeps the browser's undo stack working
+    function insert(text) {
+        document.execCommand("insertText", false, text);
+    }
 
-                    errors = runtimeErrors.map((e) => {
-                        console.log("🔍 [DEBUG] 4. Mapping individual error:", e);
-                        const start = Math.max(0, Math.min(at(e.start), text.length));
-                        const end = Math.max(start, Math.min(at(e.end ?? e.start), text.length));
-                        console.log(`🔍 [DEBUG] 5. Mapped indices -> start: ${start}, end: ${end}`);
-                        return { message: String(e.message ?? "Unknown error"), start, end };
-                    });
-
-                    showDiagnostics();
-                    render();
-                } else {
-                    console.log("🔍 [DEBUG] No runtime errors found, falling back to syntax check.");
-                    errors = [];
-                    runCheck();
-                }
-
-                if (result && typeof result.delete === "function") {
-                    result.delete();
-                }
-
-                status.textContent = `Finished in ${(performance.now() - t0).toFixed(0)} ms`;
-            } catch (error) {
-                console.error("🔍 [DEBUG] Run exception:", error);
-                output.textContent = String(error);
-                status.textContent = "Error";
-                errors = [];
-                showDiagnostics();
-                render();
-            } finally {
-                runButton.disabled = false;
-            }
-        }, 0);
+    src.addEventListener("keydown", e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            e.preventDefault();
+            run();
+        } else if (e.key === "Tab" && !e.shiftKey) {
+            e.preventDefault();
+            insert(INDENT);
+        } else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            const before = src.value.slice(0, src.selectionStart);
+            const line = before.slice(before.lastIndexOf("\n") + 1);
+            let indent = line.match(/^\s*/)[0];
+            if (line.trimEnd().endsWith("{")) indent += INDENT;
+            insert("\n" + indent);
+        }
     });
 
-    clearButton.addEventListener("click", () => {
-        output.textContent = "";
-        status.textContent = interpreter ? "Ready" : "Not loaded";
+    src.addEventListener("input", () => {
+        // colors follow immediately; old underlines are stale after an edit,
+        // so clear them and re-check after a pause
+        const text = src.value;
+        renderHighlight(text);
+        renderBackdrop(text, []);
+        renderGutter(text, []);
+        status.className = "";
+        status.textContent = "checking…";
+        clearTimeout(checkTimer);
+        checkTimer = setTimeout(check, CHECK_DELAY_MS);
     });
+
+    src.addEventListener("scroll", () => {
+        highlight.scrollTop = backdrop.scrollTop = gutter.scrollTop = src.scrollTop;
+        highlight.scrollLeft = backdrop.scrollLeft = src.scrollLeft;
+    });
+
+    $("run").onclick = run;
+    $("check").onclick = check;
+
+    renderHighlight(src.value);
+    check();
 </script>
 </body>
 </html>

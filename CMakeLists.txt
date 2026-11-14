@@ -16,6 +16,11 @@ add_library(foo_warnings INTERFACE)
 #            -Wno-error=unused-parameter)
 #endif()
 
+if(EMSCRIPTEN)
+    add_compile_options(-fexceptions)
+    add_link_options(-fexceptions)
+endif()
+
 add_subdirectory(core)
 
 if(NOT EMSCRIPTEN)
