@@ -75,6 +75,38 @@ namespace foo
                 return result;
             }
 
+            IntermediateParseOutput<ast::TypeExprPtr> parse_type(std::span<Token> tokens)
+            {
+                init(tokens);
+                auto value = parse_type();
+
+                return {std::move(_errors), std::move(value)};
+            }
+
+            IntermediateParseOutput<ast::ExprPtr> parse_expr(std::span<Token> tokens)
+            {
+                init(tokens);
+                auto value = parse_expr();
+
+                return {std::move(_errors), std::move(value)};
+            }
+
+            IntermediateParseOutput<ast::StmtPtr> parse_statement(std::span<Token> tokens)
+            {
+                init(tokens);
+                auto value = parse_stmt();
+
+                return {std::move(_errors), std::move(value)};
+            }
+
+            IntermediateParseOutput<ast::DeclPtr> parse_decl(std::span<Token> tokens)
+            {
+                init(tokens);
+                auto value = parse_decl();
+
+                return {std::move(_errors), std::move(value)};
+            }
+
         private:
             void init(std::span<Token> tokens)
             {
@@ -1199,5 +1231,29 @@ namespace foo
     {
         Parser parser;
         return parser.parse(tokens);
+    }
+
+    IntermediateParseOutput<ast::TypeExpr> parse_type(std::span<Token> tokens)
+    {
+        Parser parser;
+        return parser.parse_type(tokens);
+    }
+
+    IntermediateParseOutput<ast::Expr> parse_expr(std::span<Token> tokens)
+    {
+        Parser parser;
+        return parser.parse_expr(tokens);
+    }
+
+    IntermediateParseOutput<ast::Stmt> parse_statement(std::span<Token> tokens)
+    {
+        Parser parser;
+        return parser.parse_statement(tokens);
+    }
+
+    IntermediateParseOutput<ast::Decl> parse_decl(std::span<Token> tokens)
+    {
+        Parser parser;
+        return parser.parse_decl(tokens);
     }
 }

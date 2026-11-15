@@ -25,7 +25,21 @@ namespace foo
         std::vector<ParseError> errors;
     };
 
+    template <typename T>
+    struct IntermediateParseOutput
+    {
+        std::vector<ParseError> errors;
+        T value;
+    };
+
+
     ParseOutput parse(std::span<Token> tokens);
+
+
+    IntermediateParseOutput<ast::TypeExprPtr> parse_type(std::span<Token> tokens);
+    IntermediateParseOutput<ast::ExprPtr> parse_expr(std::span<Token> tokens);
+    IntermediateParseOutput<ast::StmtPtr> parse_statement(std::span<Token> tokens);
+    IntermediateParseOutput<ast::DeclPtr> parse_decl(std::span<Token> tokens);
 }
 
 
