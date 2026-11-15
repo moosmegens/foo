@@ -24,6 +24,34 @@
 #include "foo/natives.hpp"
 #include "foo/debug/debug_out.hpp"
 
+
+#ifdef _WIN32
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+#endif
+
+bool enableAnsiColors()
+{
+#ifdef _WIN32
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    if (hOut == INVALID_HANDLE_VALUE || hOut == nullptr)
+        return false;
+
+    DWORD dwMode = 0;
+
+    if (!GetConsoleMode(hOut, &dwMode))
+        return false;
+
+    return SetConsoleMode(
+        hOut,
+        dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    ) != 0;
+#else
+    return true;
+#endif
+}
+
 namespace fs = std::filesystem;
 
 namespace clr
@@ -1128,6 +1156,9 @@ int main(int argc, char** argv)
 {
     argparse::ArgumentParser program("foo", "0.1");
     std::vector<std::string> syntax_kinds;
+
+    if (!enableAnsiColors())
+        std::cerr << "warning: could not enable ANSI colors" << std::endl;
 
     program.add_argument("script")
         .default_value(std::string{"main"})
