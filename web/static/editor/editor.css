@@ -67,6 +67,9 @@
     --foo-comment: #857C70;
 
 
+    --foo-tip-bg: #161616;
+
+
     --foo-font: "Courier New", monospace;
     --foo-font-size: 14px;
 }
@@ -171,3 +174,22 @@
 .foo-status[data-state="ok"]   { color: var(--foo-ok); }
 
 .foo-cursor { color: var(--foo-muted); white-space: nowrap; }
+
+/* ---------- hover tooltip ---------- */
+
+.foo-tooltip {
+    position: fixed; z-index: 10001;
+    max-width: min(32rem, calc(100vw - 16px));
+    padding: 6px 10px;
+    font: var(--foo-font-size)/1.4 var(--foo-font);
+    color: var(--foo-fg); background: var(--foo-tip-bg);
+    border: 0.1px solid var(--foo-muted);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    overflow-wrap: anywhere; white-space: normal;
+    pointer-events: none;
+}
+.foo-tooltip[hidden] { display: none; }
+.foo-tip-row + .foo-tip-row { margin-top: 4px; }
+.foo-tip-tag { margin-right: 0.5em; font-weight: 700; }
+.foo-tip-err  { color: var(--foo-err); }
+.foo-tip-warn { color: var(--foo-warn); }
