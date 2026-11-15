@@ -146,7 +146,7 @@ export function createEditor(options) {
     const {
         editor, output = null, problems = null, status = null, cursor = null,
         runButton = null, checkButton = null,
-        code = DEFAULT_CODE, checkDelay = 300, css = true, module,
+        code = DEFAULT_CODE, checkDelay = 200, css = true, module,
         autoIndent = true, autoClose = true,
     } = options;
 
@@ -366,7 +366,7 @@ export function createEditor(options) {
 
         if (errors > 0)        setStatus("err", plural(errors, "error") + (warnings ? ", " + plural(warnings, "warning") : ""));
         else if (warnings > 0) setStatus("warn", plural(warnings, "warning"));
-        else                   setStatus("ok", "✓ no problems");
+        else                   setStatus("ok", "no problems");
     }
 
     function show(text, diags) {
