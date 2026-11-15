@@ -146,7 +146,7 @@ export function createEditor(options) {
     const {
         editor, output = null, problems = null, status = null, cursor = null,
         runButton = null, checkButton = null,
-        code = DEFAULT_CODE, checkDelay = 200, css = true, module,
+        code = DEFAULT_CODE, checkDelay = 220, css = true, module,
         autoIndent = true, autoClose = true,
     } = options;
 
@@ -402,7 +402,7 @@ export function createEditor(options) {
             output.textContent = result.output;
             if (result.ok) {
                 const line = el("div", "foo-returned");
-                line.textContent = `→ main returned ${result.returned}`;
+                line.textContent = `main returned: ${result.returned}`;
                 output.append(line);
             }
         }
@@ -422,7 +422,7 @@ export function createEditor(options) {
         const text = input.value;
         paintText(text);
         clearMarks(text);
-        setStatus("", foo ? "checking…" : "loading…");
+        setStatus("", foo ? "checking..." : "loading...");
         scheduleCheck();
         updateCaret();
     }
@@ -480,7 +480,7 @@ export function createEditor(options) {
 
     paintText(code);
     clearMarks(code);
-    setStatus("", "loading…");
+    setStatus("", "loading...");
     updateCaret();
 
     const ready = loadFoo(module)
