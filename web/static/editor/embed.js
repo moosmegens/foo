@@ -12,16 +12,18 @@ import { createEditor, loadCss, DEFAULT_CODE } from "./editor.js";
 
 // no whitespace between tags, so it can't show up inside a white-space: pre parent
 const TEMPLATE = [
+    '<fieldset class="foo-box"><div data-foo="editor"></div></fieldset>',
     '<div class="foo-embed-bar">',
     '<button type="button" class="foo-btn foo-btn-primary" data-foo="run">[ run ]</button>',
     '<button type="button" class="foo-btn" data-foo="check">[ check ]</button>',
     '<span data-foo="status"></span>',
-    '<span class="foo-embed-right"><span data-foo="cursor"></span><span class="foo-embed-hint">ctrl+enter runs</span></span>',
+    '<span class="foo-embed-right">' +
+    // '<span data-foo="cursor"></span>' +
+    '<span class="foo-embed-hint">ctrl+enter runs</span></span>',
     '</div>',
-    '<fieldset class="foo-box"><legend>\\MAIN.FOO</legend><div data-foo="editor"></div></fieldset>',
     '<div class="foo-embed-panels">',
-    '<fieldset class="foo-box"><legend>\\OUTPUT</legend><div data-foo="output"></div></fieldset>',
-    '<fieldset class="foo-box"><legend>\\PROBLEMS</legend><div data-foo="problems"></div></fieldset>',
+    '<fieldset class="foo-box"><div data-foo="output"></div></fieldset>',
+    '<fieldset class="foo-box"><div data-foo="problems"></div></fieldset>',
     '</div>',
 ].join("");
 
