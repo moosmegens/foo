@@ -22,8 +22,8 @@ const TEMPLATE = [
     '<span class="foo-embed-hint">ctrl+enter runs</span></span>',
     '</div>',
     '<div class="foo-embed-panels">',
-    '<fieldset class="foo-box"><div data-foo="output"></div></fieldset>',
-    '<fieldset class="foo-box"><div data-foo="problems"></div></fieldset>',
+    '<fieldset class="foo-box"><legend>output</legend><div data-foo="output"></div></fieldset>',
+    '<fieldset class="foo-box"><legend>problems</legend><div data-foo="problems"></div></fieldset>',
     '</div>',
 ].join("");
 
