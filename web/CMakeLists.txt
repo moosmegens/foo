@@ -16,9 +16,12 @@ if(EMSCRIPTEN)
             SUFFIX ".js"
     )
 
-    add_custom_target(foo_web_html ALL
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${CMAKE_CURRENT_SOURCE_DIR}/index.html
-            $<TARGET_FILE_DIR:foo_web>/index.html
+    add_custom_target(foo_web_files ALL
+            COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+                ${CMAKE_CURRENT_SOURCE_DIR}/static $<TARGET_FILE_DIR:foo_web>
+
+            COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+                ${CMAKE_CURRENT_SOURCE_DIR}/demo $<TARGET_FILE_DIR:foo_web>
     )
+    add_dependencies(foo_web_files foo_web)
 endif()

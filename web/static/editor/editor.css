@@ -1,0 +1,129 @@
+/* editor mechanics, colors and font only.
+   layout, sizing, borders and buttons are the page's job. */
+
+/* :where() gives these zero specificity, so a page can override any of them
+   from its own :root, whichever stylesheet loads first */
+:where(:root) {
+    --foo-fg:     #f5f5f5;
+    --foo-bg:     #0a0a0a;
+    --foo-caret:  #ffed70;
+    --foo-hover:  darkgray;
+    --foo-muted:  #777777;
+    --foo-line:   rgba(255, 255, 255, 0.045);   /* the line the caret is on */
+    --foo-err:    #dd5555;
+    --foo-warn:   #dddd55;
+    --foo-ok:     #55dd55;
+
+    --foo-kw:      #dd55dd;
+    --foo-type:    #55dddd;
+    --foo-ns:      #55aaaa;
+    --foo-const:   #dddd55;
+    --foo-number:  #dddd55;
+    --foo-string:  #55dd55;
+    --foo-fn:      #8f8fff;
+    --foo-comment: #777777;
+
+    --foo-font: "Courier New", monospace;
+    --foo-font-size: 14px;
+}
+
+/* ---------- editor ---------- */
+
+/* the page gives this element its size; these are only fallbacks */
+.foo-editor {
+    display: flex; height: 100%; min-height: 8rem; overflow: hidden;
+    background: var(--foo-bg); color: var(--foo-fg);
+}
+.foo-editor * { box-sizing: border-box; }
+
+/* gutter, colored layer, underline layer and textarea must have identical metrics,
+   otherwise the underlines drift away from the text */
+.foo-gutter, .foo-highlight, .foo-backdrop, .foo-input {
+    font: var(--foo-font-size)/1.5 var(--foo-font);
+    tab-size: 4; white-space: pre;
+}
+
+/* a page stylesheet with smooth scrolling or scroll snapping on everything
+   would make the layers lag behind or jump relative to the textarea */
+.foo-gutter, .foo-highlight, .foo-backdrop, .foo-input { scroll-behavior: auto; scroll-snap-type: none; }
+.foo-editor * { scroll-snap-align: none; }
+
+.foo-gutter {
+    flex: none; min-width: 3.5rem; overflow: hidden; user-select: none;
+    padding: 8px 12px 28px 8px; text-align: right;
+    color: var(--foo-muted);
+    border-right: 0.1px solid color-mix(in srgb, var(--foo-muted) 50%, transparent);
+}
+.foo-ln-active { color: var(--foo-fg); }
+.foo-ln-err  { color: var(--foo-err);  font-weight: 700; }
+.foo-ln-warn { color: var(--foo-warn); font-weight: 700; }
+
+.foo-code { position: relative; flex: 1; min-width: 0; }
+.foo-code > * { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* the line the caret is on: top and height are set by editor.js */
+.foo-code > .foo-current {
+    inset: auto 0 auto 0; width: auto; height: auto;
+    background: var(--foo-line); pointer-events: none;
+}
+.foo-editor:not(.foo-focused) .foo-current { display: none; }
+
+/* layers, bottom to top: current line, colored text, underlines, the real textarea.
+   the text layers get extra bottom padding so they never scroll less than the textarea */
+.foo-highlight, .foo-backdrop { padding: 8px 8px 28px 12px; overflow: hidden; pointer-events: none; }
+.foo-highlight { color: var(--foo-fg); }
+.foo-backdrop  { color: transparent; }
+
+.foo-input {
+    margin: 0; border: 0; padding: 8px 8px 8px 12px;
+    overflow: auto; resize: none; outline: none;
+    background: transparent; color: var(--foo-fg);
+    caret-color: var(--foo-caret); cursor: text;
+    scrollbar-width: thin; scrollbar-color: var(--foo-muted) transparent;
+}
+.foo-input::selection { background: var(--foo-fg); color: var(--foo-bg); }
+.foo-input.foo-hl { color: transparent; }
+.foo-input.foo-hl::selection { background: rgba(245, 245, 245, 0.3); color: transparent; }
+
+.foo-err-mark, .foo-warn-mark {
+    text-decoration-line: underline; text-decoration-style: wavy;
+    text-decoration-thickness: 1.5px; text-underline-offset: 3px;
+}
+.foo-err-mark  { text-decoration-color: var(--foo-err); }
+.foo-warn-mark { text-decoration-color: var(--foo-warn); }
+
+/* ---------- token colors (also used by highlight() on its own) ---------- */
+
+.foo-t-kw      { color: var(--foo-kw); }
+.foo-t-type    { color: var(--foo-type); }
+.foo-t-lit     { color: var(--foo-type); }
+.foo-t-ns      { color: var(--foo-ns); }
+.foo-t-const   { color: var(--foo-const); }
+.foo-t-number  { color: var(--foo-number); }
+.foo-t-string  { color: var(--foo-string); }
+.foo-t-fn      { color: var(--foo-fn); }
+.foo-t-comment { color: var(--foo-comment); }
+
+/* ---------- output, problems, status, cursor: text and colors only ---------- */
+
+.foo-output, .foo-problems {
+    overflow: auto; overflow-wrap: anywhere;
+    font: var(--foo-font-size)/1.5 var(--foo-font); color: var(--foo-fg);
+    scrollbar-width: thin; scrollbar-color: var(--foo-muted) transparent;
+}
+.foo-output { white-space: pre-wrap; }
+.foo-returned { color: var(--foo-ok); }
+
+.foo-problem { padding: 1px 0; cursor: pointer; }
+.foo-problem:hover { color: var(--foo-hover); }
+.foo-problem-tag { margin-right: 0.5em; }
+.foo-problem-err  .foo-problem-tag { color: var(--foo-err); }
+.foo-problem-warn .foo-problem-tag { color: var(--foo-warn); }
+.foo-problem-loc { color: var(--foo-muted); margin-right: 0.5em; }
+.foo-problem-empty { color: var(--foo-muted); }
+
+.foo-status[data-state="err"]  { color: var(--foo-err); }
+.foo-status[data-state="warn"] { color: var(--foo-warn); }
+.foo-status[data-state="ok"]   { color: var(--foo-ok); }
+
+.foo-cursor { color: var(--foo-muted); white-space: nowrap; }

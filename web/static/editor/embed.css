@@ -1,0 +1,34 @@
+/* layout for the <div data-foo-editor> drop-in. optional: restyle the .foo-embed* and
+   .foo-box classes yourself if you want another look. colors come from the --foo-* variables */
+
+:where(:root) { --foo-select: #ff7878; }
+
+.foo-embed {
+    display: flex; flex-direction: column; gap: 0.5rem;
+    margin: 1rem 0; white-space: normal;
+}
+.foo-embed-bar { display: flex; align-items: center; gap: 1.5rem; }
+.foo-embed-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+
+.foo-box { min-width: 0; margin: 0; padding: 0; border: 0.1px solid var(--foo-fg); }
+.foo-box legend { margin-left: 1rem; padding: 0 0.2rem; }
+.foo-box:focus-within { border-color: var(--foo-select); }
+.foo-box:focus-within legend { color: var(--foo-select); }
+
+.foo-embed .foo-editor { height: var(--foo-embed-height, 320px); }
+.foo-embed .foo-output, .foo-embed .foo-problems { height: 10rem; padding: 8px 12px; }
+
+.foo-btn { font: inherit; color: var(--foo-fg); background: none; border: 0; padding: 0; cursor: pointer; }
+.foo-btn:hover { color: var(--foo-hover); }
+.foo-btn-primary { color: var(--foo-caret); }
+
+@media (max-width: 700px) {
+    .foo-embed-panels { grid-template-columns: 1fr; }
+}
+
+.foo-embed-right { margin-left: auto; display: flex; align-items: center; gap: 1.5rem; }
+.foo-embed-hint { color: var(--foo-muted); }
+
+@media (max-width: 700px) {
+    .foo-embed-hint { display: none; }
+}

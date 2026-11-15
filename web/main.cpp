@@ -1,11 +1,18 @@
 #include <emscripten/bind.h>
+#include <emscripten/val.h>
 
+#include <algorithm>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 #include <foo/collector.hpp>
@@ -13,209 +20,273 @@
 #include <foo/runtime.hpp>
 
 namespace fs = std::filesystem;
-
-std::string hello(const std::string& name)
-{
-    return "Hello, " + name + "!";
-}
-
-struct WebDiagnostic
-{
-    std::string message;
-    unsigned start;
-    unsigned end;
-    bool is_error;
-};
-
-struct RunResult
-{
-    bool ok = false;
-    std::string output;     // everything printed via std::cout
-    std::string returned;   // what main() returned
-    std::vector<WebDiagnostic> diagnostics;
-};
+using emscripten::val;
 
 namespace
 {
-    // redirects std::cout into a string for as long as it lives
-    struct CoutCapture
+    constexpr std::string_view kWorkDir = "/tmp/foo_web";   // lives in the in-memory filesystem
+    constexpr std::string_view kEntry   = "main";           // main.foo, collected without extension
+
+    // ---------- problems ----------
+
+    struct Span
     {
-        std::ostringstream buffer;
-        std::streambuf* old;
-
-        CoutCapture() : old(std::cout.rdbuf(buffer.rdbuf())) {}
-        ~CoutCapture() { std::cout.rdbuf(old); }
-
-        std::string str()
-        {
-            std::cout.flush();
-            return buffer.str();
-        }
+        unsigned start{};
+        unsigned end{};
     };
 
-    WebDiagnostic diag(const std::string& message, foo::SourceSpan span, bool is_error)
+    struct Problem
     {
-        return {message,
-                static_cast<unsigned>(span.start),
-                static_cast<unsigned>(span.end()),
-                is_error};
+        std::string message;
+        bool is_error{true};
+        std::optional<Span> span{};     // empty for problems without a location
+    };
+
+    [[nodiscard]] Problem problem(std::string message, bool is_error)
+    {
+        return {.message = std::move(message), .is_error = is_error};
     }
+
+    [[nodiscard]] Problem problem(std::string message, foo::SourceSpan span, bool is_error)
+    {
+        return {
+            .message  = std::move(message),
+            .is_error = is_error,
+            .span     = Span{static_cast<unsigned>(span.start), static_cast<unsigned>(span.end())},
+        };
+    }
+
+    // ---------- std::cout capture ----------
+
+    class CoutCapture
+    {
+    public:
+        CoutCapture() : old_{std::cout.rdbuf(buffer_.rdbuf())} {}
+        ~CoutCapture() { std::cout.rdbuf(old_); }
+
+        CoutCapture(const CoutCapture&) = delete;
+        CoutCapture& operator=(const CoutCapture&) = delete;
+
+        [[nodiscard]] std::string take()
+        {
+            std::cout.flush();
+            return buffer_.str();
+        }
+
+    private:
+        std::ostringstream buffer_;
+        std::streambuf* old_;
+    };
+
+    // ---------- analysis (collect + natives + resolve) ----------
 
     struct Prepared
     {
-        foo::RuntimeInput runtime_input;
-        foo::CollectorOutput collector_output;
+        foo::RuntimeInput input;
+        foo::CollectorOutput collected;   // keeps the sources alive
     };
 
-    // collect + natives + resolve. Fills diags, returns nothing if there were errors.
-    std::optional<Prepared> prepare(const std::string& source, std::vector<WebDiagnostic>& diags)
+    struct Analysis
     {
-        const fs::path dir = "/tmp/foo_web";
-        fs::create_directories(dir);
+        std::vector<Problem> problems;
+        std::optional<Prepared> prepared;   // empty when there were errors
+    };
+
+    [[nodiscard]] Analysis analyze(std::string_view source)
+    {
+        Analysis result;
+        auto& problems = result.problems;
+
+        // the collector reads files, so give it one in the in-memory filesystem
+        const fs::path dir{kWorkDir};
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        if (ec)
+        {
+            problems.push_back(problem(std::format("could not create {}: {}", dir.string(), ec.message()), true));
+            return result;
+        }
 
         {
-            std::ofstream file(dir / "main.foo");
+            std::ofstream file{dir / std::format("{}.foo", kEntry)};
             file << source;
-        }
-
-        auto co = foo::collect(dir, "main");
-
-        bool failed = false;
-        for (const auto& err : co.errors)
-        {
-            failed = true;
-            if (err.file_id == -1)
-                diags.push_back({err.message, 0, 0, true});
-            else
-                diags.push_back(diag(err.message, err.span, true));
-        }
-        if (failed)
-            return std::nullopt;
-
-        foo::NativeTable ntable;
-        foo::Runtime::inject(co.resolver_input.types, co.resolver_input.natives, ntable);
-        foo::inject_io(co.resolver_input.types, co.resolver_input.natives, ntable);
-        foo::inject_os(co.resolver_input.types, co.resolver_input.natives, ntable);
-        foo::inject_rng(co.resolver_input.types, co.resolver_input.natives, ntable);
-
-        auto ro = foo::resolve(co.resolver_input);
-
-        for (const auto& w : ro.warnings)
-        {
-            if (w.file_index == -1)
-                diags.push_back({w.message, 0, 0, false});
-            else
-                diags.push_back(diag(w.message, w.span, false));
-        }
-
-        for (const auto& err : ro.errors)
-        {
-            failed = true;
-            diags.push_back(diag(err.message, err.span, true));
-        }
-        if (failed)
-            return std::nullopt;
-
-        foo::RuntimeInput input;
-        input.resolver_info = ro;
-        input.native_table = ntable;
-
-        return Prepared{input, std::move(co)};
-    }
-
-    void run_impl(const std::string& source, RunResult& out)
-    {
-        auto prepared = prepare(source, out.diagnostics);
-        if (!prepared)
-            return;
-
-        const auto& fns = prepared->runtime_input.resolver_info.functions;
-        int main_id = -1;
-        for (size_t i = 0; i < fns.size(); ++i)
-        {
-            if (fns[i].decl->name == "main")
+            file.close();
+            if (file.fail())
             {
-                main_id = static_cast<int>(i);
-                break;
+                problems.push_back(problem("could not write the source file", true));
+                return result;
             }
         }
 
-        if (main_id == -1)
+        auto collected = foo::collect(dir, std::string{kEntry});
+
+        for (const auto& err : collected.errors)
+            problems.push_back(err.file_id == -1 ? problem(err.message, true)
+                                                 : problem(err.message, err.span, true));
+        if (!problems.empty())
+            return result;
+
+        auto& input = collected.resolver_input;
+        foo::NativeTable natives;
+        foo::Runtime::inject(input.types, input.natives, natives);
+        foo::inject_io(input.types, input.natives, natives);
+        foo::inject_os(input.types, input.natives, natives);
+        foo::inject_rng(input.types, input.natives, natives);
+
+        auto resolved = foo::resolve(input);
+
+        for (const auto& warning : resolved.warnings)
+            problems.push_back(warning.file_index == -1 ? problem(warning.message, false)
+                                                        : problem(warning.message, warning.span, false));
+
+        for (const auto& err : resolved.errors)
+            problems.push_back(problem(err.message, err.span, true));
+
+        if (!resolved.errors.empty())
+            return result;
+
+        foo::RuntimeInput runtime_input;
+        runtime_input.resolver_info = std::move(resolved);
+        runtime_input.native_table  = std::move(natives);
+
+        result.prepared = Prepared{std::move(runtime_input), std::move(collected)};
+        return result;
+    }
+
+    [[nodiscard]] std::optional<foo::FunctionId> find_main(const Prepared& prepared)
+    {
+        const auto& functions = prepared.input.resolver_info.functions;
+
+        const auto it = std::ranges::find_if(functions, [](const auto& fn)
         {
-            out.diagnostics.push_back({"no main()", 0, 0, true});
-            return;
+            return fn.decl->name == kEntry;
+        });
+
+        if (it == functions.end())
+            return std::nullopt;
+
+        return static_cast<foo::FunctionId>(it - functions.begin());
+    }
+
+    // ---------- running ----------
+
+    struct RunOutcome
+    {
+        bool ok{};
+        std::string output;      // everything printed to std::cout
+        std::string returned;    // what main() returned
+        std::vector<Problem> problems;
+    };
+
+    [[nodiscard]] RunOutcome execute(std::string_view source)
+    {
+        RunOutcome outcome;
+
+        auto analysis = analyze(source);
+        outcome.problems = std::move(analysis.problems);
+        if (!analysis.prepared)
+            return outcome;
+
+        auto& prepared = *analysis.prepared;
+
+        const auto main_id = find_main(prepared);
+        if (!main_id)
+        {
+            outcome.problems.push_back(problem("no main()", true));
+            return outcome;
         }
 
-        foo::Runtime runtime{prepared->runtime_input};
-        auto result = runtime.call(static_cast<foo::FunctionId>(main_id), {});
+        foo::Runtime runtime{prepared.input};
+        auto result = runtime.call(*main_id, {});
 
         if (result)
         {
-            out.ok = true;
-            out.returned = foo::to_string(*result.value());
+            outcome.ok = true;
+            outcome.returned = foo::to_string(*result.value());
         }
         else
         {
             const auto& err = result.error();
-            out.diagnostics.push_back(diag(err.what, err.span, true));
+            outcome.problems.push_back(problem(err.what, err.span, true));
         }
+
+        return outcome;
+    }
+
+    // ---------- conversion to plain JS values ----------
+
+    [[nodiscard]] val to_js(const Problem& p)
+    {
+        auto object = val::object();
+        object.set("message", p.message);
+        object.set("severity", std::string{p.is_error ? "error" : "warning"});
+        object.set("start", p.span ? val{p.span->start} : val::null());
+        object.set("end",   p.span ? val{p.span->end}   : val::null());
+        return object;
+    }
+
+    [[nodiscard]] val to_js(const std::vector<Problem>& problems)
+    {
+        std::vector<val> items;
+        items.reserve(problems.size());
+        std::ranges::transform(problems, std::back_inserter(items), [](const Problem& p) { return to_js(p); });
+        return val::array(items);
+    }
+
+    [[nodiscard]] val to_js(const RunOutcome& outcome)
+    {
+        auto object = val::object();
+        object.set("ok", outcome.ok);
+        object.set("output", outcome.output);
+        object.set("returned", outcome.returned);
+        object.set("diagnostics", to_js(outcome.problems));
+        return object;
     }
 }
 
-RunResult run(const std::string& source)
+// ---------- what JS can call (foo.js wraps these) ----------
+
+val run_source(const std::string& source)
 {
-    RunResult result;
     CoutCapture capture;
+    RunOutcome outcome;
 
     try
     {
-        run_impl(source, result);
+        outcome = execute(source);
     }
     catch (const std::exception& e)
     {
-        result.ok = false;
-        result.diagnostics.push_back({e.what(), 0, 0, true});
+        outcome.problems.push_back(problem(std::format("internal error: {}", e.what()), true));
+    }
+    catch (...)
+    {
+        outcome.problems.push_back(problem("internal error", true));
     }
 
-    result.output = capture.str();
-    return result;
+    outcome.output = capture.take();
+    return to_js(outcome);
 }
 
-// checks the code (parse + resolve) without running it
-std::vector<WebDiagnostic> verify(const std::string& source)
+// parse + resolve without running anything
+val check_source(const std::string& source)
 {
-    std::vector<WebDiagnostic> diags;
-
     try
     {
-        prepare(source, diags);
+        return to_js(analyze(source).problems);
     }
     catch (const std::exception& e)
     {
-        diags.push_back({e.what(), 0, 0, true});
+        return to_js(std::vector{problem(std::format("internal error: {}", e.what()), true)});
     }
-
-    return diags;
+    catch (...)
+    {
+        return to_js(std::vector{problem("internal error", true)});
+    }
 }
 
 EMSCRIPTEN_BINDINGS(foo_web)
 {
-    emscripten::function("hello", &hello);
-
-    emscripten::value_object<WebDiagnostic>("WebDiagnostic")
-        .field("message", &WebDiagnostic::message)
-        .field("start", &WebDiagnostic::start)
-        .field("end", &WebDiagnostic::end)
-        .field("isError", &WebDiagnostic::is_error);
-
-    emscripten::register_vector<WebDiagnostic>("DiagnosticVector");
-
-    emscripten::value_object<RunResult>("RunResult")
-        .field("ok", &RunResult::ok)
-        .field("output", &RunResult::output)
-        .field("returned", &RunResult::returned)
-        .field("diagnostics", &RunResult::diagnostics);
-
-    emscripten::function("run", &run);
-    emscripten::function("verify", &verify);
+    emscripten::function("runSource", &run_source);
+    emscripten::function("checkSource", &check_source);
 }
