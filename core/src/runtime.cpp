@@ -1304,6 +1304,17 @@ namespace foo
             },
             {"(T?).unwrap() -> T", "force unwrap T?, (throws if none)"});
 
+        def.method("to_string",
+            [=](TypeTable&, TypeId receiver) -> std::optional<FunctionSig>
+            {
+                return signature({}, BaseTypes::String);
+            },
+            [](Runtime&, Args a, const auto&) -> ValueRef
+            {
+                return make_value(to_string(*a[0]));
+            },
+            {"T.to_string() -> string", "convert any value to its string representation"});
+
         def.method("join",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
