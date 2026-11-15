@@ -59,14 +59,19 @@ namespace foo
                         continue;
                     }
 
+                    size_t before = _offset;
                     auto decl = parse_decl();
 
                     if (decl)
                     {
                         result.decls.push_back(std::move(decl));
-                    } else
+                    }
+                    else
                     {
-                        advance();
+                        if (_offset == before && !is_at_end())
+                            advance();
+
+                        synchronize_declaration(before);
                     }
                 }
 
@@ -180,16 +185,168 @@ namespace foo
 
                         report_error(
                             span,
-                            std::format("Invalid token! After '{}' expected '{}' ",
-                                name(peek(-1)),
-                                T::name));
+                            std::format(
+                                 "expected '{}' after '{}'",
+                                 to_human_readable<T>(),
+                                 to_human_readable(peek(-1))
+                            ));
                     } else
                     {
-                        report_error(current(), std::format("Invalid token! Expected '{}'", T::name));
+                        report_error(current(), std::format("invalid token! expected '{}'", to_human_readable<T>()));
                     }
                 }
 
                 return false;
+            }
+
+            bool is_statement_start() const
+            {
+                return check<tok::Var>()
+                    || check<tok::Return>()
+                    || check<tok::If>()
+                    || check<tok::While>()
+                    || check<tok::For>()
+                    || check<tok::Check>()
+                    || check<tok::LBrace>();
+            }
+
+            bool is_declaration_start() const
+            {
+                return check<tok::Function>()
+                    || check<tok::Struct>()
+                    || check<tok::Import>();
+            }
+
+            bool is_expr_boundary() const
+            {
+                return check<tok::Comma>()
+                    || check<tok::Semicolon>()
+                    || check<tok::RParen>()
+                    || check<tok::RBracket>()
+                    || check<tok::RBrace>()
+                    || check<tok::FatForwards>()
+                    || is_at_end();
+            }
+
+            bool is_closing_delimiter() const
+            {
+                return check<tok::RParen>()
+                    || check<tok::RBracket>()
+                    || check<tok::RBrace>();
+            }
+
+            bool is_recovery_boundary() const
+            {
+                return is_closing_delimiter()
+                    || check<tok::Semicolon>()
+                    || check<tok::FatForwards>()
+                    || is_at_end();
+            }
+
+            template <class Closing>
+            void synchronize_delimited(size_t start_offset)
+            {
+                int parens = 0;
+                int brackets = 0;
+                int braces = 0;
+
+                auto account = [&](const Token& token)
+                {
+                    if (token.is<tok::LParen>())
+                        ++parens;
+                    else if (token.is<tok::RParen>() && parens > 0)
+                        --parens;
+
+                    if (token.is<tok::LBracket>())
+                        ++brackets;
+                    else if (token.is<tok::RBracket>() && brackets > 0)
+                        --brackets;
+
+                    if (token.is<tok::LBrace>())
+                        ++braces;
+                    else if (token.is<tok::RBrace>() && braces > 0)
+                        --braces;
+                };
+
+                for (size_t i = start_offset; i < _offset; ++i)
+                    account(_tokens[i]);
+
+                while (!is_at_end())
+                {
+                    if (parens == 0 && brackets == 0 && braces == 0)
+                    {
+                        if (check<Closing>())
+                            return;
+
+                        if (match<tok::Comma>())
+                            return;
+
+                        if (is_closing_delimiter()
+                            || check<tok::Semicolon>()
+                            || check<tok::FatForwards>())
+                            return;
+                    }
+
+                    account(current());
+                    advance();
+                }
+            }
+
+            void synchronize_statement(size_t start_offset)
+            {
+                while (!is_at_end() && !check<tok::RBrace>())
+                {
+                    if (match<tok::Semicolon>())
+                        return;
+
+                    if (_offset > start_offset && is_statement_start())
+                        return;
+
+                    advance();
+                }
+            }
+
+            void synchronize_declaration(size_t start_offset)
+            {
+                while (!is_at_end())
+                {
+                    if (_offset > start_offset && is_declaration_start())
+                        return;
+
+                    advance();
+                }
+            }
+
+            void synchronize_parameter()
+            {
+                while (!is_at_end() && !check<tok::RParen>())
+                {
+                    if (match<tok::Comma>())
+                        return;
+
+                    advance();
+                }
+            }
+
+            bool is_struct_member_start() const
+            {
+                return check<tok::Function>()
+                    || check<tok::Priv>()
+                    || (check<tok::Identifier>() && check<tok::Colon>(1));
+            }
+
+            void synchronize_struct_member(size_t start_offset)
+            {
+                while (!is_at_end() && !check<tok::RBrace>())
+                {
+                    if (_offset > start_offset && is_struct_member_start())
+                        return;
+
+                    if (match<tok::Semicolon>())
+                        return;
+
+                    advance();
+                }
             }
 
             void finish_span(SourceSpan& span)
@@ -231,8 +388,9 @@ namespace foo
 
                     if (after_msg)
                     {
-                        err.error += " after ";
-                        err.error += name(peek(-1));
+                        err.error += " after '";
+                        err.error += to_human_readable(peek(-1));
+                        err.error += '\'';
                     }
                 } else
                 {
@@ -363,7 +521,7 @@ namespace foo
 
                     if (!check<tok::RBracket>())
                     {
-                        report_error(current(), "Expected ']'");
+                        report_error(current(), "expected ']'");
                         return nullptr;
                     }
 
@@ -388,8 +546,8 @@ namespace foo
                     {
                         if (!check<tok::Identifier>())
                         {
-                            report_error(current(), "Expected identifier after '::'");
-                            break;
+                            report_error(current(), "expected identifier after '::'");
+                            return nullptr;
                         }
                         parts.push_back(std::get<tok::Identifier>(current().variant).value);
                         advance();
@@ -403,7 +561,7 @@ namespace foo
                 }
                 else
                 {
-                    report_error_after(current(), "Expected type name or '['");
+                    report_error_after(current(), "expected type expression");
                     return nullptr;
                 }
 
@@ -431,7 +589,7 @@ namespace foo
                     {
                         if (last_was_optional)
                         {
-                            report_error(peek(-1), "You can't have an optional of an optional");
+                            report_error(peek(-1), "you can't have an optional of an optional");
                             continue;
                         }
 
@@ -490,7 +648,7 @@ namespace foo
                     return decl;
                 }
 
-                report_error(current(), "Expected declaration");
+                report_error(current(), "expected declaration");
                 return nullptr;
             }
 
@@ -500,7 +658,7 @@ namespace foo
 
                 if (!check<tok::Identifier>())
                 {
-                    report_error(current(), "Expected struct name");
+                    report_error(current(), "expected struct name");
                     return std::nullopt;
                 }
                 name = std::get<tok::Identifier>(current().variant).value;
@@ -508,7 +666,7 @@ namespace foo
 
                 if (!check<tok::LBrace>())
                 {
-                    report_error(current(), "Expected open brace");
+                    report_error(current(), "expected open brace");
                     return std::nullopt;
                 }
                 advance();
@@ -518,6 +676,8 @@ namespace foo
 
                 while (!check<tok::RBrace>() && !is_at_end())
                 {
+                    size_t member_start = _offset;
+
                     bool pub = true;
                     if (check<tok::Priv>())
                     {
@@ -525,21 +685,40 @@ namespace foo
                         advance();
                     }
 
+
                     if (check<tok::Identifier>())
                     {
                         SourceSpan inner_span{current().source.start, 0};
 
-                        std::string field_name = std::get<tok::Identifier>(current().variant).value;
-                        advance();
-                        expect<tok::Colon>();
-                        auto type = parse_type();
-                        if (type)
-                        {
-                            finish_span(inner_span);
-                            fields.push_back({std::move(field_name), std::move(type), pub, inner_span});
-                        }
-                        expect<tok::Semicolon>(true);
+                        std::string field_name =
+                            std::get<tok::Identifier>(current().variant).value;
 
+                        advance();
+
+                        if (!expect<tok::Colon>())
+                        {
+                            synchronize_struct_member(member_start);
+                            continue;
+                        }
+
+                        auto type = parse_type();
+
+                        if (!type)
+                        {
+                            synchronize_struct_member(member_start);
+                            continue;
+                        }
+
+                        finish_span(inner_span);
+
+                        fields.push_back({
+                            std::move(field_name),
+                            std::move(type),
+                            pub,
+                            inner_span
+                        });
+
+                        expect<tok::Semicolon>(true);
                         continue;
                     }
 
@@ -548,15 +727,16 @@ namespace foo
                         advance();
 
                         auto fn = parse_fn_decl();
+
                         if (fn)
-                        {
                             fns.push_back(std::move(*fn));
-                        }
+                        else
+                            synchronize_struct_member(member_start);
 
                         continue;
                     }
 
-                    advance();
+                    expect<tok::RBrace>();
                 }
 
                 advance();
@@ -578,7 +758,7 @@ namespace foo
 
                 if (!check<tok::Identifier>())
                 {
-                    report_error(current(), "Expected function name");
+                    report_error(current(), "expected function name");
                     return std::nullopt;
                 }
 
@@ -589,15 +769,34 @@ namespace foo
                     return std::nullopt;
 
                 std::vector<ast::Param> params;
-                if (!check<tok::RParen>())
+                while (!check<tok::RParen>() && !is_at_end())
                 {
-                    do {
-                        auto param = parse_param();
-                        if (!param)
-                            return std::nullopt;
+                    size_t before = _offset;
 
+                    auto param = parse_param();
+
+                    if (param)
+                    {
                         params.push_back(std::move(*param));
-                    } while (match<tok::Comma>());
+                    }
+                    else
+                    {
+                        synchronize_delimited<tok::RParen>(before);
+
+                        if (is_recovery_boundary())
+                            break;
+
+                        continue;
+                    }
+
+                    if (match<tok::Comma>())
+                    {
+                        if (check<tok::RParen>())
+                        {
+                            report_error(current(), "expected parameter after ','");
+                            break;
+                        }
+                    }
                 }
 
                 if (!expect<tok::RParen>())
@@ -631,7 +830,7 @@ namespace foo
 
                 if (!check<tok::Identifier>())
                 {
-                    report_error(current(), "Expected parameter name");
+                    report_error(current(), "expected parameter name");
                     return std::nullopt;
                 }
 
@@ -650,6 +849,10 @@ namespace foo
                         return std::nullopt;
 
                     span.add(type->span);
+                } else
+                {
+                    report_error_after(current(), "expected ':', parameter requires a type");
+                    return std::nullopt;
                 }
 
                 return ast::Param{
@@ -678,8 +881,10 @@ namespace foo
                         continue;
                     }
 
-                    if (_offset == before)
+                    if (_offset == before && !is_at_end() && !check<tok::RBrace>())
                         advance();
+
+                    synchronize_statement(before);
                 }
 
                 expect<tok::RBrace>();
@@ -710,7 +915,7 @@ namespace foo
 
                 if (!check<tok::Identifier>())
                 {
-                    report_error(current(), "Expected variable name");
+                    report_error(current(), "expected variable name");
                     return nullptr;
                 }
 
@@ -744,7 +949,7 @@ namespace foo
             {
                 if (!check<tok::Identifier>())
                 {
-                    report_error(current(), "Expected variable name");
+                    report_error(current(), "expected variable name");
                     return nullptr;
                 }
                 const Token& name_token = current();
@@ -768,7 +973,7 @@ namespace foo
                 }
 
                 if (!type && !init)
-                    report_error(name_token, "Variable needs a type or an initializer");
+                    report_error(name_token, "variable needs a type or an initializer");
 
                 expect<tok::Semicolon>(true);
                 finish_span(span);
@@ -845,7 +1050,7 @@ namespace foo
             {
                 if (!check<tok::Identifier>())
                 {
-                    report_error(current(), "Expected loop variable name");
+                    report_error(current(), "expected loop variable name");
                     return nullptr;
                 }
                 std::string name = std::get<tok::Identifier>(current().variant).value;
@@ -967,45 +1172,89 @@ namespace foo
 
                     if (!match<tok::LBrace>())
                     {
-                        report_error_after(current(), "Expected '{' after type in struct literal");
+                        report_error_after(current(), "expected '{' after type in struct literal");
                         return nullptr;
                     }
 
                     std::vector<ast::FieldInit> fields;
-                    while (!check<tok::RBrace>() && !check<tok::End>())
+
+                    while (!check<tok::RBrace>() && !is_at_end())
                     {
+                        size_t field_start = _offset;
                         SourceSpan field_span = current().source;
 
                         if (!check<tok::Identifier>())
                         {
-                            report_error(current(), "Expected field name in struct literal");
-                            return nullptr;
+                            report_error(current(), "expected field name in struct literal");
+
+                            synchronize_delimited<tok::RBrace>(field_start);
+
+                            if (is_recovery_boundary())
+                                break;
+
+                            continue;
                         }
+
                         std::string name = std::get<tok::Identifier>(current().variant).value;
+
                         advance();
 
                         if (!match<tok::AssignOp>())
                         {
-                            report_error(current(), "Expected '=' after field name");
-                            return nullptr;
+                            report_error(current(), "expected '=' after field name");
+
+                            synchronize_delimited<tok::RBrace>(field_start);
+
+                            if (is_recovery_boundary())
+                                break;
+
+                            continue;
                         }
 
-                        ast::ExprPtr value = parse_expr(assign_l_bp + 1);
+                        size_t value_start = _offset;
+
+                        auto value = parse_expr(assign_l_bp + 1);
+
                         if (!value)
-                            return nullptr;
+                        {
+                            synchronize_delimited<tok::RBrace>(value_start);
+
+                            if (is_recovery_boundary())
+                                break;
+
+                            continue;
+                        }
 
                         finish_span(field_span);
-                        fields.push_back({std::move(name), std::move(value), field_span});
 
-                        if (!match<tok::Comma>())
+                        fields.push_back({
+                            std::move(name),
+                            std::move(value),
+                            field_span
+                        });
+
+                        if (match<tok::Comma>())
+                            continue;
+
+                        if (check<tok::RBrace>())
+                            break;
+
+                        if (check<tok::Identifier>() && check<tok::AssignOp>(1))
+                        {
+                            report_error(current(), "expected ',' between struct fields");
+                            continue;
+                        }
+
+                        report_error(current(), "expected ',' or '}' after struct field");
+
+                        synchronize_delimited<tok::RBrace>(_offset);
+
+                        if (is_recovery_boundary())
                             break;
                     }
 
-                    if (!match<tok::RBrace>())
-                    {
-                        report_error(current(), "Expected '}' to close struct literal");
+                    if (!expect<tok::RBrace>())
                         return nullptr;
-                    }
 
                     finish_span(span);
                     return std::make_unique<ast::Expr>(ast::StructLit{std::move(type), std::move(fields)}, span);
@@ -1022,9 +1271,10 @@ namespace foo
                     {
                         if (!check<tok::Identifier>())
                         {
-                            report_error(current(), "Expected identifier after '::'");
+                            report_error(current(), "expected identifier after '::'");
                             return nullptr;
                         }
+
                         parts.push_back(std::get<tok::Identifier>(current().variant).value);
                         advance();
                     }
@@ -1063,21 +1313,11 @@ namespace foo
 
                 if (match<tok::LBracket>())
                 {
+
                     std::vector<ast::ExprPtr> elements;
+
                     if (!check<tok::RBracket>())
-                    {
-                        do {
-                            if (check<tok::RBracket>())
-                                break;
-
-                            auto e = parse_expr();
-
-                            if (!e)
-                                return nullptr;
-
-                            elements.push_back(std::move(e));
-                        } while (match<tok::Comma>());
-                    }
+                        elements = parse_expr_list<tok::RBracket>();
 
                     if (!expect<tok::RBracket>())
                         return nullptr;
@@ -1094,14 +1334,14 @@ namespace foo
 
                     if (!check<tok::Dot>())
                     {
-                        report_error(current(), "Expected . after the type");
+                        report_error(current(), "expected . after the type");
                         return nullptr;
                     }
                     advance();
 
                     if (!check<tok::Identifier>())
                     {
-                        report_error(current(), "Expected function name");
+                        report_error(current(), "expected function name");
                         return nullptr;
                     }
                     std::string name = std::get<tok::Identifier>(current().variant).value;
@@ -1113,10 +1353,9 @@ namespace foo
 
 
                     std::vector<ast::ExprPtr> args;
+
                     if (!check<tok::RParen>())
-                    {
-                        args = parse_expr_group();
-                    }
+                        args = parse_expr_list<tok::RParen>();
 
                     if (!expect<tok::RParen>())
                         return nullptr;
@@ -1125,8 +1364,10 @@ namespace foo
                     return std::make_unique<ast::Expr>(ast::StaticCall{std::move(type_expr), name, std::move(args)}, span);
                 }
 
-                report_error_after(current(), "Expected expression", false);
-                advance();
+                report_error_after(current(), "expected expression", false);
+
+                if (!is_expr_boundary())
+                    advance();
 
                 return nullptr;
             }
@@ -1139,17 +1380,12 @@ namespace foo
                 if (match<tok::LParen>())
                 {
                     std::vector<ast::ExprPtr> args;
-                    if (!check<tok::RParen>())
-                    {
-                        do {
-                            auto arg = parse_expr();
-                            if (!arg)
-                                return nullptr;
 
-                            args.push_back(std::move(arg));
-                        } while (match<tok::Comma>());
-                    }
-                    if (!expect<tok::RParen>()) return nullptr;
+                    if (!check<tok::RParen>())
+                        args = parse_expr_list<tok::RParen>();
+
+                    if (!expect<tok::RParen>())
+                        return nullptr;
 
                     finish_span(span);
                     return std::make_unique<ast::Expr>(ast::Call{std::move(target), std::move(args)}, span);
@@ -1174,7 +1410,7 @@ namespace foo
                 {
                     if (!check<tok::Identifier>())
                     {
-                        report_error(current(), "Expected member name after '.'");
+                        report_error(current(), "expected member name after '.'");
                         return nullptr;
                     }
                     std::string name = std::get<tok::Identifier>(current().variant).value;
@@ -1200,6 +1436,66 @@ namespace foo
 
                 finish_span(span);
                 return std::make_unique<ast::Expr>(ast::Binary{*op, std::move(lhs), std::move(rhs)}, span);
+            }
+
+            template <class Closing>
+            std::vector<ast::ExprPtr> parse_expr_list()
+            {
+                std::vector<ast::ExprPtr> expressions;
+                bool after_comma = false;
+
+                while (true)
+                {
+                    if (check<Closing>())
+                    {
+                        if (after_comma)
+                            report_error(current(), "Expected expression after ','");
+
+                        break;
+                    }
+
+                    if (is_at_end() || is_recovery_boundary())
+                        break;
+
+                    size_t before = _offset;
+
+                    auto expr = parse_expr();
+
+                    if (!expr)
+                    {
+                        after_comma = false;
+
+                        synchronize_delimited<Closing>(before);
+
+                        if (is_recovery_boundary())
+                            break;
+
+                        continue;
+                    }
+
+                    expressions.push_back(std::move(expr));
+                    after_comma = false;
+
+                    if (match<tok::Comma>())
+                    {
+                        after_comma = true;
+                        continue;
+                    }
+
+                    if (check<Closing>() || is_recovery_boundary())
+                        break;
+
+                    report_error(current(), "expected ',' or '" + std::string{Closing{}.to_string()} + "'");
+
+                    synchronize_delimited<Closing>(_offset);
+
+                    after_comma = true;
+
+                    if (is_recovery_boundary())
+                        break;
+                }
+
+                return expressions;
             }
 
             std::vector<ast::ExprPtr> parse_expr_group()
@@ -1233,25 +1529,25 @@ namespace foo
         return parser.parse(tokens);
     }
 
-    IntermediateParseOutput<ast::TypeExpr> parse_type(std::span<Token> tokens)
+    IntermediateParseOutput<ast::TypeExprPtr> parse_type(std::span<Token> tokens)
     {
         Parser parser;
         return parser.parse_type(tokens);
     }
 
-    IntermediateParseOutput<ast::Expr> parse_expr(std::span<Token> tokens)
+    IntermediateParseOutput<ast::ExprPtr> parse_expr(std::span<Token> tokens)
     {
         Parser parser;
         return parser.parse_expr(tokens);
     }
 
-    IntermediateParseOutput<ast::Stmt> parse_statement(std::span<Token> tokens)
+    IntermediateParseOutput<ast::StmtPtr> parse_statement(std::span<Token> tokens)
     {
         Parser parser;
         return parser.parse_statement(tokens);
     }
 
-    IntermediateParseOutput<ast::Decl> parse_decl(std::span<Token> tokens)
+    IntermediateParseOutput<ast::DeclPtr> parse_decl(std::span<Token> tokens)
     {
         Parser parser;
         return parser.parse_decl(tokens);

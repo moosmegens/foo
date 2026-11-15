@@ -195,6 +195,52 @@ namespace foo
 
     inline std::string_view name(const Token& token) {  return name(token.variant); }
     inline std::string to_string(const Token& token) {  return to_string(token.variant); }
+
+    template <class T>
+    std::string to_human_readable()
+    {
+        if constexpr (std::is_same_v<T, tok::Identifier>)
+            return "identifier";
+
+        else if constexpr (std::is_same_v<T, tok::String>)
+            return "string literal";
+
+        else if constexpr (std::is_same_v<T, tok::Integer>)
+            return "integer literal";
+
+        else if constexpr (std::is_same_v<T, tok::Float>)
+            return "float literal";
+
+        else if constexpr (std::is_same_v<T, tok::Boolean>)
+            return "boolean literal";
+
+        else if constexpr (std::is_same_v<T, tok::None>)
+            return "none";
+
+        else if constexpr (std::is_same_v<T, tok::Doc>)
+            return "documentation comment";
+
+        else if constexpr (std::is_same_v<T, tok::End>)
+            return "end of input";
+
+        else
+            return T{}.to_string();
+    }
+
+    inline std::string to_human_readable(const TokenVariant& variant)
+    {
+        return std::visit([]<typename T0>(const T0& token)
+        {
+            using T = std::decay_t<T0>;
+            return to_human_readable<T>();
+        }, variant);
+    }
+
+    inline std::string to_human_readable(const Token& token)
+    {
+        return to_human_readable(token.variant);
+    }
+
 }
 
 
