@@ -37,7 +37,7 @@ namespace foo
     {
         Error, Void, Bool, Int, Float, String, Any, None,
 
-        Range, Array, Map, Optional, Struct, Native
+        Range, Array, Map, Set, Optional, Struct, Native
     };
 
     constexpr std::array BaseKinds =
@@ -86,6 +86,7 @@ namespace foo
         TypeId range_of(TypeId e)           { return intern(TypeKind::Range, e); }
         TypeId struct_of(StructId s)        { return intern(TypeKind::Struct, s); }
         TypeId native_of(NativeTypeId n)    { return intern(TypeKind::Native, n); }
+        TypeId set_of(TypeId n)             { return intern(TypeKind::Set, n); }
 
 
         TypeKind kind(TypeId t) const           { return at(t).kind; }

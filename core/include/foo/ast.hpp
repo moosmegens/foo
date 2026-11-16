@@ -61,6 +61,15 @@ namespace foo::ast
             return ptr_equal(key_type, other.key_type) && foo::ptr_equal(value_type, other.value_type);
         }
     };
+    struct SetType
+    {
+        TypeExprPtr element_type;
+
+        bool operator==(const SetType& other) const
+        {
+            return ptr_equal(element_type, other.element_type);
+        }
+    };
     struct OptionalType
     {
         TypeExprPtr element_type;
@@ -71,7 +80,7 @@ namespace foo::ast
         }
     };
 
-    using TypeExprKind = std::variant<NamedType, ArrayType, MapType, OptionalType>;
+    using TypeExprKind = std::variant<NamedType, ArrayType, MapType, SetType, OptionalType>;
 
     struct TypeExpr
     {

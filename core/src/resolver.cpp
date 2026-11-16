@@ -601,6 +601,11 @@ namespace foo
                     TypeId v = resolve_type(m.value_type);
                     return types().map_of(k, v);
                 },
+                [&](const ast::SetType& s) -> TypeId
+                {
+                    TypeId n = resolve_type(s.element_type);
+                    return types().set_of(n);
+                },
                 [&](const ast::OptionalType& o) -> TypeId
                 {
                     TypeId e = resolve_type(o.element_type);
@@ -705,6 +710,7 @@ namespace foo
                 case TypeKind::Map:
                 case TypeKind::Optional:
                 case TypeKind::Void:
+                case TypeKind::Set:
                     return true;
 
                 case TypeKind::Error:
@@ -1391,6 +1397,14 @@ namespace foo
 
                     if (lhs == BaseTypes::String && rhs == BaseTypes::String)
                         return make_einfo(BaseTypes::String);
+
+                    if (same_type)
+                    {
+                        const TypeKind kind = types().kind(lhs);
+
+                        if (kind == TypeKind::Array || kind == TypeKind::Set)
+                            return make_einfo(lhs);
+                    }
 
                     return operator_error(span, lhs, rhs);
 

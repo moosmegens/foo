@@ -85,6 +85,17 @@ namespace foo
                 });
         }
 
+        Ord cmp(const Set& a, const Set& b)
+        {
+            return std::lexicographical_compare_three_way(
+                a.items.begin(), a.items.end(),
+                b.items.begin(), b.items.end(),
+                [](const auto& x, const auto& y) -> Ord
+                {
+                    return cmp_ref(x, y);
+                });
+        }
+
         Ord cmp(const Struct& a, const Struct& b)
         {
             return std::lexicographical_compare_three_way(
@@ -201,6 +212,18 @@ namespace foo
                         show(o, *k, true);
                         o += ": ";
                         show(o, *e, true);
+                    }
+                    o += '}';
+                },
+                [&](const Set& s)
+                {
+                    o += '{';
+                    bool first = true;
+                    for (const auto& i : s.items)
+                    {
+                        if (!first) o += ", ";
+                        first = false;
+                        show(o, *i, true);
                     }
                     o += '}';
                 },

@@ -104,6 +104,27 @@ namespace foo
             return std::nullopt;
         }
 
+        ValueRef array_concat(const Array& a, const Array& b)
+        {
+            Array result;
+            result.items.reserve(a.items.size() + b.items.size());
+
+            for (const auto& x : a.items) result.items.push_back(copy(x));
+            for (const auto& x : b.items) result.items.push_back(copy(x));
+
+            return make_value(std::move(result));
+        }
+
+        ValueRef set_union(const Set& a, const Set& b)
+        {
+            Set result;
+
+            for (const auto& x : a.items) result.items.insert(copy(x));
+            for (const auto& x : b.items) result.items.insert(copy(x));
+
+            return make_value(std::move(result));
+        }
+
         OpResult arithmetic(BinaryOp op, const Value& l, const Value& r)
         {
             if (const auto* a = std::get_if<int64_t>(&l.v))
@@ -115,9 +136,22 @@ namespace foo
                     return float_op(op, *a, *b);
 
             if (op == BinaryOp::Add)
+            {
                 if (const auto* a = std::get_if<std::string>(&l.v))
                     if (const auto* b = std::get_if<std::string>(&r.v))
                         return make_string(*a + *b);
+
+                if (const auto* a = std::get_if<Array>(&l.v))
+                    if (const auto* b = std::get_if<Array>(&r.v))
+                    {
+                        return array_concat(*a, *b);
+                    }
+
+                if (const auto* a = std::get_if<Set>(&l.v))
+                    if (const auto* b = std::get_if<Set>(&r.v))
+                        return set_union(*a, *b);
+
+            }
 
             return std::unexpected(std::string("internal arithmetic: bad op"));
         }
@@ -416,6 +450,9 @@ namespace foo
 
             case TypeKind::Map:
                 return make_value(Map{});
+
+            case TypeKind::Set:
+                return make_value(Set{});
 
             case TypeKind::Void:
             case TypeKind::Optional:
@@ -1245,6 +1282,154 @@ namespace foo
             },
             {"(map).new() -> (map)"});
 
+        auto set_binary_sig = [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+        {
+            if (ts.kind(receiver) != TypeKind::Set)
+                return std::nullopt;
+
+            return signature({ParamSig{receiver, false}}, receiver);
+        };
+
+        def.static_function("new",
+            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+            {
+                if (ts.kind(receiver) != TypeKind::Set)
+                    return std::nullopt;
+
+                return signature({}, receiver);
+            },
+            [](Runtime&, Args a, const auto&)
+            {
+                return make_value(Set{});
+            },
+            {"(set).new() -> (set)"});
+
+        def.method("add",
+        [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+        {
+            if (ts.kind(receiver) != TypeKind::Set)
+                return std::nullopt;
+
+            return signature({ParamSig{ts.element(receiver), false}}, BaseTypes::Bool, true);
+        },
+        [](Runtime&, Args a, const auto&)
+        {
+            return make_bool(as_set(a[0]).items.insert(copy(a[1])).second);
+        },
+        {"(set).add(set.element) -> bool", "returns false if it was already present"});
+
+        def.method("remove",
+    [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+    {
+        if (ts.kind(receiver) != TypeKind::Set)
+            return std::nullopt;
+
+        return signature({ParamSig{ts.element(receiver), false}}, BaseTypes::Bool, true);
+    },
+    [](Runtime&, Args a, const auto&)
+    {
+        return make_bool(as_set(a[0]).items.erase(a[1]) > 0);
+    },
+    {"(set).remove(set.element) -> bool", "returns false if it wasn't present"});
+
+    def.method("contains",
+    [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+    {
+        if (ts.kind(receiver) != TypeKind::Set)
+            return std::nullopt;
+
+        return signature({ParamSig{ts.element(receiver), false}}, BaseTypes::Bool);
+    },
+    [](Runtime&, Args a, const auto&)
+    {
+        return make_bool(as_set(a[0]).items.contains(a[1]));
+    },
+    {"(set).contains(set.element) -> bool"});
+
+    def.method("union", set_binary_sig,
+    [](Runtime&, Args a, const auto&)
+    {
+        Set result;
+
+        for (const auto& x : as_set(a[0]).items)
+            result.items.insert(copy(x));
+        for (const auto& x : as_set(a[1]).items)
+            result.items.insert(copy(x));
+
+        return make_value(std::move(result));
+    },
+    {"(set).union(set) -> set", "all elements from both sets"});
+
+    def.method("intersect", set_binary_sig,
+    [](Runtime&, Args a, const auto&)
+    {
+        const auto& other = as_set(a[1]).items;
+        Set result;
+
+        for (const auto& x : as_set(a[0]).items)
+            if (other.contains(x))
+                result.items.insert(copy(x));
+
+        return make_value(std::move(result));
+    },
+    {"(set).intersect(set) -> set", "elements present in both sets"});
+
+    def.method("difference", set_binary_sig,
+    [](Runtime&, Args a, const auto&)
+    {
+        const auto& other = as_set(a[1]).items;
+        Set result;
+
+        for (const auto& x : as_set(a[0]).items)
+            if (!other.contains(x))
+                result.items.insert(copy(x));
+
+        return make_value(std::move(result));
+    },
+    {"(set).difference(set) -> set", "elements in this set but not in the other"});
+
+    def.method("is_subset",
+        [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+        {
+            if (ts.kind(receiver) != TypeKind::Set)
+                return std::nullopt;
+
+            return signature({ParamSig{receiver, false}}, BaseTypes::Bool);
+        },
+        [](Runtime&, Args a, const auto&)
+        {
+            const auto& other = as_set(a[1]).items;
+
+            for (const auto& x : as_set(a[0]).items)
+                if (!other.contains(x))
+                    return make_bool(false);
+
+            return make_bool(true);
+        },
+        {"(set).is_subset(set) -> bool"});
+
+        def.static_function("from",
+    [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+    {
+        if (ts.kind(receiver) != TypeKind::Set)
+            return std::nullopt;
+
+        return signature(
+            {ParamSig{ts.array_of(ts.element(receiver)), false}},
+            receiver);
+    },
+    [](Runtime&, Args a, const auto&)
+    {
+        Set result;
+
+        for (const auto& x : as_array(a[0]).items)
+            result.items.insert(copy(x));
+
+        return make_value(std::move(result));
+    },
+    {"(set).from(set.element[]) -> (set)", "build a set from an array, duplicates collapse", "@[int].from([1, 2, 3])"});
+
+
         def.static_function("unbox",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
@@ -1405,6 +1590,7 @@ namespace foo
                 case TypeKind::Array:
                 case TypeKind::Map:
                 case TypeKind::String:
+                    case TypeKind::Set:
                     return signature({}, BaseTypes::Int);
 
                 default:
@@ -1420,6 +1606,9 @@ namespace foo
 
                 if (const auto* m = std::get_if<Map>(&v.v))
                     return make_int(static_cast<int64_t>(m->items.size()));
+
+                if (const auto* s = std::get_if<Set>(&v.v))
+                    return make_int(static_cast<int64_t>(s->items.size()));
 
                 return make_int(static_cast<int64_t>(as_string(a[0]).size()));
             },
@@ -1464,8 +1653,11 @@ namespace foo
         def.method("clear",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
-                if (ts.kind(receiver) != TypeKind::Array && ts.kind(receiver) != TypeKind::Map)
-                    return std::nullopt;
+                if (
+                    ts.kind(receiver) != TypeKind::Array &&
+                    ts.kind(receiver) != TypeKind::Map &&
+                    ts.kind(receiver) != TypeKind::Set)
+                        return std::nullopt;
 
                 return signature({}, BaseTypes::Void, true);
             },
@@ -1473,6 +1665,8 @@ namespace foo
             {
                 if (auto* arr = std::get_if<Array>(&a[0]->v))
                     arr->items.clear();
+                else if (auto* set = std::get_if<Set>(&a[0]->v))
+                    set->items.clear();
                 else
                     as_map(a[0]).items.clear();
 
@@ -1480,19 +1674,19 @@ namespace foo
             },
             {"(array | map).clear() -> void"});
 
-        def.method("remove",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) != TypeKind::Map)
-                    return std::nullopt;
+            def.method("remove",
+                [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+                {
+                    if (ts.kind(receiver) != TypeKind::Map)
+                        return std::nullopt;
 
-                return signature({ParamSig{ts.key(receiver), false}}, BaseTypes::Bool, true);
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                return make_bool(as_map(a[0]).items.erase(a[1]) > 0);
-            },
-            {"(map).remove() -> bool"});
+                    return signature({ParamSig{ts.key(receiver), false}}, BaseTypes::Bool, true);
+                },
+                [](Runtime&, Args a, const auto&)
+                {
+                    return make_bool(as_map(a[0]).items.erase(a[1]) > 0);
+                },
+                {"(map).remove() -> bool"});
 
         def.method("contains",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>

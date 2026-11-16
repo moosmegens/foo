@@ -53,6 +53,7 @@ namespace foo
     inline std::string& as_string(const ValueRef& r) { return expect<std::string>(*r); }
     inline Array&       as_array (const ValueRef& r) { return expect<Array>(*r); }
     inline Map&         as_map   (const ValueRef& r) { return expect<Map>(*r); }
+    inline Set&         as_set   (const ValueRef& r) { return expect<Set>(*r); }
 
     inline ValueRef copy(const ValueRef& r)
     {

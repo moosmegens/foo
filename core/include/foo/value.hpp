@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <variant>
 #include <vector>
@@ -51,6 +52,11 @@ namespace foo
         std::map<ValueRef, ValueRef, ValueRefCmp> items;
     };
 
+    struct Set
+    {
+        std::set<ValueRef, ValueRefCmp> items;
+    };
+
     struct Struct
     {
         std::vector<ValueRef> fields;
@@ -84,6 +90,7 @@ namespace foo
             Range,
             Array,
             Map,
+            Set,
             Struct,
             Boxed,
             Rc<Native>

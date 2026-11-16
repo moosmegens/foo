@@ -508,20 +508,25 @@ namespace foo
                 {
                     advance(); // consume '['
 
-                    auto key_type = parse_type();
-                    if (!key_type)
+                    auto first_type = parse_type();
+                    if (!first_type)
                         return nullptr;
 
-                    if (!expect<tok::Comma>())
-                        return nullptr;
+                    std::unique_ptr<ast::TypeExpr> second_type;
 
-                    auto value_type = parse_type();
-                    if (!value_type)
-                        return nullptr;
+                    if (check<tok::Comma>())
+                    {
+                        advance(); // consume ','
+
+                        second_type = parse_type();
+                        if (!second_type)
+                            return nullptr;
+                    }
 
                     if (!check<tok::RBracket>())
                     {
-                        report_error(current(), "expected ']'");
+                        report_error(current(), second_type ? "expected ']' after map value type"
+                                                            : "expected ',' or ']'");
                         return nullptr;
                     }
 
@@ -529,7 +534,10 @@ namespace foo
                     finish_span(span);
 
                     base = std::make_unique<ast::TypeExpr>();
-                    base->type = ast::MapType{std::move(key_type), std::move(value_type)};
+                    if (second_type)
+                        base->type = ast::MapType{std::move(first_type), std::move(second_type)};
+                    else
+                        base->type = ast::SetType{std::move(first_type)};
                     base->span = span;
                 }
                 else if (check<tok::Identifier>())

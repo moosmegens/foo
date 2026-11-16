@@ -95,6 +95,9 @@ namespace foo
             [](const OptionalType& n)
                 { return std::format("{}?", to_string(n.element_type)); },
 
+            [](const SetType& n)
+                { return std::format("[{}]", to_string(n.element_type)); },
+
         }, t.type);
     }
 
