@@ -15,18 +15,35 @@
     --foo-warn:   #dddd55;
     --foo-ok:     #55dd55;
 
+    --foo-kw:      #F92672;
+    --foo-type:    #66D9EF;
+    --foo-ns:      #AE81FF;
+    --foo-const:   #FD971F;
+    --foo-number:  #AE81FF;
+    --foo-string:  #E6DB74;
+    --foo-fn:      #A6E22E;
+    --foo-comment: #75715E;
 
-    /* Monokai Theme */
-    --foo-kw:      #F92672; /* Pink */
-    --foo-type:    #66D9EF; /* Cyan */
-    --foo-ns:      #AE81FF; /* Purple */
-    --foo-const:   #FD971F; /* Orange */
-    --foo-number:  #AE81FF; /* Purple */
-    --foo-string:  #E6DB74; /* Yellow */
-    --foo-fn:      #A6E22E; /* Green */
-    --foo-comment: #75715E; /* Muted gray */
+    --foo-tip-bg: #161616;
 
-    /* soft */
+
+    --foo-font: "Courier New", monospace;
+    --foo-font-size: 14px;
+}
+
+[data-theme="default"] {
+    --foo-kw:      #F92672;
+    --foo-type:    #66D9EF;
+    --foo-ns:      #AE81FF;
+    --foo-const:   #FD971F;
+    --foo-number:  #AE81FF;
+    --foo-string:  #E6DB74;
+    --foo-fn:      #A6E22E;
+    --foo-comment: #75715E;
+}
+
+
+[data-theme="soft"] {
     --foo-kw:      #C98B82;
     --foo-type:    #91ADA0;
     --foo-ns:      #B9A3AD;
@@ -35,8 +52,10 @@
     --foo-string:  #A9B58C;
     --foo-fn:      #94B09A;
     --foo-comment: #858D85;
+}
 
-    /* red */
+
+[data-theme="red"] {
     --foo-kw:      #D16D78;
     --foo-type:    #C18A91;
     --foo-ns:      #A96C82;
@@ -45,8 +64,10 @@
     --foo-string:  #D3A0A0;
     --foo-fn:      #E08B8B;
     --foo-comment: #806C76;
+}
 
-    /*blue*/
+
+[data-theme="blue"] {
     --foo-kw:      #9B91D0;
     --foo-type:    #779FCE;
     --foo-ns:      #B19BD5;
@@ -55,8 +76,10 @@
     --foo-string:  #91B4C8;
     --foo-fn:      #82A9D1;
     --foo-comment: #747D9B;
+}
 
-    /*3c*/
+
+[data-theme="rusty"] {
     --foo-kw:      #CC8175;
     --foo-type:    #91A17A;
     --foo-ns:      #B68C79;
@@ -65,13 +88,6 @@
     --foo-string:  #A5A77B;
     --foo-fn:      #C98F6E;
     --foo-comment: #857C70;
-
-
-    --foo-tip-bg: #161616;
-
-
-    --foo-font: "Courier New", monospace;
-    --foo-font-size: 14px;
 }
 
 /* ---------- editor ---------- */
