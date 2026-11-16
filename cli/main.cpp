@@ -630,6 +630,39 @@ fn main() -> void
         },
     });
 
+    add("maps",
+{
+{"main",
+R"AAA(
+fn main() -> void
+{
+    var a: [string, int] = @[string, int].new()
+
+    a["1"] = 1
+    b["2"] = 2
+
+    println(a)
+}
+)AAA"
+    },
+});
+
+    add("sets",
+{
+{"main",
+R"AAA(
+fn main() -> void
+{
+    var a: [string] = @[string].from(["1", "2"])
+
+    a = a + @[string].from(["201", "202"])
+
+    println(a)
+}
+)AAA"
+},
+});
+
     add("structs",
 {
 {"main",
@@ -1033,6 +1066,7 @@ static void show_syntax(const std::vector<std::string>& kinds)
         row("int  float  bool  string  any",        "built-in types");
         row("void",                                 "only for functions");
         row("<type>[]",                             "array of <type>: int[]   int[][]");
+        row("[<type>]",                             "set of <type>: [string]");
         row("<type>?",                              "a <type> or nothing: int?   (int?? is not allowed)");
         row("[<key>, <value>]",                     "map from one type to another: [string, int]");
         row("<path>::<name>",                       "a named type from another file: lib_b::Point");

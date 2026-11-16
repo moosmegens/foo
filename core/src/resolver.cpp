@@ -130,7 +130,7 @@ namespace foo
 
         switch (types.kind(type))
         {
-            case TypeKind::Error:   return "<error>";
+            case TypeKind::Error:   return "ERROR";
             case TypeKind::Void:    return "void";
             case TypeKind::Bool:    return "bool";
             case TypeKind::Int:     return "int";
@@ -151,6 +151,9 @@ namespace foo
             case TypeKind::Map:
                 return "map<" + type_name(types.key(type), output)
                     + ", " + type_name(types.value(type), output) + ">";
+
+            case TypeKind::Set:
+                return "set<" + type_name(types.element(type), output) + ">";
 
             case TypeKind::Struct:
             {

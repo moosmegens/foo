@@ -1228,12 +1228,13 @@ namespace foo
     {
         (void)types;
 
-        auto signature = [](std::vector<ParamSig> params, TypeId ret, bool self_by_ref = false)
+        auto signature = [](std::vector<ParamSig> params, TypeId ret, bool self_by_ref = false, bool variadic = false)
         {
             FunctionSig s;
             s.params = std::move(params);
             s.ret = ret;
             s.self_by_ref = self_by_ref;
+            s.variadic = variadic;
             return s;
         };
 
@@ -1408,6 +1409,27 @@ namespace foo
         },
         {"(set).is_subset(set) -> bool"});
 
+        def.static_function("fromv",
+    [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+    {
+        if (ts.kind(receiver) != TypeKind::Set)
+            return std::nullopt;
+
+        return signature(
+            {ParamSig{ts.element(receiver), false}}, receiver,
+            false, true);
+    },
+    [](Runtime&, Args a, const auto&)
+    {
+        Set result;
+
+        for (const auto& arg : a)
+            result.items.insert(copy(arg));
+
+        return make_value(std::move(result));
+    },
+    {"(set).from(set.element...) -> (set)", "build a set from an elements, duplicates collapse", "@[int].from(1, 2, 3)"});
+
         def.static_function("from",
     [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
     {
@@ -1428,6 +1450,7 @@ namespace foo
         return make_value(std::move(result));
     },
     {"(set).from(set.element[]) -> (set)", "build a set from an array, duplicates collapse", "@[int].from([1, 2, 3])"});
+
 
 
         def.static_function("unbox",
