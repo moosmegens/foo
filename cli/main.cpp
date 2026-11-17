@@ -1120,6 +1120,7 @@ static void show_syntax(const std::vector<std::string>& kinds)
 
         sheader("if");
         form("if <expr> { ... } else if <expr> { ... } else { ... }");
+        form("if <expr> <stmt> else <stmt> ");
         part("<expr>",              "must be true or false; parentheses around it are optional");
         part("else",                "can be left out, and else if can repeat");
 
@@ -1132,6 +1133,9 @@ static void show_syntax(const std::vector<std::string>& kinds)
         part("<name>",              "holds the next value each time round");
         part("<expr>",              "what to loop over, such as the range 0..10");
         more("0..10 stops before 10, 0..=10 includes it");
+
+        sheader("break");
+        sheader("continue");
 
         sheader("check");
         form("check <expr> => <name> { ... } else { ... }");
