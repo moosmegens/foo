@@ -375,8 +375,20 @@ namespace foo::ast
         }
     };
 
+    struct Break
+    {
+        bool operator==(const Break& other) const { return true; }
+    };
+
+    struct Continue
+    {
+        bool operator==(const Continue& other) const { return true; }
+    };
+
+
     using StmtKind = std::variant<
             Block, VarDecl, Return, If, While, ForIn,
+            Break, Continue,
             ExprStmt, Check>;
 
     struct Stmt

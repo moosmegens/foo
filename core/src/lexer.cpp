@@ -135,6 +135,8 @@ namespace foo
                 {"check", tok::Check{}},
                 {"none", tok::None{}},
                 {"priv", tok::Priv{}},
+                {"break", tok::Break{}},
+                {"continue", tok::Continue{}},
             };
 
             if (auto it = keywords.find(text); it != keywords.end())

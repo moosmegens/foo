@@ -207,14 +207,20 @@ namespace foo
                     || check<tok::While>()
                     || check<tok::For>()
                     || check<tok::Check>()
-                    || check<tok::LBrace>();
+                    || check<tok::LBrace>()
+                    || check<tok::Continue>()
+                    || check<tok::Break>()
+
+                    ;
             }
 
             bool is_declaration_start() const
             {
                 return check<tok::Function>()
                     || check<tok::Struct>()
-                    || check<tok::Import>();
+                    || check<tok::Import>()
+
+                    ;
             }
 
             bool is_expr_boundary() const
@@ -885,6 +891,12 @@ namespace foo
 
                     if (auto stmt = parse_stmt())
                     {
+                        if (_offset == before)
+                        {
+                            report_error(current(), "internal parser error: statement consumed no tokens");
+                            advance();
+                        }
+
                         stmts.push_back(std::move(stmt));
                         continue;
                     }
@@ -912,6 +924,20 @@ namespace foo
 
                 if (check<tok::LBrace>())   return parse_block_stmt(span);
 
+                if (match<tok::Continue>())
+                {
+                    expect<tok::Semicolon>(true);
+                    finish_span(span);
+                    return std::make_unique<ast::Stmt>(ast::Continue{}, span);
+                }
+
+                if (match<tok::Break>())
+                {
+                    expect<tok::Semicolon>(true);
+                    finish_span(span);
+                    return std::make_unique<ast::Stmt>(ast::Break{}, span);
+                }
+
                 // when not met with keyword, it is an expression
                 return parse_expr_stmt();
             }
@@ -933,7 +959,7 @@ namespace foo
                 std::string name = std::get<tok::Identifier>(name_token.variant).value;
                 advance();
 
-                auto good_branch = parse_block_stmt(current().source);
+                auto good_branch = parse_body_stmt(current().source);
                 if (!good_branch)
                     return nullptr;
 
@@ -943,7 +969,7 @@ namespace foo
                     SourceSpan else_span = current().source;
                     advance();
 
-                    bad_branch = parse_block_stmt(else_span);
+                    bad_branch = parse_body_stmt(else_span);
 
                     if (!bad_branch)
                         return nullptr;
@@ -1020,13 +1046,21 @@ namespace foo
                 return std::make_unique<ast::Stmt>(std::move(*body), span);
             }
 
+            ast::StmtPtr parse_body_stmt(SourceSpan span)
+            {
+                if (check<tok::LBrace>())
+                    return parse_block_stmt(span);
+
+                return parse_stmt();
+            }
+
             ast::StmtPtr parse_if_stmt(SourceSpan span)
             {
                 auto cond = parse_expr();
                 if (!cond)
                     return nullptr;
 
-                auto then_branch = parse_block_stmt(current().source);
+                auto then_branch = parse_body_stmt(current().source);
                 if (!then_branch)
                     return nullptr;
 
@@ -1037,7 +1071,7 @@ namespace foo
                     advance();
 
                     else_branch = match<tok::If>()  ? parse_if_stmt(else_span)
-                                                    : parse_block_stmt(else_span);
+                                                    : parse_body_stmt(else_span);
 
                     if (!else_branch)
                         return nullptr;
@@ -1053,7 +1087,7 @@ namespace foo
                 if (!cond)
                     return nullptr;
 
-                auto body = parse_block_stmt(current().source);
+                auto body = parse_body_stmt(current().source);
                 if (!body)
                     return nullptr;
 
@@ -1080,7 +1114,7 @@ namespace foo
                 if (!iterable)
                     return nullptr;
 
-                auto body = parse_block_stmt(current().source);
+                auto body = parse_body_stmt(current().source);
                 if (!body)
                     return nullptr;
 

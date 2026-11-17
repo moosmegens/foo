@@ -23,7 +23,7 @@ namespace foo
 
         enum class Flow
         {
-            Continue, Return, Break
+            Next, Return, Break, Continue
         };
 
         using ValueResult = Result<ValueRef, RuntimeError>;
@@ -938,6 +938,9 @@ namespace foo
                 return error("'break' outside of a loop", f);
 
             case Flow::Continue:
+                return error("'continue' outside of a loop", f);
+
+            case Flow::Next:
                 break;
             }
 
@@ -996,11 +999,11 @@ namespace foo
             {
                 FOO_TRY(flow, exec(*s));
 
-                if (flow != Flow::Continue)
+                if (flow != Flow::Next)
                     return flow;
             }
 
-            return Flow::Continue;
+            return Flow::Next;
         }
 
         FlowResult exec(const Stmt& s)
@@ -1013,7 +1016,9 @@ namespace foo
                 [&](const While& w)     { return exec_while(w); },
                 [&](const ForIn& f)     { return exec_for(s, f); },
                 [&](const ExprStmt& x)  { return exec_expr(x); },
-                [&](const Check& c)     { return exec_check(c); }
+                [&](const Check& c)     { return exec_check(c); },
+                [&](const Break&) -> FlowResult     { return Flow::Break; },
+                [&](const Continue&) -> FlowResult  { return Flow::Continue; },
             }, s.kind);
         }
 
@@ -1032,7 +1037,7 @@ namespace foo
                 bind(li.slot, std::move(value));
             }
 
-            return Flow::Continue;
+            return Flow::Next;
         }
 
         FlowResult exec_return(const Return& r)
@@ -1059,15 +1064,16 @@ namespace foo
             if (i.else_branch)
                 return exec(*i.else_branch);
 
-            return Flow::Continue;
+            return Flow::Next;
         }
 
 
         static bool leaves_loop(Flow flow)
-            { return flow != Flow::Continue; }
+            { return flow == Flow::Return || flow == Flow::Break; }
 
         static Flow flow_after_loop(Flow flow)
-            { return flow == Flow::Break ? Flow::Continue : flow; }
+            { return flow == Flow::Break ? Flow::Next : flow; }
+
 
         FlowResult exec_while(const While& w)
         {
@@ -1084,7 +1090,7 @@ namespace foo
                     return flow_after_loop(flow);
             }
 
-            return Flow::Continue;
+            return Flow::Next;
         }
 
         FlowResult exec_expr(const ExprStmt& x)
@@ -1102,7 +1108,7 @@ namespace foo
                 (void)value;
             }
 
-            return Flow::Continue;
+            return Flow::Next;
         }
 
         FlowResult exec_check(const Check& c)
@@ -1118,7 +1124,7 @@ namespace foo
             if (c.bad_branch)
                 return exec(*c.bad_branch);
 
-            return Flow::Continue;
+            return Flow::Next;
         }
 
         FlowResult exec_for(const Stmt& s, const ForIn& f)
@@ -1134,7 +1140,7 @@ namespace foo
                 const bool inclusive = r->inclusive;
 
                 if (inclusive ? lo > hi : lo >= hi)
-                    return Flow::Continue;
+                    return Flow::Next;
 
                 for (int64_t i = lo;; i++)
                 {
@@ -1146,7 +1152,7 @@ namespace foo
                         return flow_after_loop(flow);
 
                     if (inclusive ? i == hi : i + 1 == hi)
-                        return Flow::Continue;
+                        return Flow::Next;
                 }
             }
 
@@ -1164,7 +1170,7 @@ namespace foo
                         return flow_after_loop(flow);
                 }
 
-                return Flow::Continue;
+                return Flow::Next;
             }
 
             if (const auto* m = std::get_if<Map>(&it->v))
@@ -1185,7 +1191,7 @@ namespace foo
                         return flow_after_loop(flow);
                 }
 
-                return Flow::Continue;
+                return Flow::Next;
             }
 
             if (const auto* m = std::get_if<Set>(&it->v))
@@ -1206,7 +1212,7 @@ namespace foo
                         return flow_after_loop(flow);
                 }
 
-                return Flow::Continue;
+                return Flow::Next;
             }
 
             return error(std::format("cannot iterate over this"), s.span);

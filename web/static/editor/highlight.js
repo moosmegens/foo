@@ -5,7 +5,7 @@
 //
 // every token becomes <span class="foo-t-...">, see editor.css for the colors.
 
-const KEYWORDS  = new Set(["fn", "struct", "import", "var", "if", "else", "while", "for", "in", "check", "return", "ref"]);
+const KEYWORDS  = new Set(["fn", "struct", "import", "var", "if", "else", "while", "for", "in", "check", "return", "ref", "continue", "break"]);
 const CONSTANTS = new Set(["true", "false", "none", "self"]);
 const TYPES     = new Set(["int", "float", "bool", "string", "any", "void"]);
 

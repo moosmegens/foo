@@ -175,6 +175,8 @@ namespace foo
     static std::string print(const Stmt& s, int indent)
     {
         return std::visit(overload{
+            [&](const Break& n) { return std::string{"break"}; },
+            [&](const Continue& n) { return std::string{"continue"}; },
             [&](const Block& n) { return print(n, indent); },
             [&](const ExprStmt& n) { return to_string(n.expr) + ";"; },
             [&](const VarDecl& n)

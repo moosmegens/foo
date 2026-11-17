@@ -95,6 +95,9 @@ namespace foo
         FOO_TOKEN(In, "in");
         FOO_TOKEN(Check, "check");
 
+        FOO_TOKEN(Break, "break");
+        FOO_TOKEN(Continue, "continue");
+
         FOO_TOKEN(None, "none");
 
         FOO_TOKEN(Priv, "priv");
@@ -159,6 +162,8 @@ namespace foo
         tok::Var, tok::Function, tok::Struct, tok::Ref,
         tok::If, tok::Else, tok::While, tok::For, tok::In,
         tok::Check,
+
+        tok::Break, tok::Continue,
 
         tok::None,
 

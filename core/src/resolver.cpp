@@ -228,6 +228,8 @@ namespace foo
         std::map<Path, StructId> _struct_map;
         std::map<Path, FunctionId> _function_map;
 
+        int _loop_depth = 0;
+
         // per file
         int _file_id = -1;
         Path _scope;
@@ -947,6 +949,8 @@ namespace foo
                 [&](const ast::ForIn& s)    { resolve_for_in(s, span); },
                 [&](const ast::ExprStmt& s) { resolve_expr(*s.expr); },
                 [&](const ast::Check& s)    { resolve_check_stmt(s, span); },
+                [&](const ast::Break&)      { if (_loop_depth == 0) error(span, "'break' outside of a loop"); },
+                [&](const ast::Continue&)   { if (_loop_depth == 0) error(span, "'continue' outside of a loop"); },
             }, stmt.kind);
         }
 
@@ -1033,7 +1037,9 @@ namespace foo
                 error(while_stmt.cond->span, "type mismatch: condition doesn't result in bool, got '" + type_name(cond_type) + "'");
             }
 
+            _loop_depth++;
             check_stmt_in_own_scope(while_stmt.body);
+            _loop_depth--;
         }
 
         type_result iteration_type(TypeId type, const SourceSpan& span)
@@ -1069,7 +1075,9 @@ namespace foo
             push_locals();
 
             _output.for_vars[&for_stmt] = declare_local(for_stmt.variable_name, element.type, span);
+            _loop_depth++;
             resolve_stmt(*for_stmt.body);
+            _loop_depth--;
 
             pop_locals();
         }
