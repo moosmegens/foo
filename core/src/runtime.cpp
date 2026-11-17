@@ -1043,7 +1043,7 @@ namespace foo
                 return Flow::Return;
             }
 
-            FOO_TRY(value, val(*r.value));
+            FOO_TRY(value, r.reffed ? ref(*r.value) : val(*r.value));
 
             _ret = nudge_value(std::move(value), info(*r.value).type, _frames.back().fn->sig.ret);
             return Flow::Return;
@@ -1107,7 +1107,7 @@ namespace foo
 
         FlowResult exec_check(const Check& c)
         {
-            FOO_TRY(value, val(*c.expr));
+            FOO_TRY(value, c.reffed ? ref(*c.expr) : val(*c.expr));
 
             if (!std::holds_alternative<std::monostate>(value->v))
             {
@@ -1125,7 +1125,7 @@ namespace foo
         {
             const LocalInfo& li = lookup(resolved().for_vars, &f, "loop variable");
 
-            FOO_TRY(it, val(*f.iterable));
+            FOO_TRY(it, f.reffed ? ref(*f.iterable) : val(*f.iterable));
 
             if (const auto* r = std::get_if<Range>(&it->v))
             {
@@ -1152,9 +1152,11 @@ namespace foo
 
             if (const auto* a = std::get_if<Array>(&it->v))
             {
-                for (const ValueRef& element : a->items)
+                const std::vector<ValueRef> items = a->items;
+
+                for (const ValueRef& element : items)
                 {
-                    bind(li.slot, copy(element));
+                    bind(li.slot, f.reffed ? element : copy(element));
 
                     FOO_TRY(flow, exec(*f.body));
 
@@ -1167,9 +1169,36 @@ namespace foo
 
             if (const auto* m = std::get_if<Map>(&it->v))
             {
+                std::vector<ValueRef> keys;
+                keys.reserve(m->items.size());
+
                 for (const auto& entry : m->items)
+                    keys.push_back(entry.first);
+
+                for (const ValueRef& key : keys)
                 {
-                    bind(li.slot, copy(entry.first));
+                    bind(li.slot, copy(key));
+
+                    FOO_TRY(flow, exec(*f.body));
+
+                    if (leaves_loop(flow))
+                        return flow_after_loop(flow);
+                }
+
+                return Flow::Continue;
+            }
+
+            if (const auto* m = std::get_if<Set>(&it->v))
+            {
+                std::vector<ValueRef> elements;
+                elements.reserve(m->items.size());
+
+                for (const auto& entry : m->items)
+                    elements.push_back(entry);
+
+                for (const ValueRef& element : elements)
+                {
+                    bind(li.slot, copy(element));
 
                     FOO_TRY(flow, exec(*f.body));
 

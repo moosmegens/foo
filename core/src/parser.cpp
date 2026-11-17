@@ -921,6 +921,8 @@ namespace foo
                 ast::ExprPtr expr = parse_expr();
                 expect<tok::FatForwards>();
 
+                bool reffed = match<tok::Ref>();
+
                 if (!check<tok::Identifier>())
                 {
                     report_error(current(), "expected variable name");
@@ -949,7 +951,7 @@ namespace foo
 
                 finish_span(span);
                 return std::make_unique<ast::Stmt>(
-                    ast::Check{std::move(expr), name, std::move(good_branch), std::move(bad_branch)},
+                    ast::Check{std::move(expr), name, reffed, std::move(good_branch), std::move(bad_branch)},
                     span);
             }
 
@@ -991,16 +993,21 @@ namespace foo
             ast::StmtPtr parse_return_stmt(SourceSpan span)
             {
                 ast::ExprPtr value;
-                if (!check<tok::Semicolon>())
+                bool reffed = false;
+
+                if (!check<tok::Semicolon>() && !check<tok::RBrace>() && !is_at_end() && !is_statement_start())
                 {
+                    reffed = match<tok::Ref>();
+
                     value = parse_expr();
+
                     if (!value)
                         return nullptr;
                 }
 
                 expect<tok::Semicolon>(true);
                 finish_span(span);
-                return std::make_unique<ast::Stmt>(ast::Return{std::move(value)}, span);
+                return std::make_unique<ast::Stmt>(ast::Return{std::move(value), reffed}, span);
             }
 
             ast::StmtPtr parse_block_stmt(SourceSpan span)
@@ -1056,6 +1063,8 @@ namespace foo
 
             ast::StmtPtr parse_for_stmt(SourceSpan span)
             {
+                bool reffed = match<tok::Ref>();
+
                 if (!check<tok::Identifier>())
                 {
                     report_error(current(), "expected loop variable name");
@@ -1076,7 +1085,7 @@ namespace foo
                     return nullptr;
 
                 finish_span(span);
-                return std::make_unique<ast::Stmt>(ast::ForIn{std::move(name), std::move(iterable), std::move(body)}, span);
+                return std::make_unique<ast::Stmt>(ast::ForIn{std::move(name), reffed, std::move(iterable), std::move(body)}, span);
             }
 
             ast::StmtPtr parse_expr_stmt()

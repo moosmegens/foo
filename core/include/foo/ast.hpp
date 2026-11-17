@@ -304,10 +304,12 @@ namespace foo::ast
     struct Return
     {
         ExprPtr value{}; /* can be null */
+        bool reffed = false;
 
         bool operator==(const Return& other) const
         {
-            return ptr_equal(value, other.value);
+            return ptr_equal(value, other.value)
+                && this->reffed == other.reffed;
         }
     };
 
@@ -341,12 +343,14 @@ namespace foo::ast
     struct ForIn
     {
         std::string variable_name;
+        bool reffed;
         ExprPtr iterable;
         StmtPtr body;
 
         bool operator==(const ForIn& other) const
         {
             return variable_name == other.variable_name
+                && reffed == other.reffed
                 && ptr_equal(iterable, other.iterable)
                 && ptr_equal(body, other.body);
         }
@@ -356,6 +360,7 @@ namespace foo::ast
     {
         ExprPtr expr;
         std::string variable_name;
+        bool reffed;
         StmtPtr good_branch;
         StmtPtr bad_branch{}; // can be null ofc
 
@@ -364,6 +369,7 @@ namespace foo::ast
         {
             return ptr_equal(expr, other.expr)
                 && variable_name == other.variable_name
+                && reffed == other.reffed
                 && ptr_equal(good_branch, other.good_branch)
                 && ptr_equal(bad_branch, other.bad_branch);
         }

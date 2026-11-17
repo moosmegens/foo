@@ -198,6 +198,12 @@ namespace foo
             Done
         };
 
+        struct type_result
+        {
+            TypeId type;
+            bool inmutable = false;
+        };
+
         struct LocalScope
         {
             std::unordered_map<std::string, LocalInfo> names;
@@ -1030,31 +1036,39 @@ namespace foo
             check_stmt_in_own_scope(while_stmt.body);
         }
 
-        TypeId iteration_type(TypeId type, const SourceSpan& span)
+        type_result iteration_type(TypeId type, const SourceSpan& span)
         {
             if (type == BaseTypes::Error)
-                return BaseTypes::Error;
+                return {BaseTypes::Error};
 
             TypeKind kind = types().kind(type);
 
             if (kind == TypeKind::Range || kind == TypeKind::Array)
-                return types().element(type);
+                return {types().element(type)};
 
             if (kind == TypeKind::Map)
-                return types().key(type);
+                return {types().key(type), true};
+
+            if (kind == TypeKind::Set)
+                return {types().element(type), true};
 
             error(span, "cannot iterate over '" + type_name(type) + "'");
-            return BaseTypes::Error;
+            return {BaseTypes::Error};
         }
 
         void resolve_for_in(const ast::ForIn& for_stmt, const SourceSpan& span)
         {
             TypeId iterable_type = resolve_expr(*for_stmt.iterable);
-            TypeId element_type = iteration_type(iterable_type, for_stmt.iterable->span);
+            auto element = iteration_type(iterable_type, for_stmt.iterable->span);
+
+            if (for_stmt.reffed && element.inmutable)
+            {
+                error(span, "cannot ref iterate over '" + type_name(iterable_type) + "'");
+            }
 
             push_locals();
 
-            _output.for_vars[&for_stmt] = declare_local(for_stmt.variable_name, element_type, span);
+            _output.for_vars[&for_stmt] = declare_local(for_stmt.variable_name, element.type, span);
             resolve_stmt(*for_stmt.body);
 
             pop_locals();
