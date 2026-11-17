@@ -241,6 +241,18 @@ namespace foo
             return it->second;
         }
 
+        int64_t range_length(const Range& r)
+        {
+            const int64_t lo = as_int(r.lo);
+            const int64_t hi = as_int(r.hi);
+
+            if (r.inclusive ? lo > hi : lo >= hi)
+                return 0;
+
+            return static_cast<int64_t>(static_cast<uint64_t>(hi) - static_cast<uint64_t>(lo))
+                 + (r.inclusive ? 1 : 0);
+        }
+
         std::optional<size_t> index_in(int64_t i, size_t size)
         {
             if (i < 0 || static_cast<uint64_t>(i) >= size)
@@ -1487,6 +1499,34 @@ namespace foo
     {"(set).from(set.element[]) -> (set)", "build a set from an array, duplicates collapse", "@[int].from([1, 2, 3])"});
 
 
+        def.method("to_array",
+        [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
+        {
+            if (ts.kind(receiver) != TypeKind::Range)
+                return std::nullopt;
+
+            return signature({}, ts.array_of(ts.element(receiver)));
+        },
+        [](Runtime&, Args a, const auto&)
+        {
+            const Range& r = expect<Range>(*a[0]);
+            const int64_t count = range_length(r);
+
+            constexpr int64_t max_items = 10'000'000;
+            if (count > max_items)
+                throw std::runtime_error("range is too large to convert to an array");
+
+            const int64_t lo = as_int(r.lo);
+
+            Array result;
+            result.items.reserve(static_cast<size_t>(count));
+
+            for (int64_t i = 0; i < count; i++)
+                result.items.push_back(make_int(lo + i));
+
+            return make_value(std::move(result));
+        },
+        {"(range).to_array() -> int[]", "(0..3).to_array() is [0, 1, 2]"});
 
         def.static_function("unbox",
             [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
