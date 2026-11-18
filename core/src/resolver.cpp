@@ -637,6 +637,7 @@ namespace foo
                 if (s == "string")  return BaseTypes::String;
                 if (s == "void")    return BaseTypes::Void;
                 if (s == "any")     return BaseTypes::Any;
+                if (s == "_")       return BaseTypes::Infer;
             }
 
             std::optional<StructId> found_struct = lookup_struct(parts);

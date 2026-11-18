@@ -35,7 +35,7 @@ namespace foo
 
     enum class TypeKind
     {
-        Error, Void, Bool, Int, Float, String, Any, None,
+        Error, Void, Bool, Int, Float, String, Any, None, Infer,
 
         Range, Array, Map, Set, Optional, Struct, Native
     };
@@ -50,6 +50,7 @@ namespace foo
         TypeKind::String,
         TypeKind::Any,
         TypeKind::None,
+        TypeKind::Infer,
     };
 
     constexpr TypeId base_id(TypeKind k)
@@ -71,6 +72,7 @@ namespace foo
         constexpr TypeId String = base_id(TypeKind::String);
         constexpr TypeId Any    = base_id(TypeKind::Any);
         constexpr TypeId None   = base_id(TypeKind::None);
+        constexpr TypeId Infer  = base_id(TypeKind::Infer);
     }
 
 
