@@ -2,8 +2,10 @@
 #define FOO_RESOLVER_HPP
 
 #include <cassert>
+#include <deque>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -23,6 +25,7 @@ namespace foo
     using TypeId            = Id;
 
     using StructId          = Id;
+    using EnumId            = Id;
     using NativeTypeId      = Id;
 
     using FunctionId        = Id;
@@ -35,9 +38,12 @@ namespace foo
 
     enum class TypeKind
     {
-        Error, Void, Bool, Int, Float, String, Any, None, Infer,
+        Error, Void, Bool, Int, Float, String, Any, None,
 
-        Range, Array, Map, Set, Optional, Struct, Native
+        // only exists while resolving
+        Infer,
+
+        Range, Array, Map, Set, Optional, Struct, Native, Tuple, Variant, Enum
     };
 
     constexpr std::array BaseKinds =
@@ -87,8 +93,18 @@ namespace foo
         TypeId optional_of(TypeId e)        { return intern(TypeKind::Optional, e); }
         TypeId range_of(TypeId e)           { return intern(TypeKind::Range, e); }
         TypeId struct_of(StructId s)        { return intern(TypeKind::Struct, s); }
+        TypeId enum_of(EnumId e)            { return intern(TypeKind::Enum, e); }
         TypeId native_of(NativeTypeId n)    { return intern(TypeKind::Native, n); }
         TypeId set_of(TypeId n)             { return intern(TypeKind::Set, n); }
+
+        TypeId tuple_of(std::vector<TypeId> elements)
+        {
+            return intern(TypeKind::Tuple, EmptyId, EmptyId, std::move(elements));
+        }
+
+        // flattens nested variants, sorts and removes duplicates, so (int | string) is (string | int).
+        // one alternative left is just that alternative, an Error alternative makes the whole thing Error
+        TypeId variant_of(std::vector<TypeId> alternatives);
 
 
         TypeKind kind(TypeId t) const           { return at(t).kind; }
@@ -97,7 +113,11 @@ namespace foo
         TypeId key(TypeId t) const              { return at(t).a; }
         TypeId value(TypeId t) const            { return at(t).b; }
         StructId struct_id(TypeId t) const      { return at(t).a; }
+        EnumId enum_id(TypeId t) const          { return at(t).a; }
         NativeTypeId native_id(TypeId t) const  { return at(t).a; }
+
+        // tuple elements, or variant alternatives
+        const std::vector<TypeId>& members(TypeId t) const { return at(t).list; }
 
     private:
         struct Type
@@ -105,6 +125,7 @@ namespace foo
             TypeKind kind;
             Id a = EmptyId;
             Id b = EmptyId;
+            std::vector<TypeId> list;
 
             auto operator<=>(const Type&) const = default;
         };
@@ -115,10 +136,11 @@ namespace foo
             return _types[static_cast<size_t>(t)];
         }
 
-        TypeId intern(TypeKind kind, Id a = EmptyId, Id b = EmptyId);
+        TypeId intern(TypeKind kind, Id a = EmptyId, Id b = EmptyId, std::vector<TypeId> list = {});
 
         // indexed by TypeID.
-        std::vector<Type> _types;
+        // a deque so references from members() stay valid when intern() adds a type
+        std::deque<Type> _types;
 
         std::map<Type, TypeId> _ids;
     };
@@ -135,7 +157,7 @@ namespace foo
         // when method:
         //  params is without self.
         std::vector<ParamSig> params;
-        
+
         // for last param
         bool variadic = false;
 
@@ -262,6 +284,16 @@ namespace foo
         std::unordered_map<std::string, FunctionId> methods;
     };
 
+    struct EnumInfo : DeclInfo
+    {
+        const ast::EnumDecl* decl = nullptr;
+
+        TypeId type = EmptyType;
+
+        // the index is the runtime value of a variant
+        std::vector<std::string> variants;
+    };
+
     struct FunctionInfo : DeclInfo
     {
         const ast::FnDecl* decl = nullptr;
@@ -283,7 +315,8 @@ namespace foo
         Method,         // index = FunctionId
         Native,         // index = NativeId
         NativeMethod,   // index = NativeId
-        StructLit       // StructLit: index = StructId
+        StructLit,      // StructLit: index = StructId
+        EnumVariant     // Color::red: index = variant index
     };
 
     struct ExprInfo
@@ -325,6 +358,7 @@ namespace foo
 
         TypeTable type_table;
         std::vector<StructInfo> structs;
+        std::vector<EnumInfo> enums;
         std::vector<FunctionInfo> functions;
 
         std::unordered_map<const ast::StructLit*, std::vector<int>> struct_lit_fields;
@@ -333,7 +367,7 @@ namespace foo
         std::unordered_map<const void*, FunctionSig> native_sigs;
 
         std::unordered_map<const ast::Expr*, ExprInfo> exprs;
-        std::unordered_map<const ast::VarDecl*, LocalInfo> var_decls;
+        std::unordered_map<const ast::PatName*, LocalInfo> pattern_vars;
         std::unordered_map<const ast::ForIn*, LocalInfo> for_vars;
         std::unordered_map<const ast::Check*, LocalInfo> check_vars;
 

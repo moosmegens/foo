@@ -71,6 +71,13 @@ namespace foo
                 b.items.begin(), b.items.end(), cmp_ref);
         }
 
+        Ord cmp(const Tuple& a, const Tuple& b)
+        {
+            return std::lexicographical_compare_three_way(
+                a.items.begin(), a.items.end(),
+                b.items.begin(), b.items.end(), cmp_ref);
+        }
+
         Ord cmp(const Map& a, const Map& b)
         {
             return std::lexicographical_compare_three_way(
@@ -104,6 +111,14 @@ namespace foo
                 cmp_ref);
         }
 
+        Ord cmp(const EnumValue& a, const EnumValue& b)
+        {
+            if (auto c = a.id <=> b.id; c != 0)
+                return c;
+
+            return a.index <=> b.index;
+        }
+
         Ord cmp(const Rc<Native>& a, const Rc<Native>& b)
         {
             return a->compare(*b);
@@ -125,7 +140,7 @@ namespace foo
 
         Storage clone_of(const Boxed& x)
         {
-            return Boxed(clone_value(x.v));
+            return Boxed(clone_value(x.v), x.type);
         }
 
         Storage clone_of(const Range& x)
@@ -142,6 +157,17 @@ namespace foo
                 a.items.push_back(clone_value(e));
 
             return a;
+        }
+
+        Storage clone_of(const Tuple& x)
+        {
+            Tuple t;
+
+            t.items.reserve(x.items.size());
+            for (const ValueRef& e : x.items)
+                t.items.push_back(clone_value(e));
+
+            return t;
         }
 
         Storage clone_of(const Map& x)
@@ -173,7 +199,7 @@ namespace foo
             return x;
         }
 
-        void show(std::string& o, const Value& v, bool nested)
+        void show(std::string& o, const Value& v, bool nested, const ResolveOutput* names)
         {
             std::visit(overload{
                 [&](std::monostate)         { o += "void"; },
@@ -187,9 +213,9 @@ namespace foo
                 },
                 [&](const Range& r)
                 {
-                    show(o, *r.lo, true);
+                    show(o, *r.lo, true, names);
                     o += r.inclusive ? "..=" : "..";
-                    show(o, *r.hi, true);
+                    show(o, *r.hi, true, names);
                 },
                 [&](const Array& a)
                 {
@@ -197,9 +223,19 @@ namespace foo
                     for (size_t i = 0; i < a.items.size(); ++i)
                     {
                         if (i) o += ", ";
-                        show(o, *a.items[i], true);
+                        show(o, *a.items[i], true, names);
                     }
                     o += ']';
+                },
+                [&](const Tuple& t)
+                {
+                    o += '(';
+                    for (size_t i = 0; i < t.items.size(); ++i)
+                    {
+                        if (i) o += ", ";
+                        show(o, *t.items[i], true, names);
+                    }
+                    o += ')';
                 },
                 [&](const Map& m)
                 {
@@ -209,9 +245,9 @@ namespace foo
                     {
                         if (!first) o += ", ";
                         first = false;
-                        show(o, *k, true);
+                        show(o, *k, true, names);
                         o += ": ";
-                        show(o, *e, true);
+                        show(o, *e, true, names);
                     }
                     o += '}';
                 },
@@ -223,7 +259,7 @@ namespace foo
                     {
                         if (!first) o += ", ";
                         first = false;
-                        show(o, *i, true);
+                        show(o, *i, true, names);
                     }
                     o += '}';
                 },
@@ -235,12 +271,29 @@ namespace foo
                         if (i)
                             o += ", ";
 
-                        show(o, *s.fields[i], true);
+                        show(o, *s.fields[i], true, names);
                     }
                     o += '}';
                 },
+                [&](const EnumValue& e)
+                {
+                    if (names && e.id >= 0 && static_cast<size_t>(e.id) < names->enums.size())
+                    {
+                        const EnumInfo& info = names->enums[static_cast<size_t>(e.id)];
+
+                        if (e.index >= 0 && static_cast<size_t>(e.index) < info.variants.size())
+                        {
+                            o += info.path.back();
+                            o += "::";
+                            o += info.variants[static_cast<size_t>(e.index)];
+                            return;
+                        }
+                    }
+
+                    o += "<enum>";
+                },
                 [&](const Rc<Native>& n)    { o += "<native>"; },
-                [&](const Boxed& b)         { show(o, *b.v, nested); }
+                [&](const Boxed& b)         { show(o, *b.v, nested, names); }
             }, v.v);
         }
 
@@ -270,10 +323,10 @@ namespace foo
         return (a <=> b) == 0;
     }
 
-    std::string to_string(const Value& v)
+    std::string to_string(const Value& v, const ResolveOutput* names)
     {
         std::string out;
-        show(out, v, false);
+        show(out, v, false, names);
         return out;
     }
 

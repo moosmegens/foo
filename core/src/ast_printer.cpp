@@ -14,6 +14,7 @@ namespace foo
     using namespace ast;
 
     static std::string print(const StmtPtr& s, int indent);
+    static std::string print_pattern(const Pattern& p);
 
     static std::string pad(int indent)
     {
@@ -98,6 +99,35 @@ namespace foo
             [](const SetType& n)
                 { return std::format("[{}]", to_string(n.element_type)); },
 
+            [](const TupleType& n)
+                {
+                    std::string out = "(";
+                    for (size_t i = 0; i < n.elements.size(); ++i)
+                    {
+                        if (i)
+                            out += ", ";
+
+                        if (!n.elements[i].name.empty())
+                            out += n.elements[i].name + ": ";
+
+                        out += to_string(n.elements[i].type);
+                    }
+                    return out + ")";
+                },
+
+            [](const VariantType& n)
+                {
+                    std::string out = "(";
+                    for (size_t i = 0; i < n.alternatives.size(); ++i)
+                    {
+                        if (i)
+                            out += " | ";
+
+                        out += to_string(n.alternatives[i]);
+                    }
+                    return out + ")";
+                },
+
         }, t.type);
     }
 
@@ -118,6 +148,9 @@ namespace foo
 
             [](const ArrayLit& n)
                 { return "[" + list(n.elements) + "]"; },
+
+            [](const TupleLit& n)
+                { return "(" + list(n.elements) + ")"; },
 
             [](const NoneLit&) -> std::string
                 { return "none"; },
@@ -143,6 +176,12 @@ namespace foo
             [](const StaticCall& n)
                 { return std::format("@{}.{}({})", to_string(n.target), n.method, list(n.args)); },
 
+            [](const As& n)
+                { return std::format("({} as {})", to_string(n.expr), to_string(n.type)); },
+
+            [](const PatternAssign& n)
+                { return std::format("({} = {})", print_pattern(*n.pattern), to_string(n.value)); },
+
             [](const StructLit& n)
                 {
                     std::string out = "#" + to_string(n.type) + "{";
@@ -157,6 +196,33 @@ namespace foo
                 },
 
         }, e.kind);
+    }
+
+    static std::string print_pattern(const Pattern& p)
+    {
+        return std::visit(overload{
+            [](const PatName& n)
+                { return n.name; },
+
+            [](const PatWild&) -> std::string
+                { return "_"; },
+
+            [](const PatPlace& n)
+                { return to_string(n.place); },
+
+            [](const PatTuple& n)
+                {
+                    std::string out = "(";
+                    for (size_t i = 0; i < n.elements.size(); ++i)
+                    {
+                        if (i)
+                            out += ", ";
+
+                        out += print_pattern(*n.elements[i]);
+                    }
+                    return out + ")";
+                },
+        }, p.kind);
     }
 
     static std::string body(const StmtPtr& s, int indent)
@@ -181,7 +247,7 @@ namespace foo
             [&](const ExprStmt& n) { return to_string(n.expr) + ";"; },
             [&](const VarDecl& n)
             {
-                std::string out = "var " + n.name;
+                std::string out = "var " + print_pattern(*n.pattern);
                 if (n.type) out += ": " + to_string(n.type);
                 if (n.init) out += " = " + to_string(n.init);
                 return out + ";";
@@ -250,6 +316,13 @@ namespace foo
                     out += pad(indent + 1) + f.name + ": " + to_string(f.type) + ";\n";
                 for (const auto& m : n.methods)
                     out += pad(indent + 1) + print(m, indent + 1) + "\n";
+                return out + pad(indent) + "}";
+            },
+            [&](const EnumDecl& n)
+            {
+                std::string out = "enum " + n.name + "\n" + pad(indent) + "{\n";
+                for (const auto& v : n.variants)
+                    out += pad(indent + 1) + v.name + ",\n";
                 return out + pad(indent) + "}";
             },
             [&](const NamespaceDecl& n)

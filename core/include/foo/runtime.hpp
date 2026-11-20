@@ -155,6 +155,9 @@ namespace foo
 
         const TypeTable& types() const;
 
+        // everything the resolver found out, natives use it to print enums by name
+        const ResolveOutput& resolved() const;
+
         Runtime(const Runtime&) = delete;
         Runtime& operator=(const Runtime&) = delete;
 

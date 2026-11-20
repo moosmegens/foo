@@ -87,6 +87,7 @@ namespace foo
         FOO_TOKEN(Var, "var");
         FOO_TOKEN(Function, "fn");
         FOO_TOKEN(Struct, "struct");
+        FOO_TOKEN(Enum, "enum");
         FOO_TOKEN(Ref, "ref");
         FOO_TOKEN(If, "if");
         FOO_TOKEN(Else, "else");
@@ -94,6 +95,7 @@ namespace foo
         FOO_TOKEN(For, "for");
         FOO_TOKEN(In, "in");
         FOO_TOKEN(Check, "check");
+        FOO_TOKEN(As, "as");
 
         FOO_TOKEN(Break, "break");
         FOO_TOKEN(Continue, "continue");
@@ -159,9 +161,9 @@ namespace foo
 
         tok::AssignOp, tok::AssignPlusOp, tok::AssignMinusOp,
 
-        tok::Var, tok::Function, tok::Struct, tok::Ref,
+        tok::Var, tok::Function, tok::Struct, tok::Enum, tok::Ref,
         tok::If, tok::Else, tok::While, tok::For, tok::In,
-        tok::Check,
+        tok::Check, tok::As,
 
         tok::Break, tok::Continue,
 

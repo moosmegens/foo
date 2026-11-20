@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <foo/resolver.hpp>
 
@@ -17,15 +18,39 @@ namespace foo
             intern(k);
     }
 
-    TypeId TypeTable::intern(TypeKind kind, Id a, Id b)
+    TypeId TypeTable::intern(TypeKind kind, Id a, Id b, std::vector<TypeId> list)
     {
-        Type t{kind, a, b};
+        Type t{kind, a, b, std::move(list)};
 
         auto [it, inserted] = _ids.try_emplace(t, static_cast<TypeId>(_types.size()));
         if (inserted)
             _types.push_back(t);
 
         return it->second;
+    }
+
+    TypeId TypeTable::variant_of(std::vector<TypeId> alternatives)
+    {
+        std::vector<TypeId> flat;
+
+        for (TypeId a : alternatives)
+        {
+            if (a == BaseTypes::Error)
+                return BaseTypes::Error;
+
+            if (kind(a) == TypeKind::Variant)
+                flat.insert(flat.end(), members(a).begin(), members(a).end());
+            else
+                flat.push_back(a);
+        }
+
+        std::ranges::sort(flat);
+        flat.erase(std::unique(flat.begin(), flat.end()), flat.end());
+
+        if (flat.size() == 1)
+            return flat[0];
+
+        return intern(TypeKind::Variant, EmptyId, EmptyId, std::move(flat));
     }
 
 // native reg
@@ -138,6 +163,7 @@ namespace foo
             case TypeKind::String:  return "string";
             case TypeKind::Any:     return "any";
             case TypeKind::None:    return "none";
+            case TypeKind::Infer:   return "_";
 
             case TypeKind::Range:
                 return "range<" + type_name(types.element(type), output) + ">";
@@ -155,10 +181,36 @@ namespace foo
             case TypeKind::Set:
                 return "set<" + type_name(types.element(type), output) + ">";
 
+            case TypeKind::Tuple:
+            case TypeKind::Variant:
+            {
+                const bool tuple = types.kind(type) == TypeKind::Tuple;
+
+                std::string out = "(";
+                bool first = true;
+
+                for (TypeId member : types.members(type))
+                {
+                    if (!first)
+                        out += tuple ? ", " : " | ";
+
+                    first = false;
+                    out += type_name(member, output);
+                }
+
+                return out + ")";
+            }
+
             case TypeKind::Struct:
             {
                 StructId id = types.struct_id(type);
                 return to_string(output.structs[static_cast<size_t>(id)].path);
+            }
+
+            case TypeKind::Enum:
+            {
+                EnumId id = types.enum_id(type);
+                return to_string(output.enums[static_cast<size_t>(id)].path);
             }
 
             case TypeKind::Native:
@@ -226,9 +278,13 @@ namespace foo
         ResolveOutput _output;
 
         std::map<Path, StructId> _struct_map;
+        std::map<Path, EnumId> _enum_map;
         std::map<Path, FunctionId> _function_map;
 
         int _loop_depth = 0;
+
+        // true while resolving the written type of a `var`, only there `_` may be used
+        bool _allow_infer = false;
 
         // per file
         int _file_id = -1;
@@ -267,6 +323,7 @@ namespace foo
 
 
         StructInfo& struct_at(StructId id)          { return _output.structs[static_cast<size_t>(id)]; }
+        EnumInfo& enum_at(EnumId id)                { return _output.enums[static_cast<size_t>(id)]; }
         FunctionInfo& function_at(FunctionId id)    { return _output.functions[static_cast<size_t>(id)]; }
 
 
@@ -410,6 +467,10 @@ namespace foo
                     {
                         discover_struct(s, d->span, scope);
                     },
+                    [&](const ast::EnumDecl& e)
+                    {
+                        discover_enum(e, d->span, scope);
+                    },
                     [&](const ast::NamespaceDecl& n)
                     {
                         discover_decls(n.decls, path_child(scope, n.name));
@@ -458,6 +519,42 @@ namespace foo
                 discover_method(id, m, span);
         }
 
+        void discover_enum(const ast::EnumDecl& decl, const SourceSpan& span, const Path& scope)
+        {
+            const EnumId id = static_cast<EnumId>(_output.enums.size());
+
+            EnumInfo info;
+            info.path = path_child(scope, decl.name);
+            info.file_index = _file_id;
+            info.span = span;
+            info.decl = &decl;
+            info.type = types().enum_of(id);
+
+            // enums and structs share one namespace, they are both types
+            if (_struct_map.contains(info.path) || !_enum_map.emplace(info.path, id).second)
+            {
+                error(span, "'" + to_string(info.path) + "' is already declared");
+                return;
+            }
+
+            if (decl.variants.empty())
+                error(span, "enum '" + decl.name + "' needs at least one variant");
+
+            for (const ast::EnumVariant& v : decl.variants)
+            {
+                if (std::ranges::find(info.variants, v.name) != info.variants.end())
+                {
+                    error(v.span, "enum '" + decl.name + "' already has a variant '" + v.name + "'");
+                    continue;
+                }
+
+                info.variants.push_back(v.name);
+            }
+
+            _output.to_file_index[&decl] = _file_id;
+            _output.enums.push_back(std::move(info));
+        }
+
         void discover_method(StructId owner, const ast::FnDecl& m, const SourceSpan& span)
         {
             StructInfo& s = _output.structs[static_cast<size_t>(owner)];
@@ -484,7 +581,7 @@ namespace foo
 
         bool add_struct(const Path& path, StructId id, const SourceSpan& span)
         {
-            if (_struct_map.emplace(path, id).second)
+            if (!_enum_map.contains(path) && _struct_map.emplace(path, id).second)
                 return true;
 
             error(span, "'" + to_string(path) + "' is already declared");
@@ -508,6 +605,18 @@ namespace foo
             {
                 auto found = _struct_map.find(candidate);
                 if (found != _struct_map.end())
+                    return found->second;
+            }
+
+            return std::nullopt;
+        }
+
+        std::optional<EnumId> lookup_enum(const Path& name) const
+        {
+            for (const Path& candidate : candidate_paths(name))
+            {
+                auto found = _enum_map.find(candidate);
+                if (found != _enum_map.end())
                     return found->second;
             }
 
@@ -583,12 +692,28 @@ namespace foo
             states[index] = StructVisitState::Visiting;
 
             for (const FieldInfo& field : info.fields)
-            {
-                if (types().kind(field.type) == TypeKind::Struct)
-                    check_struct_contains_itself(types().struct_id(field.type), states);
-            }
+                check_type_contains(field.type, states);
 
             states[index] = StructVisitState::Done;
+        }
+
+        // a struct is also contained by value when it sits inside a tuple field
+        void check_type_contains(TypeId type, std::vector<StructVisitState>& states)
+        {
+            switch (types().kind(type))
+            {
+                case TypeKind::Struct:
+                    check_struct_contains_itself(types().struct_id(type), states);
+                    break;
+
+                case TypeKind::Tuple:
+                    for (TypeId member : types().members(type))
+                        check_type_contains(member, states);
+                    break;
+
+                default:
+                    break;
+            }
         }
 
         TypeId resolve_type(const ast::TypeExprPtr& te)
@@ -621,6 +746,44 @@ namespace foo
                 {
                     TypeId e = resolve_type(o.element_type);
                     return types().optional_of(e);
+                },
+                [&](const ast::TupleType& t) -> TypeId
+                {
+                    std::vector<TypeId> elements;
+
+                    for (const ast::TupleElem& element : t.elements)
+                    {
+                        TypeId id = resolve_type(element.type);
+
+                        if (id == BaseTypes::Void)
+                        {
+                            error(element.type->span, "a tuple element cannot be void");
+                            id = BaseTypes::Error;
+                        }
+
+                        elements.push_back(id);
+                    }
+
+                    return types().tuple_of(std::move(elements));
+                },
+                [&](const ast::VariantType& v) -> TypeId
+                {
+                    std::vector<TypeId> alternatives;
+
+                    for (const ast::TypeExprPtr& alternative : v.alternatives)
+                    {
+                        TypeId id = resolve_type(alternative);
+
+                        if (id == BaseTypes::Void || id == BaseTypes::Any)
+                        {
+                            error(alternative->span, "a variant cannot contain '" + type_name(id) + "'");
+                            id = BaseTypes::Error;
+                        }
+
+                        alternatives.push_back(id);
+                    }
+
+                    return types().variant_of(std::move(alternatives));
                 }
             }, te->type);
         }
@@ -637,12 +800,24 @@ namespace foo
                 if (s == "string")  return BaseTypes::String;
                 if (s == "void")    return BaseTypes::Void;
                 if (s == "any")     return BaseTypes::Any;
-                if (s == "_")       return BaseTypes::Infer;
+
+                if (s == "_")
+                {
+                    if (_allow_infer)
+                        return BaseTypes::Infer;
+
+                    error(span, "'_' can only be used in the type of a variable, it is inferred from the initializer");
+                    return BaseTypes::Error;
+                }
             }
 
             std::optional<StructId> found_struct = lookup_struct(parts);
             if (found_struct.has_value())
                 return struct_at(*found_struct).type;
+
+            std::optional<EnumId> found_enum = lookup_enum(parts);
+            if (found_enum.has_value())
+                return enum_at(*found_enum).type;
 
             if (TypeId t = find_native_type(parts); t != EmptyType)
                 return t;
@@ -728,6 +903,15 @@ namespace foo
                 case TypeKind::Error:
                     return true;
 
+                case TypeKind::Tuple:
+                {
+                    for (TypeId member : types().members(type))
+                        if (!has_default(member, visiting))
+                            return false;
+
+                    return true;
+                }
+
                 case TypeKind::Struct:
                 {
                     const StructId id = types().struct_id(type);
@@ -746,6 +930,7 @@ namespace foo
                     return ok;
                 }
 
+                // no default for variants and enums on purpose, giving one later is not a breaking change
                 default:
                     return false;
             }
@@ -955,38 +1140,249 @@ namespace foo
             }, stmt.kind);
         }
 
+        // ---- type inference holes: var a: _? = 1;
+
+        bool contains_infer(TypeId type)
+        {
+            if (type == BaseTypes::Infer)
+                return true;
+
+            switch (types().kind(type))
+            {
+                case TypeKind::Array:
+                case TypeKind::Optional:
+                case TypeKind::Set:
+                case TypeKind::Range:
+                    return contains_infer(types().element(type));
+
+                case TypeKind::Map:
+                    return contains_infer(types().key(type)) || contains_infer(types().value(type));
+
+                case TypeKind::Tuple:
+                case TypeKind::Variant:
+                    for (TypeId member : types().members(type))
+                        if (contains_infer(member))
+                            return true;
+
+                    return false;
+
+                default:
+                    return false;
+            }
+        }
+
+        // pattern is a written type with holes in it, actual is the type of the initializer
+        std::optional<TypeId> fill_holes(TypeId pattern, TypeId actual)
+        {
+            if (pattern == BaseTypes::Infer)
+            {
+                if (actual == BaseTypes::Void || actual == BaseTypes::None)
+                    return std::nullopt;
+
+                return actual;
+            }
+
+            if (!contains_infer(pattern))
+                return pattern;
+
+            if (actual == BaseTypes::Error)
+                return BaseTypes::Error;
+
+            const TypeKind pattern_kind = types().kind(pattern);
+            const TypeKind actual_kind = types().kind(actual);
+
+            if (pattern_kind == TypeKind::Optional)
+            {
+                // `_?` takes the element of an optional initializer, and wraps a plain one
+                const TypeId inner_actual = (actual_kind == TypeKind::Optional) ? types().element(actual) : actual;
+
+                auto inner = fill_holes(types().element(pattern), inner_actual);
+                if (!inner)
+                    return std::nullopt;
+
+                return types().optional_of(*inner);
+            }
+
+            if (pattern_kind != actual_kind)
+                return std::nullopt;
+
+            switch (pattern_kind)
+            {
+                case TypeKind::Array:
+                {
+                    auto e = fill_holes(types().element(pattern), types().element(actual));
+                    if (!e)
+                        return std::nullopt;
+
+                    return types().array_of(*e);
+                }
+
+                case TypeKind::Set:
+                {
+                    auto e = fill_holes(types().element(pattern), types().element(actual));
+                    if (!e)
+                        return std::nullopt;
+
+                    return types().set_of(*e);
+                }
+
+                case TypeKind::Range:
+                {
+                    auto e = fill_holes(types().element(pattern), types().element(actual));
+                    if (!e)
+                        return std::nullopt;
+
+                    return types().range_of(*e);
+                }
+
+                case TypeKind::Map:
+                {
+                    auto k = fill_holes(types().key(pattern), types().key(actual));
+                    auto v = fill_holes(types().value(pattern), types().value(actual));
+                    if (!k || !v)
+                        return std::nullopt;
+
+                    return types().map_of(*k, *v);
+                }
+
+                case TypeKind::Tuple:
+                {
+                    const std::vector<TypeId> wanted = types().members(pattern);
+                    const std::vector<TypeId> found = types().members(actual);
+
+                    if (wanted.size() != found.size())
+                        return std::nullopt;
+
+                    std::vector<TypeId> elements;
+                    for (size_t i = 0; i < wanted.size(); ++i)
+                    {
+                        auto member = fill_holes(wanted[i], found[i]);
+                        if (!member)
+                            return std::nullopt;
+
+                        elements.push_back(*member);
+                    }
+
+                    return types().tuple_of(std::move(elements));
+                }
+
+                default: // a '_' inside a variant would be ambiguous
+                    return std::nullopt;
+            }
+        }
+
+        TypeId infer_type(TypeId written, TypeId init_type, const SourceSpan& span)
+        {
+            if (auto filled = fill_holes(written, init_type))
+                return *filled;
+
+            error(span, "cannot infer '_' from '" + type_name(init_type) + "'");
+            return BaseTypes::Error;
+        }
+
+        // ---- patterns
+
+        // the element types of a tuple with exactly `count` elements, or `count` Errors (after reporting)
+        std::vector<TypeId> tuple_members(TypeId type, size_t count, const SourceSpan& span)
+        {
+            if (type != BaseTypes::Error)
+            {
+                if (types().kind(type) == TypeKind::Tuple && types().members(type).size() == count)
+                    return types().members(type); // a copy
+
+                error(span, "cannot destructure '" + type_name(type) + "' into " + std::to_string(count) + " elements");
+            }
+
+            return std::vector<TypeId>(count, BaseTypes::Error);
+        }
+
+        // `type` is the type of the value that gets stored in the pattern.
+        // names are declared, places are checked to be assignable
+        void resolve_pattern(const ast::Pattern& pattern, TypeId type)
+        {
+            std::visit(overload{
+                [&](const ast::PatWild&) {},
+                [&](const ast::PatName& n)
+                {
+                    _output.pattern_vars[&n] = declare_local(n.name, type, pattern.span);
+                },
+                [&](const ast::PatPlace& n)
+                {
+                    const TypeId place_type = resolve_expr(*n.place);
+
+                    if (place_type == BaseTypes::Error)
+                        return;
+
+                    if (!is_lvalue(*n.place))
+                        error(n.place->span, "this is not an lvalue");
+                    else
+                        expect_assignable(place_type, type, n.place->span);
+                },
+                [&](const ast::PatTuple& t)
+                {
+                    const std::vector<TypeId> members = tuple_members(type, t.elements.size(), pattern.span);
+
+                    for (size_t i = 0; i < t.elements.size(); ++i)
+                        resolve_pattern(*t.elements[i], members[i]);
+                }
+            }, pattern.kind);
+        }
+
         void resolve_var_decl(const ast::VarDecl& var, const SourceSpan& span)
         {
+            // set for `var x`, null for `var _` and `var (a, b)`
+            const auto* single = std::get_if<ast::PatName>(&var.pattern->kind);
+
             TypeId written_type = EmptyType;
             if (var.type)
+            {
+                _allow_infer = true;
                 written_type = resolve_type(var.type);
+                _allow_infer = false;
+            }
 
+            const bool has_hole = written_type != EmptyType && contains_infer(written_type);
             TypeId type = written_type;
 
             if (var.init)
             {
-                TypeId init_type = resolve_expr(*var.init, written_type);
+                // a type with '_' in it can't be used as a hint for the initializer
+                TypeId init_type = resolve_expr(*var.init, has_hole ? EmptyType : written_type);
 
                 if (written_type == EmptyType)
                     type = init_type;
                 else
-                    expect_assignable(written_type, init_type, var.init->span);
+                {
+                    if (has_hole)
+                        type = infer_type(written_type, init_type, var.init->span);
+
+                    expect_assignable(type, init_type, var.init->span);
+                }
+            }
+            else if (has_hole)
+            {
+                error(span, "this declaration uses '_' and needs an initializer to infer from");
+                type = BaseTypes::Error;
+            }
+            else if (!single)
+            {
+                type = BaseTypes::Error; // the parser already reported the missing initializer
             }
             else if (written_type == EmptyType)
             {
-                error(span, "variable '" + var.name + "' needs a type or an initializer");
+                error(span, "variable '" + single->name + "' needs a type or an initializer");
                 type = BaseTypes::Error;
             }
             else
             {
                 if (!has_default(written_type))
-                    error(span, "variable '" + var.name + "' has type '" + type_name(written_type)
+                    error(span, "variable '" + single->name + "' has type '" + type_name(written_type)
                         + "' which has no default value, give it an initializer");
                 else
-                    warn(span, "variable '" + var.name + "' doesn't have a initial value");
+                    warn(span, "variable '" + single->name + "' doesn't have a initial value");
             }
 
-            _output.var_decls[&var] = declare_local(var.name, type, span);
+            resolve_pattern(*var.pattern, type);
         }
 
         void resolve_return(const ast::Return& ret, const SourceSpan& span)
@@ -1159,20 +1555,21 @@ namespace foo
 
         // exprs
 
-        // lvalues, this is true for anything on the left side of =
-        static bool is_lvalue(const ast::Expr& expr)
+        // lvalues, this is true for anything on the left side of =.
+        // a name only counts when it is a local, Color::red is a name but not something you can assign to
+        bool is_lvalue(const ast::Expr& expr) const
         {
-
             return std::visit(overload{
-                [](const ast::Name&)
+                [&](const ast::Name&)
                 {
-                    return true;
+                    const auto it = _output.exprs.find(&expr);
+                    return it != _output.exprs.end() && it->second.ref == RefKind::Local;
                 },
-                [](const ast::Index& index)
+                [&](const ast::Index& index)
                 {
                     return is_lvalue(*index.target);
                 },
-                [](const ast::Member& member)
+                [&](const ast::Member& member)
                 {
                     return is_lvalue(*member.target);
                 },
@@ -1201,6 +1598,22 @@ namespace foo
 
                 if (to == BaseTypes::Float && from == BaseTypes::Int)
                     return true;
+
+                if (types().kind(to) == TypeKind::Variant)
+                {
+                    const std::vector<TypeId>& alternatives = types().members(to);
+
+                    // (int | string) goes into (int | string | bool), every alternative must exist in the target
+                    if (types().kind(from) == TypeKind::Variant)
+                    {
+                        return std::ranges::all_of(types().members(from), [&](TypeId f)
+                        {
+                            return std::ranges::find(alternatives, f) != alternatives.end();
+                        });
+                    }
+
+                    return std::ranges::find(alternatives, from) != alternatives.end();
+                }
 
                 if (types().kind(to) == TypeKind::Optional && from == BaseTypes::None)
                     return true;
@@ -1236,6 +1649,7 @@ namespace foo
             [&](const ast::StringLit&)          { return make_einfo(BaseTypes::String); },
             [&](const ast::BoolLit&)            { return make_einfo(BaseTypes::Bool); },
             [&](const ast::ArrayLit& e)         { return resolve_array_expr(e, span, expected_type); },
+            [&](const ast::TupleLit& e)         { return resolve_tuple_lit(e, expected_type); },
             [&](const ast::StructLit& e)        { return resolve_struct_lit(e, span); },
             [&](const ast::Name &e)             { return resolve_name(e, span); },
             [&](const ast::Unary& e)            { return resolve_unary(e, span); },
@@ -1243,7 +1657,9 @@ namespace foo
             [&](const ast::Index& e)            { return resolve_index(e, span); },
             [&](const ast::Member& e)           { return resolve_member(e, span); },
             [&](const ast::Call& e)             { return resolve_call(e, span); },
-            [&](const ast::StaticCall& e)       { return resolve_static_call(e, span); }
+            [&](const ast::StaticCall& e)       { return resolve_static_call(e, span); },
+            [&](const ast::As& e)               { return resolve_as(e, span); },
+            [&](const ast::PatternAssign& e)    { return resolve_pattern_assign(e); }
             }, expr.kind);
 
             _output.exprs[&expr] = info;
@@ -1278,6 +1694,80 @@ namespace foo
             }
 
             return make_einfo(types().array_of(element_type));
+        }
+
+        ExprInfo resolve_tuple_lit(const ast::TupleLit& tuple, TypeId expected)
+        {
+            if (expected != EmptyType && types().kind(expected) == TypeKind::Optional)
+                expected = types().element(expected);
+
+            // only a tuple of the same size gives hints for the elements
+            std::vector<TypeId> hints;
+            if (expected != EmptyType && types().kind(expected) == TypeKind::Tuple
+                && types().members(expected).size() == tuple.elements.size())
+                hints = types().members(expected);
+
+            std::vector<TypeId> actual;
+            bool fits = !hints.empty();
+
+            for (size_t i = 0; i < tuple.elements.size(); ++i)
+            {
+                TypeId type = resolve_expr(*tuple.elements[i], hints.empty() ? EmptyType : hints[i]);
+
+                if (type == BaseTypes::Void)
+                {
+                    error(tuple.elements[i]->span, "a tuple element cannot be void");
+                    type = BaseTypes::Error;
+                }
+
+                if (!hints.empty() && !assignable(hints[i], type))
+                    fits = false;
+
+                actual.push_back(type);
+            }
+
+            // when every element converts to the expected one, the literal gets the expected type
+            // and the runtime converts each element (the same way arrays do it)
+            return make_einfo(fits ? expected : types().tuple_of(std::move(actual)));
+        }
+
+        ExprInfo resolve_as(const ast::As& as, const SourceSpan& span)
+        {
+            const TypeId source = resolve_expr(*as.expr);
+            const TypeId target = resolve_type(as.type);
+
+            if (source == BaseTypes::Error || target == BaseTypes::Error)
+                return make_einfo(BaseTypes::Error);
+
+            if (target == BaseTypes::Void || types().kind(target) == TypeKind::Optional)
+            {
+                error(as.type->span, "cannot use '" + type_name(target) + "' with 'as'");
+                return make_einfo(BaseTypes::Error);
+            }
+
+            if (types().kind(source) == TypeKind::Variant)
+            {
+                const std::vector<TypeId>& alternatives = types().members(source);
+
+                if (std::ranges::find(alternatives, target) == alternatives.end())
+                {
+                    error(as.type->span, "'" + type_name(target) + "' is not part of '" + type_name(source) + "'");
+                    return make_einfo(BaseTypes::Error);
+                }
+            }
+            else if (source != BaseTypes::Any)
+            {
+                error(span, "'as' needs a variant or any, found '" + type_name(source) + "'");
+                return make_einfo(BaseTypes::Error);
+            }
+
+            return make_einfo(types().optional_of(target));
+        }
+
+        ExprInfo resolve_pattern_assign(const ast::PatternAssign& assign)
+        {
+            resolve_pattern(*assign.pattern, resolve_expr(*assign.value));
+            return make_einfo(BaseTypes::Void);
         }
 
         ExprInfo resolve_struct_lit(const ast::StructLit& lit, const SourceSpan& span)
@@ -1361,6 +1851,26 @@ namespace foo
 
                 if (local != nullptr)
                     return make_einfo(local->type, RefKind::Local, local->slot);
+            }
+
+            // Color::red
+            if (name.path.size() >= 2)
+            {
+                const Path type_path(name.path.begin(), name.path.end() - 1);
+
+                if (auto found = lookup_enum(type_path))
+                {
+                    const EnumInfo& info = enum_at(*found);
+                    const auto variant = std::ranges::find(info.variants, name.path.back());
+
+                    if (variant == info.variants.end())
+                    {
+                        error(span, "enum '" + to_string(info.path) + "' has no variant '" + name.path.back() + "'");
+                        return make_einfo(BaseTypes::Error);
+                    }
+
+                    return make_einfo(info.type, RefKind::EnumVariant, static_cast<Id>(variant - info.variants.begin()));
+                }
             }
 
             error(span, "unknown variable '" + to_string(name.path) + "'");
@@ -1496,7 +2006,8 @@ namespace foo
             TypeId target_type = resolve_expr(*assign.lhs);
             TypeId value_type = resolve_expr(*assign.rhs, target_type);
 
-            if (is_lvalue(*assign.lhs) == false)
+            // an unknown name already got its own error
+            if (target_type != BaseTypes::Error && is_lvalue(*assign.lhs) == false)
                 error(assign.lhs->span, "the left side of '=' is not an lvalue");
             else
                 expect_assignable(target_type, value_type, assign.rhs->span);
@@ -1524,6 +2035,29 @@ namespace foo
             {
                 expect_assignable(types().key(target_type), index_type, index.indexer->span);
                 return make_einfo(types().value(target_type));
+            }
+
+            // t[0], the index has to be a literal so the type of the element is known
+            if (kind == TypeKind::Tuple)
+            {
+                const auto* literal = std::get_if<ast::IntLit>(&index.indexer->kind);
+
+                if (!literal)
+                {
+                    error(index.indexer->span, "a tuple can only be indexed with an integer literal");
+                    return make_einfo(BaseTypes::Error);
+                }
+
+                const std::vector<TypeId>& members = types().members(target_type);
+
+                if (literal->value < 0 || static_cast<uint64_t>(literal->value) >= members.size())
+                {
+                    error(index.indexer->span, "tuple index " + std::to_string(literal->value)
+                        + " is out of range (size " + std::to_string(members.size()) + ")");
+                    return make_einfo(BaseTypes::Error);
+                }
+
+                return make_einfo(members[static_cast<size_t>(literal->value)]);
             }
 
             error(span, "cannot index into '" + type_name(target_type) + "'");

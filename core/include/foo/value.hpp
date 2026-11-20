@@ -1,7 +1,7 @@
 #ifndef FOO_VALUE_HPP
 #define FOO_VALUE_HPP
 
-#include "resolver.hpp"
+#include <foo/resolver.hpp>
 
 #include <compare>
 #include <cstdint>
@@ -37,12 +37,17 @@ namespace foo
     {
         Range(ValueRef lo, ValueRef hi, bool inclusive)
             : lo(std::move(lo)), hi(std::move(hi)), inclusive(inclusive) {}
-     
+
         ValueRef lo, hi;
         bool inclusive;
     };
 
     struct Array
+    {
+        std::vector<ValueRef> items;
+    };
+
+    struct Tuple
     {
         std::vector<ValueRef> items;
     };
@@ -62,6 +67,14 @@ namespace foo
         std::vector<ValueRef> fields;
     };
 
+    // a variant of an enum, `index` is the position in the enum declaration
+    struct EnumValue
+    {
+        EnumId id = EmptyId;
+        int index = 0;
+    };
+
+    // used for `any` and for variants: the value and which type it really is
     struct Boxed
     {
         ValueRef v;
@@ -89,9 +102,11 @@ namespace foo
             std::string,
             Range,
             Array,
+            Tuple,
             Map,
             Set,
             Struct,
+            EnumValue,
             Boxed,
             Rc<Native>
         >;
@@ -111,7 +126,8 @@ namespace foo
         return (*a <=> *b) < 0;
     }
 
-    std::string to_string(const Value& v);
+    // `names` is needed to print enum variants by name
+    std::string to_string(const Value& v, const ResolveOutput* names = nullptr);
 }
 
 

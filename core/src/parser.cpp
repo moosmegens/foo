@@ -218,6 +218,7 @@ namespace foo
             {
                 return check<tok::Function>()
                     || check<tok::Struct>()
+                    || check<tok::Enum>()
                     || check<tok::Import>()
 
                     ;
@@ -420,6 +421,7 @@ namespace foo
 
             struct BindingPower { int left; int right; };
 
+            static const int as_bp = 18;
             static const int unary_bp = 19;
             static const int postfix_bp = 21;
             static const int assign_l_bp = 2;
@@ -507,7 +509,7 @@ namespace foo
                 ast::TypeExprPtr base = nullptr;
 
 
-                // 2 core types, named and map
+                // core types: map / set, tuple / variant and named
 
                 // map
                 if (check<tok::LBracket>())
@@ -544,6 +546,75 @@ namespace foo
                         base->type = ast::MapType{std::move(first_type), std::move(second_type)};
                     else
                         base->type = ast::SetType{std::move(first_type)};
+                    base->span = span;
+                }
+                // tuple (int, string), or variant (int | string)
+                else if (match<tok::LParen>())
+                {
+                    std::vector<ast::TupleElem> items;
+                    bool is_variant = false;
+
+                    while (true)
+                    {
+                        ast::TupleElem item;
+
+                        // an optional name, only documentation
+                        if (check<tok::Identifier>() && check<tok::Colon>(1))
+                        {
+                            item.name = std::get<tok::Identifier>(current().variant).value;
+                            advance(); // name
+                            advance(); // ':'
+                        }
+
+                        item.type = parse_type();
+                        if (!item.type)
+                            return nullptr;
+
+                        items.push_back(std::move(item));
+
+                        if (check<tok::Comma>() || check<tok::Pipe>())
+                        {
+                            const bool pipe = check<tok::Pipe>();
+
+                            if (items.size() == 1)
+                                is_variant = pipe;
+                            else if (pipe != is_variant)
+                            {
+                                report_error(current(), "cannot mix ',' and '|', wrap one of them in parentheses");
+                                return nullptr;
+                            }
+
+                            advance();
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    if (!expect<tok::RParen>())
+                        return nullptr;
+
+                    finish_span(span);
+
+                    if (items.size() < 2)
+                    {
+                        report_error(span, "a tuple or variant needs at least 2 types");
+                        return nullptr;
+                    }
+
+                    base = std::make_unique<ast::TypeExpr>();
+
+                    if (is_variant)
+                    {
+                        ast::VariantType variant;
+                        for (auto& item : items)
+                            variant.alternatives.push_back(std::move(item.type));
+
+                        base->type = std::move(variant);
+                    }
+                    else
+                        base->type = ast::TupleType{std::move(items)};
+
                     base->span = span;
                 }
                 else if (check<tok::Identifier>())
@@ -662,8 +733,67 @@ namespace foo
                     return decl;
                 }
 
+                if (match<tok::Enum>())
+                {
+                    auto enumeration = parse_enum_decl();
+                    if (!enumeration)
+                        return nullptr;
+
+                    auto decl = std::make_unique<ast::Decl>();
+                    decl->kind = std::move(*enumeration);
+                    finish_span(span);
+                    decl->span = span;
+
+                    return decl;
+                }
+
                 report_error(current(), "expected declaration");
                 return nullptr;
+            }
+
+            std::optional<ast::EnumDecl> parse_enum_decl()
+            {
+                if (!check<tok::Identifier>())
+                {
+                    report_error(current(), "expected enum name");
+                    return std::nullopt;
+                }
+
+                std::string name = std::get<tok::Identifier>(current().variant).value;
+                advance();
+
+                if (!expect<tok::LBrace>())
+                    return std::nullopt;
+
+                std::vector<ast::EnumVariant> variants;
+
+                while (!check<tok::RBrace>() && !is_at_end())
+                {
+                    if (!check<tok::Identifier>())
+                    {
+                        report_error(current(), "expected variant name");
+
+                        while (!is_at_end() && !check<tok::Comma>() && !check<tok::RBrace>())
+                            advance();
+
+                        match<tok::Comma>();
+                        continue;
+                    }
+
+                    variants.push_back({std::get<tok::Identifier>(current().variant).value, current().source});
+                    advance();
+
+                    if (match<tok::Comma>())
+                        continue;
+
+                    if (!check<tok::RBrace>())
+                        report_error(current(), "expected ',' or '}' after enum variant");
+                }
+
+                if (!expect<tok::RBrace>())
+                    return std::nullopt;
+
+                return ast::EnumDecl{std::move(name), std::move(variants)};
             }
 
             std::optional<ast::StructDecl> parse_struct_decl()
@@ -981,16 +1111,105 @@ namespace foo
                     span);
             }
 
+            // parse:
+            //      patterns, for declarations: a name, '_' or a tuple of patterns
+            //          a
+            //          _
+            //          (a, (b, _))
+
+            ast::PatternPtr parse_pattern()
+            {
+                SourceSpan span = current().source;
+
+                if (check<tok::Identifier>())
+                {
+                    std::string name = std::get<tok::Identifier>(current().variant).value;
+                    advance();
+                    finish_span(span);
+
+                    auto pattern = std::make_unique<ast::Pattern>();
+                    pattern->span = span;
+
+                    if (name == "_")
+                        pattern->kind = ast::PatWild{};
+                    else
+                        pattern->kind = ast::PatName{std::move(name)};
+
+                    return pattern;
+                }
+
+                if (match<tok::LParen>())
+                {
+                    std::vector<ast::PatternPtr> elements;
+
+                    while (true)
+                    {
+                        auto element = parse_pattern();
+                        if (!element)
+                            return nullptr;
+
+                        elements.push_back(std::move(element));
+
+                        if (!match<tok::Comma>() || check<tok::RParen>())
+                            break;
+                    }
+
+                    if (!expect<tok::RParen>())
+                        return nullptr;
+
+                    finish_span(span);
+
+                    if (elements.size() < 2)
+                    {
+                        report_error(span, "a tuple pattern needs at least 2 elements");
+                        return nullptr;
+                    }
+
+                    auto pattern = std::make_unique<ast::Pattern>();
+                    pattern->kind = ast::PatTuple{std::move(elements)};
+                    pattern->span = span;
+                    return pattern;
+                }
+
+                report_error_after(current(), "expected a variable name, '_' or '('");
+                return nullptr;
+            }
+
+            // for assignments the pattern was parsed as an expression, (a, (b.x, _)) = value
+            // a tuple becomes a tuple pattern, `_` a wildcard, and anything else is a place to assign to
+            ast::PatternPtr to_place_pattern(ast::ExprPtr expr)
+            {
+                auto pattern = std::make_unique<ast::Pattern>();
+                pattern->span = expr->span;
+
+                if (ast::is_wildcard(*expr))
+                {
+                    pattern->kind = ast::PatWild{};
+                }
+                else if (auto* tuple = std::get_if<ast::TupleLit>(&expr->kind))
+                {
+                    ast::PatTuple result;
+
+                    for (auto& element : tuple->elements)
+                        result.elements.push_back(to_place_pattern(std::move(element)));
+
+                    pattern->kind = std::move(result);
+                }
+                else
+                {
+                    pattern->kind = ast::PatPlace{std::move(expr)};
+                }
+
+                return pattern;
+            }
+
             ast::StmtPtr parse_var_stmt(SourceSpan span)
             {
-                if (!check<tok::Identifier>())
-                {
-                    report_error(current(), "expected variable name");
+                const Token& first_token = current();
+
+                auto pattern = parse_pattern();
+                if (!pattern)
                     return nullptr;
-                }
-                const Token& name_token = current();
-                std::string name = std::get<tok::Identifier>(name_token.variant).value;
-                advance();
 
                 ast::TypeExprPtr type;
                 if (match<tok::Colon>())
@@ -1008,12 +1227,18 @@ namespace foo
                         return nullptr;
                 }
 
-                if (!type && !init)
-                    report_error(name_token, "variable needs a type or an initializer");
+                if (!init)
+                {
+                    if (!std::holds_alternative<ast::PatName>(pattern->kind))
+                        report_error(first_token, "a pattern declaration needs an initializer");
+                    else if (!type)
+                        report_error(first_token, "variable needs a type or an initializer");
+                }
 
                 expect<tok::Semicolon>(true);
                 finish_span(span);
-                return std::make_unique<ast::Stmt>(ast::VarDecl{std::move(name), std::move(type), std::move(init)}, span);
+                return std::make_unique<ast::Stmt>(
+                    ast::VarDecl{std::move(pattern), std::move(type), std::move(init)}, span);
             }
 
             ast::StmtPtr parse_return_stmt(SourceSpan span)
@@ -1162,6 +1387,14 @@ namespace foo
                             break;
 
                         left = parse_postfix(std::move(left));
+                    }
+                    else if (token_variant_is<tok::As>(next))
+                    {
+                        // `value as T` binds tighter than * but looser than unary minus
+                        if (as_bp < min_bp)
+                            break;
+
+                        left = parse_as(std::move(left));
                     }
                     else if (auto bp = binary_bp(next))
                     {
@@ -1347,19 +1580,48 @@ namespace foo
                     return std::make_unique<ast::Expr>(ast::Unary{*op, std::move(operand)}, span);
                 }
 
+                // (expr), or a tuple (a, b, ..)
                 if (match<tok::LParen>())
                 {
-                    auto inner = parse_expr();
+                    auto first = parse_expr();
 
-                    if (!inner)
+                    if (!first)
                         return nullptr;
+
+                    if (check<tok::Comma>())
+                    {
+                        std::vector<ast::ExprPtr> elements;
+                        elements.push_back(std::move(first));
+
+                        while (match<tok::Comma>())
+                        {
+                            if (check<tok::RParen>()) // trailing comma
+                                break;
+
+                            auto next = parse_expr();
+                            if (!next)
+                                return nullptr;
+
+                            elements.push_back(std::move(next));
+                        }
+
+                        if (!expect<tok::RParen>())
+                            return nullptr;
+
+                        finish_span(span);
+
+                        if (elements.size() < 2)
+                            report_error(span, "a tuple needs at least 2 elements");
+
+                        return std::make_unique<ast::Expr>(ast::TupleLit{std::move(elements)}, span);
+                    }
 
                     if (!expect<tok::RParen>())
                         return nullptr;
 
                     finish_span(span);
-                    inner->span = span;
-                    return inner;
+                    first->span = span;
+                    return first;
                 }
 
                 if (match<tok::LBracket>())
@@ -1474,6 +1736,21 @@ namespace foo
                 return nullptr;
             }
 
+            // value as T
+            ast::ExprPtr parse_as(ast::ExprPtr lhs)
+            {
+                SourceSpan span = lhs->span;
+
+                advance(); // 'as'
+
+                auto type = parse_type();
+                if (!type)
+                    return nullptr;
+
+                finish_span(span);
+                return std::make_unique<ast::Expr>(ast::As{std::move(lhs), std::move(type)}, span);
+            }
+
             ast::ExprPtr parse_binary(ast::ExprPtr lhs, int right_bp)
             {
                 SourceSpan span = lhs->span;
@@ -1486,6 +1763,12 @@ namespace foo
                     return nullptr;
 
                 finish_span(span);
+
+                // (a, (b, _)) = value, the tuple on the left is a pattern
+                if (*op == ast::BinaryOp::Assign && std::holds_alternative<ast::TupleLit>(lhs->kind))
+                    return std::make_unique<ast::Expr>(
+                        ast::PatternAssign{to_place_pattern(std::move(lhs)), std::move(rhs)}, span);
+
                 return std::make_unique<ast::Expr>(ast::Binary{*op, std::move(lhs), std::move(rhs)}, span);
             }
 

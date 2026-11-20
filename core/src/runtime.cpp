@@ -422,6 +422,21 @@ namespace foo
             while (types.kind(to) == TypeKind::Optional && types.kind(from) != TypeKind::Optional)
                 to = types.element(to);
 
+            // a variant value is a Boxed that remembers which alternative it holds,
+            // `from` is that alternative (the resolver only allows exact members)
+            if (types.kind(to) == TypeKind::Variant && from != to
+                && from != BaseTypes::None && types.kind(from) != TypeKind::Variant)
+            {
+                if (v.use_count() != 1)
+                    v = copy(v);
+
+                return make_value(Boxed{std::move(v), from});
+            }
+
+            // a variant already is an `any` that can only hold a few types, so it doesn't get boxed again
+            if (to == BaseTypes::Any && types.kind(from) == TypeKind::Variant)
+                return v;
+
             if (to == BaseTypes::Any && from != BaseTypes::Any)
             {
                 if (v.use_count() != 1)
@@ -470,6 +485,19 @@ namespace foo
             case TypeKind::Optional:
                 return make_void();
 
+            case TypeKind::Tuple:
+            {
+                Tuple tuple;
+
+                for (TypeId member : types.members(t))
+                {
+                    FOO_TRY(value, default_value(span, member));
+                    tuple.items.push_back(std::move(value));
+                }
+
+                return make_value(std::move(tuple));
+            }
+
             case TypeKind::Struct:
             {
                 Struct s;
@@ -507,6 +535,7 @@ namespace foo
                 [&](const StringLit& x) -> ValueResult  { return make_string(x.value); },
                 [&](const BoolLit& x) -> ValueResult    { return make_bool(x.value); },
                 [&](const ArrayLit& x)                  { return eval_array(e, x); },
+                [&](const TupleLit& x)                  { return eval_tuple_lit(e, x); },
                 [&](const NoneLit&) -> ValueResult      { return make_void(); },
                 [&](const StructLit& x)                 { return eval_struct_lit(e, x); },
                 [&](const Name&)                        { return eval_name(e); },
@@ -515,7 +544,9 @@ namespace foo
                 [&](const Index& x)                     { return eval_index(e, x); },
                 [&](const Call& x)                      { return eval_call(e, x); },
                 [&](const Member& x)                    { return eval_member(e, x); },
-                [&](const StaticCall& x)                { return eval_static_call(e, x); }
+                [&](const StaticCall& x)                { return eval_static_call(e, x); },
+                [&](const As& x)                        { return eval_as(e, x); },
+                [&](const PatternAssign& x)             { return eval_pattern_assign(x); }
             }, e.kind);
         }
 
@@ -535,6 +566,29 @@ namespace foo
             }
 
             return make_value(std::move(a));
+        }
+
+        ValueResult eval_tuple_lit(const Expr& e, const TupleLit& x)
+        {
+            const TypeTable& types = resolved().type_table;
+            const TypeId type = info(e).type;
+
+            if (type < 0 || types.kind(type) != TypeKind::Tuple)
+                return error("internal: tuple literal not resolved", e.span);
+
+            // the type of the literal is the tuple it was converted to, every element converts to its own type
+            const std::vector<TypeId>& members = types.members(type);
+
+            Tuple t;
+            t.items.reserve(x.elements.size());
+
+            for (size_t i = 0; i < x.elements.size(); ++i)
+            {
+                FOO_TRY(value, val(*x.elements[i]));
+                t.items.push_back(nudge_value(std::move(value), info(*x.elements[i]).type, members[i]));
+            }
+
+            return make_value(std::move(t));
         }
 
         ValueResult eval_struct_lit(const Expr& e, const StructLit& lit)
@@ -583,6 +637,9 @@ namespace foo
 
             if (i.ref == RefKind::Local)
                 return local(i.index);
+
+            if (i.ref == RefKind::EnumVariant)
+                return make_value(EnumValue{resolved().type_table.enum_id(i.type), static_cast<int>(i.index)});
 
             return error("internal: a name that is not a value");
         }
@@ -721,6 +778,18 @@ namespace foo
                 return a->items[*at];
             }
 
+            if (auto* tuple = std::get_if<Tuple>(&t.v))
+            {
+                // the resolver already checked literal indices, this is a safety net
+                const int64_t i = as_int(key);
+                const auto at = index_in(i, tuple->items.size());
+
+                if (!at)
+                    return error(std::format("index {} out of range (size {})", i, tuple->items.size()), span);
+
+                return tuple->items[*at];
+            }
+
             if (auto* m = std::get_if<Map>(&t.v))
             {
                 auto it = m->items.find(key);
@@ -772,6 +841,21 @@ namespace foo
             FOO_TRY(key, index_key(x));
 
             return index_into(e.span, target, key, info(*x.target).type, false);
+        }
+
+        // value as T: the value when it holds a T, none otherwise
+        ValueResult eval_as(const Expr& e, const As& x)
+        {
+            FOO_TRY(v, ref(*x.expr));
+
+            // the type of this expression is optional<T>
+            const TypeId requested = resolved().type_table.element(info(e).type);
+
+            const auto* boxed = std::get_if<Boxed>(&v->v);
+            if (!boxed || boxed->type != requested)
+                return make_void();
+
+            return copy(boxed->v);
         }
 
         ValueResult eval_call(const Expr& e, const Call& c)
@@ -1004,6 +1088,60 @@ namespace foo
             return place;
         }
 
+        // (a, (b.x, _)) = value
+        ValueResult eval_pattern_assign(const PatternAssign& x)
+        {
+            // the value is evaluated and copied before anything is written, so (a, b) = (b, a) swaps
+            FOO_TRY(value, val(*x.value));
+
+            FOO_TRY(stored, bind_pattern(*x.pattern, std::move(value), info(*x.value).type));
+            (void)stored;
+
+            return make_void();
+        }
+
+        // stores `value` (whose type is value_type) in the pattern:
+        // names get a slot, places get assigned, tuples are taken apart, and `_` throws it away
+        ValueResult bind_pattern(const Pattern& p, ValueRef value, TypeId value_type)
+        {
+            if (std::holds_alternative<PatWild>(p.kind))
+                return make_void();
+
+            if (const auto* name = std::get_if<PatName>(&p.kind))
+            {
+                const LocalInfo& li = lookup(resolved().pattern_vars, name, "pattern variable");
+
+                // the name converts the value to its own type (int to float, boxing into a variant, ...)
+                bind(li.slot, nudge_value(std::move(value), value_type, li.type));
+                return make_void();
+            }
+
+            if (const auto* place = std::get_if<PatPlace>(&p.kind))
+            {
+                FOO_TRY(target, lvalue(*place->place));
+
+                ValueRef converted = nudge_value(std::move(value), value_type, info(*place->place).type);
+
+                target->v = std::move(converted->v);
+                return make_void();
+            }
+
+            const PatTuple& tuple = std::get<PatTuple>(p.kind);
+            const std::vector<TypeId>& members = resolved().type_table.members(value_type);
+            auto& items = expect<Tuple>(*value).items;
+
+            if (items.size() != tuple.elements.size() || members.size() != items.size())
+                return error("internal: destructuring size mismatch", p.span);
+
+            for (size_t i = 0; i < items.size(); ++i)
+            {
+                FOO_TRY(done, bind_pattern(*tuple.elements[i], items[i], members[i]));
+                (void)done;
+            }
+
+            return make_void();
+        }
+
 
         FlowResult exec_block(const Block& b)
         {
@@ -1036,18 +1174,22 @@ namespace foo
 
         FlowResult exec_var_decl(const Stmt& s, const VarDecl& v)
         {
-            const LocalInfo& li = lookup(resolved().var_decls, &v, "variable");
-
             if (v.init)
             {
                 FOO_TRY(value, val(*v.init));
-                bind(li.slot, nudge_value(std::move(value), info(*v.init).type, li.type));
+
+                FOO_TRY(stored, bind_pattern(*v.pattern, std::move(value), info(*v.init).type));
+                (void)stored;
+
+                return Flow::Next;
             }
-            else
-            {
-                FOO_TRY(value, default_value(s.span, li.type));
-                bind(li.slot, std::move(value));
-            }
+
+            // without an initializer the resolver guarantees a single name
+            const PatName& name = std::get<PatName>(v.pattern->kind);
+            const LocalInfo& li = lookup(resolved().pattern_vars, &name, "variable");
+
+            FOO_TRY(value, default_value(s.span, li.type));
+            bind(li.slot, std::move(value));
 
             return Flow::Next;
         }
@@ -1271,6 +1413,11 @@ namespace foo
         return _runner->get_input().resolver_info.type_table;
     }
 
+    const ResolveOutput& Runtime::resolved() const
+    {
+        return _runner->get_input().resolver_info;
+    }
+
     void Runtime::inject(TypeTable& types, NativeRegistry& natives, NativeTable& table)
     {
         (void)types;
@@ -1299,7 +1446,7 @@ namespace foo
                     if (i)
                         line += ' ';
 
-                    line += to_string(*a[i]);
+                    line += to_string(*a[i], &rt.resolved());
                 }
 
                 if (newline)
@@ -1592,9 +1739,9 @@ namespace foo
             {
                 return signature({}, BaseTypes::String);
             },
-            [](Runtime&, Args a, const auto&) -> ValueRef
+            [](Runtime& rt, Args a, const auto&) -> ValueRef
             {
-                return make_value(to_string(*a[0]));
+                return make_value(to_string(*a[0], &rt.resolved()));
             },
             {"T.to_string() -> string", "convert any value to its string representation"});
 

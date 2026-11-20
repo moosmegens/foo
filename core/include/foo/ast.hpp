@@ -28,11 +28,16 @@ namespace foo::ast
     struct TypeExpr;
     struct Decl;
 
+    struct Pattern;
+
+
 
     using TypeExprPtr = std::unique_ptr<TypeExpr>;
     using StmtPtr = std::unique_ptr<Stmt>;
     using ExprPtr = std::unique_ptr<Expr>;
     using DeclPtr = std::unique_ptr<Decl>;
+
+    using PatternPtr = std::unique_ptr<Pattern>;
 
 
     // type expressions
@@ -79,8 +84,34 @@ namespace foo::ast
             return ptr_equal(element_type, other.element_type);
         }
     };
+    struct TupleElem
+    {
+        std::string name; // documentation only, it is not part of the type
 
-    using TypeExprKind = std::variant<NamedType, ArrayType, MapType, SetType, OptionalType>;
+        TypeExprPtr type;
+
+        bool operator==(const TupleElem& other) const
+        {
+            return ptr_equal(type, other.type);
+        }
+    };
+    struct TupleType
+    {
+        std::vector<TupleElem> elements;
+
+        bool operator==(const TupleType&) const = default;
+    };
+    struct VariantType
+    {
+        std::vector<TypeExprPtr> alternatives;
+
+        bool operator==(const VariantType& other) const
+        {
+            return ptr_range_equal(alternatives, other.alternatives);
+        }
+    };
+
+    using TypeExprKind = std::variant<NamedType, ArrayType, MapType, SetType, OptionalType, TupleType, VariantType>;
 
     struct TypeExpr
     {
@@ -141,6 +172,15 @@ namespace foo::ast
         std::vector<ExprPtr> elements;
 
         bool operator==(const ArrayLit& other) const
+        {
+            return ptr_range_equal(elements, other.elements);
+        }
+    };
+    struct TupleLit
+    {
+        std::vector<ExprPtr> elements;
+
+        bool operator==(const TupleLit& other) const
         {
             return ptr_range_equal(elements, other.elements);
         }
@@ -243,13 +283,39 @@ namespace foo::ast
         }
     };
 
+    struct As
+    {
+        ExprPtr expr;
+        TypeExprPtr type;
+
+        bool operator==(const As& other) const
+        {
+            return ptr_equal(expr, other.expr)
+                && ptr_equal(type, other.type);
+        }
+    };
+
+    struct PatternAssign
+    {
+        PatternPtr pattern;
+        ExprPtr value;
+
+        bool operator==(const PatternAssign& other) const
+        {
+            return ptr_equal(pattern, other.pattern)
+                && ptr_equal(value, other.value);
+        }
+    };
+
     using ExprKind = std::variant<
         IntLit, FloatLit, StringLit, BoolLit, ArrayLit, NoneLit,
+        TupleLit,
         StructLit,
         Name,
         Unary, Binary,
         Index, Call, Member,
-        StaticCall>;
+        StaticCall,
+        As, PatternAssign>;
 
     struct Expr
     {
@@ -257,6 +323,60 @@ namespace foo::ast
         SourceSpan span = {};
 
         bool operator==(const Expr& other) const
+        {
+            return kind == other.kind;
+        }
+
+        static void* operator new(std::size_t n) { return ast_pool.allocate(n); }
+        static void operator delete(void* p, std::size_t n) noexcept { ast_pool.deallocate(p, n); }
+    };
+
+    inline bool is_wildcard(const Expr& e)
+    {
+        const auto* name = std::get_if<Name>(&e.kind);
+        return name && name->path.size() == 1 && name->path[0] == "_";
+    }
+
+
+    // patterns
+
+
+    struct PatWild
+    {
+        bool operator==(const PatWild&) const { return true; }
+    };
+    struct PatName
+    {
+        std::string name;
+        bool operator==(const PatName&) const = default;
+    };
+    struct PatPlace
+    {
+        ExprPtr place;
+
+        bool operator==(const PatPlace& other) const
+        {
+            return ptr_equal(place, other.place);
+        }
+    };
+    struct PatTuple
+    {
+        std::vector<PatternPtr> elements;
+
+        bool operator==(const PatTuple& other) const
+        {
+            return ptr_range_equal(elements, other.elements);
+        }
+    };
+
+    using PatternKind = std::variant<PatWild, PatName, PatPlace, PatTuple>;
+
+    struct Pattern
+    {
+        PatternKind kind;
+        SourceSpan span = {};
+
+        bool operator==(const Pattern& other) const
         {
             return kind == other.kind;
         }
@@ -280,13 +400,13 @@ namespace foo::ast
 
     struct VarDecl
     {
-        std::string name;
+        PatternPtr pattern;
         TypeExprPtr type;
         ExprPtr init{}; // can be null
 
         bool operator==(const VarDecl& other) const
         {
-            return name == other.name
+            return ptr_equal(pattern, other.pattern)
                 && ptr_equal(type, other.type)
                 && ptr_equal(init, other.init);
         }
@@ -478,6 +598,25 @@ namespace foo::ast
         }
     };
 
+    struct EnumVariant
+    {
+        std::string name;
+        SourceSpan span = {};
+
+        bool operator==(const EnumVariant& other) const
+        {
+            return name == other.name;
+        }
+    };
+
+    struct EnumDecl
+    {
+        std::string name;
+        std::vector<EnumVariant> variants;
+
+        bool operator==(const EnumDecl&) const = default;
+    };
+
     struct ImportDecl
     {
         std::string name;
@@ -489,7 +628,7 @@ namespace foo::ast
         }
     };
 
-    using DeclKind = std::variant<FnDecl, StructDecl, NamespaceDecl>;
+    using DeclKind = std::variant<FnDecl, StructDecl, EnumDecl, NamespaceDecl>;
 
     struct Decl
     {
