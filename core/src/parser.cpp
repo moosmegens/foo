@@ -56,29 +56,33 @@ namespace foo
             IntermediateParseOutput<ast::TypeExprPtr> parse_type(std::string_view source)
             {
                 init(source);
+                auto value = parse_type();
 
-                return {};
+                return {std::move(_errors), std::move(value)};
             }
 
             IntermediateParseOutput<ast::ExprPtr> parse_expr(std::string_view source)
             {
                 init(source);
+                auto value = parse_expr();
 
-                return {};
+                return {std::move(_errors), std::move(value)};
             }
 
             IntermediateParseOutput<ast::StmtPtr> parse_statement(std::string_view source)
             {
                 init(source);
+                auto value = parse_stmt();
 
-                return {};
+                return {std::move(_errors), std::move(value)};
             }
 
             IntermediateParseOutput<ast::DeclPtr> parse_decl(std::string_view source)
             {
                 init(source);
+                auto value = parse_decl();
 
-                return {};
+                return {std::move(_errors), std::move(value)};
             }
 
         private:
@@ -100,6 +104,8 @@ namespace foo
                 _newline_before = false;
                 _imports = {};
                 _errors = {};
+
+                skip_trivia();
             }
 
             static bool is_digit(char c)
