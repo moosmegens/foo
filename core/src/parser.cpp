@@ -608,6 +608,9 @@ namespace foo
                         error_here("expected ',' or '}' after enum variant");
                 }
 
+                if (!expect("}"))
+                    return std::nullopt;
+
                 return ast::EnumDecl{std::move(*name), std::move(variants)};
             }
 
