@@ -489,6 +489,20 @@ namespace foo
                 }
             }
 
+            void synchronize_statement(size_t start_pos)
+            {
+                while (!at_end() && !at("}"))
+                {
+                    if (accept(";"))
+                        return;
+
+                    if (_pos > start_pos && is_statement_start())
+                        return;
+
+                    skip_token();
+                }
+            }
+
             bool is_struct_member_start()
             {
                 return at_kw("fn")
@@ -1147,17 +1161,16 @@ namespace foo
 
                     if (accept_kw("fn"))
                     {
-                        // auto fn = parse_fn_decl(pub);
-                        //
-                        // if (fn)
-                        //     fns.push_back(std::move(*fn));
-                        // else
-                        //     synchronize_struct_member(member_start);
+                        auto fn = parse_fn_decl(pub);
+
+                        if (fn)
+                            fns.push_back(std::move(*fn));
+                        else
+                            synchronize_struct_member(member_start);
 
                         continue;
                     }
 
-                    // the old parser looped forever here
                     error_here("expected a field or a method");
 
                     if (_pos == member_start)
@@ -1234,15 +1247,12 @@ namespace foo
 
                 const SourceSpan decl_span = span_from(decl_start);
 
-                // auto body = parse_block_body();
-                // if (!body)
-                //     return std::nullopt;
-
-
-
+                auto body = parse_block_body();
+                if (!body)
+                    return std::nullopt;
 
                 return ast::FnDecl{
-                    std::move(*name), std::move(params), std::move(return_type), {},
+                    std::move(*name), std::move(params), std::move(return_type), std::move(*body),
                     pub,
                     decl_span
                 };
@@ -1276,9 +1286,353 @@ namespace foo
                 };
             }
 
+
             // stmts
 
+            std::optional<ast::Block> parse_block_body()
+            {
+                if (!expect("{"))
+                    return std::nullopt;
+
+                std::vector<ast::StmtPtr> stmts;
+
+                while (!at("}") && !at_end())
+                {
+                    const size_t before = _pos;
+
+                    if (auto stmt = parse_stmt())
+                    {
+                        if (_pos == before)
+                        {
+                            error_here("internal parser error: statement consumed no tokens");
+                            skip_token();
+                        }
+
+                        stmts.push_back(std::move(stmt));
+                        continue;
+                    }
+
+                    if (_pos == before && !at_end() && !at("}"))
+                        skip_token();
+
+                    synchronize_statement(before);
+                }
+
+                expect("}");
+                return ast::Block{std::move(stmts)};
+            }
+
+            ast::StmtPtr parse_stmt()
+            {
+                const size_t start = _pos;
+
+                if (accept_kw("var"))       return parse_var_stmt(start);
+                if (accept_kw("return"))    return parse_return_stmt(start);
+                if (accept_kw("if"))        return parse_if_stmt(start);
+                if (accept_kw("while"))     return parse_while_stmt(start);
+                if (accept_kw("for"))       return parse_for_stmt(start);
+                if (accept_kw("check"))     return parse_check_stmt(start);
+
+                if (at("{"))                return parse_block_stmt(start);
+
+                if (accept_kw("continue"))
+                {
+                    accept(";");
+                    return std::make_unique<ast::Stmt>(ast::Continue{}, span_from(start));
+                }
+
+                if (accept_kw("break"))
+                {
+                    accept(";");
+                    return std::make_unique<ast::Stmt>(ast::Break{}, span_from(start));
+                }
+
+                return parse_expr_stmt();
+            }
+
+
+            ast::StmtPtr parse_check_stmt(size_t start)
+            {
+                ast::ExprPtr expr = parse_expr();
+                if (!expr)
+                    return nullptr;
+
+                expect("=>");
+
+                const bool reffed = accept_kw("ref");
+
+                auto name = ident();
+                if (!name)
+                {
+                    error_here("expected variable name");
+                    return nullptr;
+                }
+
+                auto good_branch = parse_body_stmt();
+                if (!good_branch)
+                    return nullptr;
+
+                ast::StmtPtr bad_branch;
+                if (accept_kw("else"))
+                {
+                    bad_branch = parse_body_stmt();
+
+                    if (!bad_branch)
+                        return nullptr;
+                }
+
+                return std::make_unique<ast::Stmt>(
+                    ast::Check{std::move(expr), std::move(*name), reffed, std::move(good_branch), std::move(bad_branch)},
+                    span_from(start));
+            }
+
+            ast::PatternPtr parse_pattern()
+            {
+                const size_t start = _pos;
+
+                if (at_ident())
+                {
+                    std::string name = *ident();
+
+                    auto pattern = std::make_unique<ast::Pattern>();
+                    pattern->span = span_from(start);
+
+                    if (name == "_")
+                        pattern->kind = ast::PatWild{};
+                    else
+                        pattern->kind = ast::PatName{std::move(name)};
+
+                    return pattern;
+                }
+
+                if (accept("("))
+                {
+                    std::vector<ast::PatternPtr> elements;
+
+                    while (true)
+                    {
+                        auto element = parse_pattern();
+                        if (!element)
+                            return nullptr;
+
+                        elements.push_back(std::move(element));
+
+                        if (!accept(",") || at(")"))
+                            break;
+                    }
+
+                    if (!expect(")"))
+                        return nullptr;
+
+                    const SourceSpan span = span_from(start);
+
+                    if (elements.size() < 2)
+                    {
+                        error_at(span, "a tuple pattern needs at least 2 elements");
+                        return nullptr;
+                    }
+
+                    auto pattern = std::make_unique<ast::Pattern>();
+                    pattern->kind = ast::PatTuple{std::move(elements)};
+                    pattern->span = span;
+                    return pattern;
+                }
+
+                error_after_prev("expected a variable name, '_' or '('");
+                return nullptr;
+            }
+
+            ast::PatternPtr to_place_pattern(ast::ExprPtr expr)
+            {
+                auto pattern = std::make_unique<ast::Pattern>();
+                pattern->span = expr->span;
+
+                if (ast::is_wildcard(*expr))
+                {
+                    pattern->kind = ast::PatWild{};
+                }
+                else if (auto* tuple = std::get_if<ast::TupleLit>(&expr->kind))
+                {
+                    ast::PatTuple result;
+
+                    for (auto& element : tuple->elements)
+                        result.elements.push_back(to_place_pattern(std::move(element)));
+
+                    pattern->kind = std::move(result);
+                }
+                else
+                {
+                    pattern->kind = ast::PatPlace{std::move(expr)};
+                }
+
+                return pattern;
+            }
+
+            ast::StmtPtr parse_var_stmt(size_t start)
+            {
+                const SourceSpan first_token = here_span();
+
+                auto pattern = parse_pattern();
+                if (!pattern)
+                    return nullptr;
+
+                ast::TypeExprPtr type;
+                if (accept(":"))
+                {
+                    type = parse_type();
+                    if (!type)
+                        return nullptr;
+                }
+
+                ast::ExprPtr init;
+                if (accept("="))
+                {
+                    init = parse_expr();
+                    if (!init)
+                        return nullptr;
+                }
+
+                if (!init)
+                {
+                    if (!std::holds_alternative<ast::PatName>(pattern->kind))
+                        error_at(first_token, "a pattern declaration needs an initializer");
+                    else if (!type)
+                        error_at(first_token, "variable needs a type or an initializer");
+                }
+
+                accept(";");
+                return std::make_unique<ast::Stmt>(
+                    ast::VarDecl{std::move(pattern), std::move(type), std::move(init)}, span_from(start)
+                );
+            }
+
+            ast::StmtPtr parse_return_stmt(size_t start)
+            {
+                ast::ExprPtr value;
+                bool reffed = false;
+
+                if (!at(";") && !at("}") && !at_end() && !is_statement_start())
+                {
+                    reffed = accept_kw("ref");
+
+                    value = parse_expr();
+
+                    if (!value)
+                        return nullptr;
+                }
+
+                accept(";");
+                return std::make_unique<ast::Stmt>(ast::Return{std::move(value), reffed}, span_from(start));
+            }
+
+            ast::StmtPtr parse_block_stmt(size_t start)
+            {
+                auto body = parse_block_body();
+                if (!body)
+                    return nullptr;
+
+                return std::make_unique<ast::Stmt>(std::move(*body), span_from(start));
+            }
+
+            ast::StmtPtr parse_body_stmt()
+            {
+                if (at("{"))
+                    return parse_block_stmt(_pos);
+
+                return parse_stmt();
+            }
+
+            ast::StmtPtr parse_if_stmt(size_t start)
+            {
+                auto cond = parse_expr();
+                if (!cond)
+                    return nullptr;
+
+                auto then_branch = parse_body_stmt();
+                if (!then_branch)
+                    return nullptr;
+
+                ast::StmtPtr else_branch;
+                if (at_kw("else"))
+                {
+                    const size_t else_start = _pos;
+                    bump(4);
+
+                    else_branch = accept_kw("if") ? parse_if_stmt(else_start)
+                                                  : parse_body_stmt();
+
+                    if (!else_branch)
+                        return nullptr;
+                }
+
+                return std::make_unique<ast::Stmt>(
+                    ast::If{std::move(cond), std::move(then_branch), std::move(else_branch)}, span_from(start));
+            }
+
+            ast::StmtPtr parse_while_stmt(size_t start)
+            {
+                auto cond = parse_expr();
+                if (!cond)
+                    return nullptr;
+
+                auto body = parse_body_stmt();
+                if (!body)
+                    return nullptr;
+
+                return std::make_unique<ast::Stmt>(ast::While{std::move(cond), std::move(body)}, span_from(start));
+            }
+
+            ast::StmtPtr parse_for_stmt(size_t start)
+            {
+                const bool reffed = accept_kw("ref");
+
+                auto name = ident();
+                if (!name)
+                {
+                    error_here("expected loop variable name");
+                    return nullptr;
+                }
+
+                if (!expect_kw("in"))
+                    return nullptr;
+
+                auto iterable = parse_expr();
+                if (!iterable)
+                    return nullptr;
+
+                auto body = parse_body_stmt();
+                if (!body)
+                    return nullptr;
+
+                return std::make_unique<ast::Stmt>(
+                    ast::ForIn{std::move(*name), reffed, std::move(iterable), std::move(body)}, span_from(start)
+                );
+            }
+
+            ast::StmtPtr parse_expr_stmt()
+            {
+                const size_t start = _pos;
+
+                auto expr = parse_expr();
+                if (!expr)
+                    return nullptr;
+
+                accept(";");
+
+                auto stmt = std::make_unique<ast::Stmt>();
+                stmt->kind = ast::ExprStmt{std::move(expr)};
+                stmt->span = span_from(start);
+                return stmt;
+            }
+
+
             // expressions
+            ast::ExprPtr parse_expr(int min_bp = 0)
+            {
+                return nullptr;
+            }
+
+
 
 
 
