@@ -560,6 +560,90 @@ namespace foo
                     || at_end();
             }
 
+            struct Depth
+            {
+                int parens = 0;
+                int brackets = 0;
+                int braces = 0;
+
+                bool zero() const { return parens == 0 && brackets == 0 && braces == 0; }
+
+                void account(char c)
+                {
+                    switch (c)
+                    {
+                        case '(': parens++; break;
+                        case ')': if (parens > 0) parens--; break;
+                        case '[': brackets++; break;
+                        case ']': if (brackets > 0) brackets--; break;
+                        case '{': braces++; break;
+                        case '}': if (braces > 0) braces--; break;
+                        default: break;
+                    }
+                }
+            };
+
+            Depth depth_between(size_t from, size_t to) const
+            {
+                Depth depth;
+                size_t i = from;
+                to = std::min(to, _src.size());
+
+                while (i < to)
+                {
+                    const char c = _src[i];
+
+                    if (c == '"' || c == '\'')
+                    {
+                        i = string_end(i);
+                    }
+                    else if (c == '/' && i + 1 < _src.size() && _src[i + 1] == '/')
+                    {
+                        while (i < _src.size() && _src[i] != '\n')
+                            i++;
+                    }
+                    else if (c == '/' && i + 1 < _src.size() && _src[i + 1] == '*')
+                    {
+                        i += 2;
+
+                        while (i + 1 < _src.size() && !(_src[i] == '*' && _src[i + 1] == '/'))
+                            i++;
+
+                        i += 2;
+                    }
+                    else
+                    {
+                        depth.account(c);
+                        i++;
+                    }
+                }
+
+                return depth;
+            }
+
+            void synchronize_delimited(std::string_view closing, size_t start_pos)
+            {
+                Depth depth = depth_between(start_pos, _pos);
+
+                while (!at_end())
+                {
+                    if (depth.zero())
+                    {
+                        if (at(closing))
+                            return;
+
+                        if (accept(","))
+                            return;
+
+                        if (is_closing_delimiter() || at(";") || at("=>"))
+                            return;
+                    }
+
+                    depth.account(peek());
+                    skip_token();
+                }
+            }
+
             void read_escape(std::string& out)
             {
                 const size_t backslash = _pos - 1;
@@ -927,6 +1011,15 @@ namespace foo
                     return std::make_unique<ast::Decl>(std::move(*strukt), span_from(start));
                 }
 
+                if (accept_kw("fn"))
+                {
+                    auto fn = parse_fn_decl(pub);
+                    if (!fn)
+                        return nullptr;
+
+                    return std::make_unique<ast::Decl>(std::move(*fn), span_from(start));
+                }
+
 
                 error_here("expected declaration");
                 return nullptr;
@@ -1080,9 +1173,113 @@ namespace foo
                 };
             }
 
-            // expressions
+            std::optional<ast::FnDecl> parse_fn_decl(bool pub = true)
+            {
+                const size_t decl_start = _pos;
+
+                if (accept_kw("priv"))
+                    pub = false;
+
+                auto name = ident();
+                if (!name)
+                {
+                    error_here("expected function name");
+                    return std::nullopt;
+                }
+
+                if (!expect("("))
+                    return std::nullopt;
+
+                std::vector<ast::Param> params;
+                while (!at(")") && !at_end())
+                {
+                    const size_t before = _pos;
+
+                    auto param = parse_param();
+
+                    if (param)
+                    {
+                        params.push_back(std::move(*param));
+                    }
+                    else
+                    {
+                        synchronize_delimited(")", before);
+
+                        if (is_recovery_boundary())
+                            break;
+
+                        continue;
+                    }
+
+                    if (accept(","))
+                    {
+                        if (at(")"))
+                        {
+                            error_here("expected parameter after ','");
+                            break;
+                        }
+                    }
+                }
+
+                if (!expect(")"))
+                    return std::nullopt;
+
+                ast::TypeExprPtr return_type = nullptr;
+                if (accept("->"))
+                {
+                    return_type = parse_type();
+                    if (!return_type)
+                        return std::nullopt;
+                }
+
+                const SourceSpan decl_span = span_from(decl_start);
+
+                // auto body = parse_block_body();
+                // if (!body)
+                //     return std::nullopt;
+
+
+
+
+                return ast::FnDecl{
+                    std::move(*name), std::move(params), std::move(return_type), {},
+                    pub,
+                    decl_span
+                };
+            }
+
+            std::optional<ast::Param> parse_param()
+            {
+                const bool is_ref = accept_kw("ref");
+
+                if (!at_ident())
+                {
+                    error_here("expected parameter name");
+                    return std::nullopt;
+                }
+
+                const size_t start = _pos;
+                std::string name = *ident();
+
+                if (!accept(":"))
+                {
+                    error_after_prev("expected ':', parameter requires a type");
+                    return std::nullopt;
+                }
+
+                auto type = parse_type();
+                if (!type)
+                    return std::nullopt;
+
+                return ast::Param{
+                    std::move(name), std::move(type), is_ref, span_from(start)
+                };
+            }
 
             // stmts
+
+            // expressions
+
 
 
         }; // parser

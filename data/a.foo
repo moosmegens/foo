@@ -7,3 +7,6 @@ struct b
 {
 
 }
+
+
+fn a(a: int[) -> void
