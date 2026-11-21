@@ -169,17 +169,17 @@ namespace foo
                 _out.resolver_input.sources.push_back({logical, file_path, std::move(text)});
                 std::string_view source = _out.resolver_input.sources[static_cast<size_t>(id)].text;
 
-                LexOutput lexed = tokenize(source);
-                if (!lexed.errors.empty())
-                {
-                    for (const auto& e : lexed.errors)
-                        error(id, e.source, e.error);
+                // LexOutput lexed = tokenize(source);
+                // if (!lexed.errors.empty())
+                // {
+                //     for (const auto& e : lexed.errors)
+                //         error(id, e.source, e.error);
+                //
+                //     return;
+                // }
 
-                    return;
-                }
 
-
-                ParseOutput parsed = parse(lexed.tokens);
+                ParseOutput parsed = parse(source);
                 for (const auto& e : parsed.errors)
                     error(id, e.source, e.error);
 

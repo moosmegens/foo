@@ -40,6 +40,30 @@ namespace foo
     {
         std::cout << detail::join(args...) << '\n';
     }
+
+    [[noreturn]]
+    inline void todo(
+        std::string_view message = {},
+        std::source_location location = std::source_location::current())
+    {
+        print("TODO:");
+
+        if (!message.empty())
+            print(" ", message);
+
+        foo::println(
+            "\n  at ",
+            std::format("{}:{}:{}",
+                location.file_name(),
+                location.line(),
+                location.column()
+            )
+        );
+
+        std::cout.flush();
+
+        abort();
+    }
 }
 
 #endif //FOO_DEBUG_OUT_HPP

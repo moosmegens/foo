@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "foo/natives.hpp"
+#include "foo/debug/debug_out.hpp"
 
 namespace foo
 {
@@ -546,7 +547,8 @@ namespace foo
                 [&](const Member& x)                    { return eval_member(e, x); },
                 [&](const StaticCall& x)                { return eval_static_call(e, x); },
                 [&](const As& x)                        { return eval_as(e, x); },
-                [&](const PatternAssign& x)             { return eval_pattern_assign(x); }
+                [&](const PatternAssign& x)             { return eval_pattern_assign(x); },
+                [](const auto&) -> ValueResult           { todo(); }
             }, e.kind);
         }
 

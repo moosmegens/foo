@@ -474,7 +474,8 @@ namespace foo
                     [&](const ast::NamespaceDecl& n)
                     {
                         discover_decls(n.decls, path_child(scope, n.name));
-                    }
+                    },
+                    [](const auto&)  { todo(); }
                 }, d->kind);
             }
         }
@@ -784,7 +785,8 @@ namespace foo
                     }
 
                     return types().variant_of(std::move(alternatives));
-                }
+                },
+                [](const auto&) -> TypeId { todo(); }
             }, te->type);
         }
 
@@ -1140,7 +1142,6 @@ namespace foo
             }, stmt.kind);
         }
 
-        // ---- type inference holes: var a: _? = 1;
 
         bool contains_infer(TypeId type)
         {
@@ -1659,7 +1660,8 @@ namespace foo
             [&](const ast::Call& e)             { return resolve_call(e, span); },
             [&](const ast::StaticCall& e)       { return resolve_static_call(e, span); },
             [&](const ast::As& e)               { return resolve_as(e, span); },
-            [&](const ast::PatternAssign& e)    { return resolve_pattern_assign(e); }
+            [&](const ast::PatternAssign& e)    { return resolve_pattern_assign(e); },
+            [](const auto&) -> ExprInfo { todo(); }
             }, expr.kind);
 
             _output.exprs[&expr] = info;

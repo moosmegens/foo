@@ -33,13 +33,13 @@ namespace foo
     };
 
 
-    ParseOutput parse(std::span<Token> tokens);
+    ParseOutput parse(std::string_view source);
 
 
-    IntermediateParseOutput<ast::TypeExprPtr> parse_type(std::span<Token> tokens);
-    IntermediateParseOutput<ast::ExprPtr> parse_expr(std::span<Token> tokens);
-    IntermediateParseOutput<ast::StmtPtr> parse_statement(std::span<Token> tokens);
-    IntermediateParseOutput<ast::DeclPtr> parse_decl(std::span<Token> tokens);
+    IntermediateParseOutput<ast::TypeExprPtr> parse_type(std::string_view source);
+    IntermediateParseOutput<ast::ExprPtr> parse_expr(std::string_view source);
+    IntermediateParseOutput<ast::StmtPtr> parse_statement(std::string_view source);
+    IntermediateParseOutput<ast::DeclPtr> parse_decl(std::string_view source);
 }
 
 
