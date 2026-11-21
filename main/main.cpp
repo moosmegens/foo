@@ -154,6 +154,7 @@ void main2()
     foo::NativeTable _t;
 
     {
+        bool errors = false;
         foo::scoped_timer t("resolving");
 
         r.resolver_input.natives = std::move(natives);
@@ -174,6 +175,8 @@ void main2()
             {
                 print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span, true,
                     r.resolver_input.sources[err.file_index].path.string());
+
+                errors = true;
             }
         }
 
@@ -182,6 +185,9 @@ void main2()
             print_diagnostics(err.message, r.resolver_input.sources[err.file_index].text, err.span, false,
                 r.resolver_input.sources[err.file_index].path.string());
         }
+
+        if (errors)
+            return;
     }
 
     int mainid = -1;

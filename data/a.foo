@@ -8,10 +8,16 @@ struct b
 
 }
 
-
-fn main()
+fn fn_using_lambda(a: fn(int, int)->void) -> void
 {
-    if
 
-    return;
+}
+
+fn main() -> any
+{
+
+    var a = '1 + 1 = {1+1}'
+    var b = '{a::a}'
+
+    return (a,b)
 }

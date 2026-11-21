@@ -658,6 +658,68 @@ namespace foo
                 }
             }
 
+
+
+            struct BindingPower { int left; int right; };
+
+            static constexpr int as_bp = 18;
+            static constexpr int unary_bp = 19;
+            static constexpr int postfix_bp = 21;
+            static constexpr int assign_l_bp = 2;
+
+            static std::optional<BindingPower> binary_bp(std::string_view op)
+            {
+                if (op == "=")
+                    return BindingPower{assign_l_bp, 1};
+
+                if (op == ".." || op == "..=")
+                    return BindingPower{4, 5};
+
+                if (op == "||")
+                    return BindingPower{6, 7};
+
+                if (op == "&&")
+                    return BindingPower{8, 9};
+
+                if (op == "==" || op == "!=")
+                    return BindingPower{10, 11};
+
+                if (op == "<" || op == "<=" || op == ">" || op == ">=")
+                    return BindingPower{12, 13};
+
+                if (op == "+" || op == "-")
+                    return BindingPower{14, 15};
+
+                if (op == "*" || op == "/" || op == "%")
+                    return BindingPower{16, 17};
+
+                return std::nullopt;
+            }
+
+            static std::optional<ast::BinaryOp> to_binary_op(std::string_view op)
+            {
+                using Op = ast::BinaryOp;
+
+                if (op == "+")      return Op::Add;
+                if (op == "-")      return Op::Sub;
+                if (op == "*")      return Op::Mul;
+                if (op == "/")      return Op::Div;
+                if (op == "%")      return Op::Mod;
+                if (op == "==")     return Op::Eq;
+                if (op == "!=")     return Op::NotEq;
+                if (op == "<")      return Op::Less;
+                if (op == "<=")     return Op::LessEq;
+                if (op == ">")      return Op::Greater;
+                if (op == ">=")     return Op::GreaterEq;
+                if (op == "&&")     return Op::And;
+                if (op == "||")     return Op::Or;
+                if (op == "=")      return Op::Assign;
+                if (op == "..")     return Op::Range;
+                if (op == "..=")    return Op::RangeInclusive;
+
+                return std::nullopt;
+            }
+
             void read_escape(std::string& out)
             {
                 const size_t backslash = _pos - 1;
@@ -719,6 +781,128 @@ namespace foo
                 }
 
                 finish_token(start);
+            }
+
+            ast::ExprPtr parse_string()
+            {
+                const size_t start = _pos;
+                std::string value;
+
+                read_string(value);
+                return std::make_unique<ast::Expr>(ast::StringLit{std::move(value)}, span_from(start));
+            }
+
+            ast::ExprPtr parse_format_string()
+            {
+                const size_t start = _pos;
+                _pos++; // the opening ', raw
+
+                ast::ExprPtr result;
+                std::string text;
+                size_t text_start = _pos;
+
+                auto append = [&](ast::ExprPtr piece)
+                {
+                    if (!result)
+                    {
+                        result = std::move(piece);
+                        return;
+                    }
+
+                    const SourceSpan joined = SourceSpan::combine(result->span, piece->span);
+                    result = std::make_unique<ast::Expr>(
+                        ast::Binary{ast::BinaryOp::Add, std::move(result), std::move(piece)}, joined);
+                };
+
+                auto flush = [&]()
+                {
+                    if (!text.empty())
+                        append(std::make_unique<ast::Expr>(
+                            ast::StringLit{std::move(text)}, SourceSpan::between(text_start, _pos)));
+
+                    text.clear();
+                };
+
+                auto fail = [&](std::string message) -> ast::ExprPtr
+                {
+                    error_at(SourceSpan::between(start, _pos), std::move(message));
+
+                    while (!at_end() && peek() != '\'' && peek() != '\n')
+                        _pos++;
+
+                    if (peek() == '\'')
+                        _pos++;
+
+                    finish_token(start);
+                    return nullptr;
+                };
+
+                while (peek() != '\'')
+                {
+                    if (at_end() || peek() == '\n')
+                        return fail("unterminated format string");
+
+                    if (peek() == '{')
+                    {
+                        flush();
+                        _pos++;
+                        skip_trivia();
+
+                        auto expr = parse_expr();
+
+                        if (!expr || peek() != '}')
+                            return fail("expected '}' to end the interpolation");
+
+                        _pos++; // the closing '}', raw: the text after it keeps its spaces
+                        text_start = _pos;
+
+                        const SourceSpan span = expr->span;
+                        auto method = std::make_unique<ast::Expr>(ast::Member{std::move(expr), "to_string"}, span);
+                        append(std::make_unique<ast::Expr>(ast::Call{std::move(method), {}}, span));
+                        continue;
+                    }
+
+                    if (peek() == '\\')
+                    {
+                        _pos++;
+                        read_escape(text);
+                        continue;
+                    }
+
+                    text += _src[_pos++];
+                }
+
+                flush();
+                _pos++; // the closing '
+                finish_token(start);
+
+                if (!result)
+                    result = std::make_unique<ast::Expr>(ast::StringLit{""}, span_from(start));
+
+                result->span = span_from(start);
+                return result;
+            }
+
+            ast::ExprPtr parse_number()
+            {
+                const size_t start = _pos;
+                const size_t length = token_len();
+                const std::string text(_src.substr(start, length));
+
+                bump(length);
+
+                try
+                {
+                    if (text.find('.') != std::string::npos)
+                        return std::make_unique<ast::Expr>(ast::FloatLit{std::stod(text)}, span_from(start));
+
+                    return std::make_unique<ast::Expr>(ast::IntLit{std::stoll(text)}, span_from(start));
+                }
+                catch (const std::exception&)
+                {
+                    error_at(span_from(start), std::format("invalid numeric literal '{}'", text));
+                    return nullptr;
+                }
             }
 
 
@@ -1629,11 +1813,528 @@ namespace foo
             // expressions
             ast::ExprPtr parse_expr(int min_bp = 0)
             {
+                auto left = parse_primary();
+                if (!left)
+                    return nullptr;
+
+                while (true)
+                {
+                    const std::string_view op = peek_op();
+
+                    if (op == "(" || op == "[" || op == ".")
+                    {
+                        if (op != "." && _newline_before)
+                            break;
+
+                        if (postfix_bp < min_bp)
+                            break;
+
+                        left = parse_postfix(std::move(left));
+                    }
+                    else if (at_kw("as"))
+                    {
+                        if (as_bp < min_bp)
+                            break;
+
+                        left = parse_as(std::move(left));
+                    }
+                    else if (auto bp = binary_bp(op))
+                    {
+                        if (bp->left < min_bp)
+                            break;
+
+                        left = parse_binary(std::move(left), bp->right);
+                    }
+                    else break;
+
+                    if (!left)
+                        return nullptr;
+                }
+                return left;
+            }
+
+             ast::ExprPtr parse_primary()
+            {
+                const size_t start = _pos;
+                const char c = peek();
+
+                if (is_digit(c))
+                    return parse_number();
+
+                if (c == '"')
+                    return parse_string();
+
+                if (c == '\'')
+                    return parse_format_string();
+
+                if (c == '|')
+                    return parse_lambda();
+
+                if (c == '#')
+                    return parse_struct_literal();
+
+                if (const auto word = peek_word(); !word.empty())
+                {
+                    if (word == "true" || word == "false")
+                    {
+                        const bool value = word == "true";
+                        bump(word.size());
+                        return std::make_unique<ast::Expr>(ast::BoolLit{value}, span_from(start));
+                    }
+
+                    if (word == "none")
+                    {
+                        bump(4);
+                        return std::make_unique<ast::Expr>(ast::NoneLit{}, span_from(start));
+                    }
+
+                    if (at_ident())
+                    {
+                        std::vector<std::string> parts;
+                        parts.push_back(*ident());
+
+                        while (accept("::"))
+                        {
+                            if (!at_ident())
+                            {
+                                error_here("expected identifier after '::'");
+                                return nullptr;
+                            }
+
+                            parts.push_back(*ident());
+                        }
+
+                        return std::make_unique<ast::Expr>(ast::Name{std::move(parts)}, span_from(start));
+                    }
+                }
+
+                if (const auto op = peek_op(); op == "-" || op == "!")
+                {
+                    const auto unary = (op == "-") ? ast::UnaryOp::Neg : ast::UnaryOp::Not;
+                    bump(1);
+
+                    auto operand = parse_expr(unary_bp);
+                    if (!operand)
+                        return nullptr;
+
+                    return std::make_unique<ast::Expr>(ast::Unary{unary, std::move(operand)}, span_from(start));
+                }
+
+                // (expr), or a tuple (a, b, ..)
+                if (c == '(')
+                {
+                    bump(1);
+
+                    auto first = parse_expr();
+
+                    if (!first)
+                        return nullptr;
+
+                    if (at(","))
+                    {
+                        std::vector<ast::ExprPtr> elements;
+                        elements.push_back(std::move(first));
+
+                        while (accept(","))
+                        {
+                            if (at(")")) // trailing comma
+                                break;
+
+                            auto next = parse_expr();
+                            if (!next)
+                                return nullptr;
+
+                            elements.push_back(std::move(next));
+                        }
+
+                        if (!expect(")"))
+                            return nullptr;
+
+                        const SourceSpan span = span_from(start);
+
+                        if (elements.size() < 2)
+                            error_at(span, "a tuple needs at least 2 elements");
+
+                        return std::make_unique<ast::Expr>(ast::TupleLit{std::move(elements)}, span);
+                    }
+
+                    if (!expect(")"))
+                        return nullptr;
+
+                    first->span = span_from(start);
+                    return first;
+                }
+
+                if (c == '[')
+                {
+                    bump(1);
+
+                    std::vector<ast::ExprPtr> elements;
+
+                    if (!at("]"))
+                        elements = parse_expr_list("]");
+
+                    if (!expect("]"))
+                        return nullptr;
+
+                    return std::make_unique<ast::Expr>(ast::ArrayLit{std::move(elements)}, span_from(start));
+                }
+
+                if (c == '@')
+                {
+                    bump(1);
+
+                    auto type_expr = parse_type();
+                    if (!type_expr)
+                        return nullptr;
+
+                    if (!at("."))
+                    {
+                        error_here("expected . after the type");
+                        return nullptr;
+                    }
+                    bump(1);
+
+                    auto name = ident();
+                    if (!name)
+                    {
+                        error_here("expected function name");
+                        return nullptr;
+                    }
+
+                    if (!expect("("))
+                        return nullptr;
+
+                    std::vector<ast::ExprPtr> args;
+
+                    if (!at(")"))
+                        args = parse_expr_list(")");
+
+                    if (!expect(")"))
+                        return nullptr;
+
+                    return std::make_unique<ast::Expr>(
+                        ast::StaticCall{std::move(type_expr), std::move(*name), std::move(args)}, span_from(start));
+                }
+
+                error_after_prev("expected expression", false);
+
+                if (!is_expr_boundary())
+                    skip_token();
+
                 return nullptr;
             }
 
+            ast::ExprPtr parse_struct_literal()
+            {
+                const size_t start = _pos;
+                bump(1); // '#'
 
+                ast::TypeExprPtr type = parse_type();
 
+                if (!type)
+                    return nullptr;
+
+                if (!accept("{"))
+                {
+                    error_after_prev("expected '{' after type in struct literal");
+                    return nullptr;
+                }
+
+                std::vector<ast::FieldInit> fields;
+
+                while (!at("}") && !at_end())
+                {
+                    const size_t field_start = _pos;
+
+                    if (!at_ident())
+                    {
+                        error_here("expected field name in struct literal");
+
+                        synchronize_delimited("}", field_start);
+
+                        if (is_recovery_boundary())
+                            break;
+
+                        continue;
+                    }
+
+                    std::string name = *ident();
+
+                    if (!accept("="))
+                    {
+                        error_here("expected '=' after field name");
+
+                        synchronize_delimited("}", field_start);
+
+                        if (is_recovery_boundary())
+                            break;
+
+                        continue;
+                    }
+
+                    const size_t value_start = _pos;
+
+                    auto value = parse_expr(assign_l_bp + 1);
+
+                    if (!value)
+                    {
+                        synchronize_delimited("}", value_start);
+
+                        if (is_recovery_boundary())
+                            break;
+
+                        continue;
+                    }
+
+                    fields.push_back({
+                        std::move(name),
+                        std::move(value),
+                        span_from(field_start)
+                    });
+
+                    if (accept(","))
+                        continue;
+
+                    if (at("}"))
+                        break;
+
+                    if (at_ident_then("="))
+                    {
+                        error_here("expected ',' between struct fields");
+                        continue;
+                    }
+
+                    error_here("expected ',' or '}' after struct field");
+
+                    synchronize_delimited("}", _pos);
+
+                    if (is_recovery_boundary())
+                        break;
+                }
+
+                if (!expect("}"))
+                    return nullptr;
+
+                return std::make_unique<ast::Expr>(ast::StructLit{std::move(type), std::move(fields)}, span_from(start));
+            }
+
+             ast::ExprPtr parse_lambda()
+            {
+                const size_t start = _pos;
+                std::vector<ast::Param> params;
+
+                if (!accept("||")) // `||` is means empty, so skip it
+                {
+                    bump(1); // '|'
+
+                    while (!at("|") && !at_end())
+                    {
+                        if (!at_ident())
+                        {
+                            error_here("expected parameter name");
+                            return nullptr;
+                        }
+
+                        ast::Param param;
+                        param.span = here_span();
+                        param.name = *ident();
+
+                        if (accept(":"))
+                        {
+                            param.type = parse_type();
+                            if (!param.type)
+                                return nullptr;
+                        }
+
+                        params.push_back(std::move(param));
+
+                        if (!accept(","))
+                            break;
+                    }
+
+                    if (!expect("|"))
+                        return nullptr;
+                }
+
+                ast::TypeExprPtr return_type;
+                if (accept("->"))
+                {
+                    return_type = parse_type();
+                    if (!return_type)
+                        return nullptr;
+
+                    if (!at("{"))
+                    {
+                        error_after_prev("expected '{' after the return type of a lambda", false);
+                        return nullptr;
+                    }
+                }
+
+                ast::Block body;
+
+                if (at("{"))
+                {
+                    auto block = parse_block_body();
+                    if (!block)
+                        return nullptr;
+
+                    body = std::move(*block);
+                }
+                else
+                {
+                    auto value = parse_expr();
+                    if (!value)
+                        return nullptr;
+
+                    const SourceSpan value_span = value->span;
+                    body.statements.push_back(
+                        std::make_unique<ast::Stmt>(ast::Return{std::move(value), false}, value_span));
+                }
+
+                return std::make_unique<ast::Expr>(
+                    ast::Lambda{std::move(params), std::move(return_type), std::move(body)}, span_from(start));
+            }
+
+            ast::ExprPtr parse_postfix(ast::ExprPtr target)
+            {
+                const size_t start = target->span.start;
+
+                // function call
+                if (accept("("))
+                {
+                    std::vector<ast::ExprPtr> args;
+
+                    if (!at(")"))
+                        args = parse_expr_list(")");
+
+                    if (!expect(")"))
+                        return nullptr;
+
+                    return std::make_unique<ast::Expr>(ast::Call{std::move(target), std::move(args)}, span_from(start));
+                }
+
+                // index
+                if (accept("["))
+                {
+                    auto indexer = parse_expr();
+                    if (!indexer)
+                        return nullptr;
+
+                    if (!expect("]"))
+                        return nullptr;
+
+                    return std::make_unique<ast::Expr>(ast::Index{std::move(target), std::move(indexer)}, span_from(start));
+                }
+
+                // member
+                if (accept("."))
+                {
+                    auto name = ident();
+                    if (!name)
+                    {
+                        error_here("expected member name after '.'");
+                        return nullptr;
+                    }
+
+                    return std::make_unique<ast::Expr>(ast::Member{std::move(target), std::move(*name)}, span_from(start));
+                }
+
+                return nullptr;
+            }
+
+            ast::ExprPtr parse_as(ast::ExprPtr lhs)
+            {
+                const size_t start = lhs->span.start;
+
+                bump(2); // 'as'
+
+                auto type = parse_type();
+                if (!type)
+                    return nullptr;
+
+                return std::make_unique<ast::Expr>(ast::As{std::move(lhs), std::move(type)}, span_from(start));
+            }
+
+            ast::ExprPtr parse_binary(ast::ExprPtr lhs, int right_bp)
+            {
+                const size_t start = lhs->span.start;
+
+                const std::string_view op_text = peek_op();
+                const auto op = to_binary_op(op_text);
+                bump(op_text.size());
+
+                auto rhs = parse_expr(right_bp);
+                if (!rhs)
+                    return nullptr;
+
+                const SourceSpan span = span_from(start);
+
+                if (*op == ast::BinaryOp::Assign && std::holds_alternative<ast::TupleLit>(lhs->kind))
+                    return std::make_unique<ast::Expr>(
+                        ast::PatternAssign{to_place_pattern(std::move(lhs)), std::move(rhs)}, span);
+
+                return std::make_unique<ast::Expr>(ast::Binary{*op, std::move(lhs), std::move(rhs)}, span);
+            }
+
+            std::vector<ast::ExprPtr> parse_expr_list(std::string_view closing)
+            {
+                std::vector<ast::ExprPtr> expressions;
+                bool after_comma = false;
+
+                while (true)
+                {
+                    if (at(closing))
+                    {
+                        if (after_comma)
+                            error_here("Expected expression after ','");
+
+                        break;
+                    }
+
+                    if (at_end() || is_recovery_boundary())
+                        break;
+
+                    const size_t before = _pos;
+
+                    auto expr = parse_expr();
+
+                    if (!expr)
+                    {
+                        after_comma = false;
+
+                        synchronize_delimited(closing, before);
+
+                        if (is_recovery_boundary())
+                            break;
+
+                        continue;
+                    }
+
+                    expressions.push_back(std::move(expr));
+                    after_comma = false;
+
+                    if (accept(","))
+                    {
+                        after_comma = true;
+                        continue;
+                    }
+
+                    if (at(closing) || is_recovery_boundary())
+                        break;
+
+                    error_here(std::format("expected ',' or '{}'", closing));
+
+                    synchronize_delimited(closing, _pos);
+
+                    after_comma = true;
+
+                    if (is_recovery_boundary())
+                        break;
+                }
+
+                return expressions;
+            }
 
 
         }; // parser
