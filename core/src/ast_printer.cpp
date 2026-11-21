@@ -14,6 +14,7 @@ namespace foo
     using namespace ast;
 
     static std::string print(const StmtPtr& s, int indent);
+    static std::string print(const Block& b, int indent);
     static std::string print_pattern(const Pattern& p);
 
     static std::string pad(int indent)
@@ -81,6 +82,12 @@ namespace foo
         return out;
     }
 
+    static std::string element_string(const TypeExprPtr& element)
+    {
+        const std::string text = to_string(element);
+        return element && std::holds_alternative<FnType>(element->type) ? "(" + text + ")" : text;
+    }
+
     std::string to_string(const TypeExpr& t)
     {
         return std::visit(overload{
@@ -88,13 +95,13 @@ namespace foo
                 { return join(n.path, "::"); },
 
             [](const ArrayType& n)
-                { return to_string(n.element_type) + "[]"; },
+                { return element_string(n.element_type) + "[]"; },
 
             [](const MapType& n)
                 { return std::format("[{}, {}]", to_string(n.key_type), to_string(n.value_type)); },
 
             [](const OptionalType& n)
-                { return std::format("{}?", to_string(n.element_type)); },
+                { return std::format("{}?", element_string(n.element_type)); },
 
             [](const SetType& n)
                 { return std::format("[{}]", to_string(n.element_type)); },
@@ -128,6 +135,24 @@ namespace foo
                     return out + ")";
                 },
 
+            [](const FnType& n)
+                {
+                    std::string out = "fn(";
+                    for (size_t i = 0; i < n.params.size(); ++i)
+                    {
+                        if (i)
+                            out += ", ";
+
+                        out += to_string(n.params[i]);
+                    }
+                    out += ")";
+
+                    if (n.ret)
+                        out += " -> " + to_string(n.ret);
+
+                    return out;
+                },
+
         }, t.type);
     }
 
@@ -140,7 +165,7 @@ namespace foo
             [](const FloatLit& n)
                 { return std::format("{}", n.value); },
 
-            [](const StringLit& n) \
+            [](const StringLit& n)
                 { return std::format("\"{}\"", n.value); },
 
             [](const BoolLit& n)
@@ -193,6 +218,27 @@ namespace foo
                         out += n.fields[i].name + " = " + to_string(n.fields[i].value);
                     }
                     return out + "}";
+                },
+
+            [](const Lambda& n)
+                {
+                    std::string out = "|";
+                    for (size_t i = 0; i < n.params.size(); ++i)
+                    {
+                        if (i)
+                            out += ", ";
+
+                        out += n.params[i].name;
+
+                        if (n.params[i].type)
+                            out += ": " + to_string(n.params[i].type);
+                    }
+                    out += "|";
+
+                    if (n.return_type)
+                        out += " -> " + to_string(n.return_type);
+
+                    return out + " " + print(n.body, 0);
                 },
 
         }, e.kind);
@@ -331,6 +377,10 @@ namespace foo
                 for (const auto& child : n.decls)
                     out += pad(indent + 1) + (child ? print(*child, indent + 1) : "<null>") + "\n";
                 return out + pad(indent) + "}";
+            },
+            [&](const AliasDecl& n)
+            {
+                return "type " + n.name + " = " + to_string(n.type) + ";";
             }
         }, d.kind);
     }

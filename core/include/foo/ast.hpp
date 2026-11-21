@@ -111,7 +111,19 @@ namespace foo::ast
         }
     };
 
-    using TypeExprKind = std::variant<NamedType, ArrayType, MapType, SetType, OptionalType, TupleType, VariantType>;
+    struct FnType
+    {
+        std::vector<TypeExprPtr> params;
+        TypeExprPtr ret;
+
+        bool operator==(const FnType& other) const
+        {
+            return ptr_range_equal(params, other.params)
+                && ptr_equal(ret, other.ret);
+        }
+    };
+
+    using TypeExprKind = std::variant<NamedType, ArrayType, MapType, SetType, OptionalType, TupleType, VariantType, FnType>;
 
     struct TypeExpr
     {
@@ -142,6 +154,33 @@ namespace foo::ast
         And, Or,
         Range, RangeInclusive,
         Assign
+    };
+
+
+
+    struct Param
+    {
+        std::string name;
+        TypeExprPtr type;
+        bool reffed = false;
+        SourceSpan span = {};
+
+        bool operator==(const Param& other) const
+        {
+            return name == other.name
+                && ptr_equal(type, other.type)
+                && reffed == other.reffed;
+        }
+    };
+
+    struct Block
+    {
+        std::vector<StmtPtr> statements;
+
+        bool operator==(const Block& other) const
+        {
+            return ptr_range_equal(statements, other.statements);
+        }
     };
 
 
@@ -307,6 +346,20 @@ namespace foo::ast
         }
     };
 
+    struct Lambda
+    {
+        std::vector<Param> params;
+        TypeExprPtr return_type;
+        Block body;
+
+        bool operator==(const Lambda& other) const
+        {
+            return params == other.params
+                && ptr_equal(return_type, other.return_type)
+                && body == other.body;
+        }
+    };
+
     using ExprKind = std::variant<
         IntLit, FloatLit, StringLit, BoolLit, ArrayLit, NoneLit,
         TupleLit,
@@ -315,7 +368,8 @@ namespace foo::ast
         Unary, Binary,
         Index, Call, Member,
         StaticCall,
-        As, PatternAssign>;
+        As, PatternAssign,
+        Lambda>;
 
     struct Expr
     {
@@ -387,16 +441,6 @@ namespace foo::ast
 
 
     // statements
-
-    struct Block
-    {
-        std::vector<StmtPtr> statements;
-
-        bool operator==(const Block& other) const
-        {
-            return ptr_range_equal(statements, other.statements);
-        }
-    };
 
     struct VarDecl
     {
@@ -528,21 +572,6 @@ namespace foo::ast
 
     // declarations
 
-    struct Param
-    {
-        std::string name;
-        TypeExprPtr type;
-        bool reffed = false;
-        SourceSpan span = {};
-
-        bool operator==(const Param& other) const
-        {
-            return name == other.name
-                && ptr_equal(type, other.type)
-                && reffed == other.reffed;
-        }
-    };
-
     struct FnDecl
     {
         std::string name;
@@ -617,6 +646,18 @@ namespace foo::ast
         bool operator==(const EnumDecl&) const = default;
     };
 
+    struct AliasDecl
+    {
+        std::string name;
+        TypeExprPtr type;
+
+        bool operator==(const AliasDecl& other) const
+        {
+            return name == other.name
+                && ptr_equal(type, other.type);
+        }
+    };
+
     struct ImportDecl
     {
         std::string name;
@@ -628,7 +669,7 @@ namespace foo::ast
         }
     };
 
-    using DeclKind = std::variant<FnDecl, StructDecl, EnumDecl, NamespaceDecl>;
+    using DeclKind = std::variant<FnDecl, StructDecl, EnumDecl, NamespaceDecl, AliasDecl>;
 
     struct Decl
     {
