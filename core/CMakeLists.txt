@@ -5,8 +5,7 @@ file(GLOB_RECURSE headers CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
 )
 
-add_library(foo_core ${sources} ${headers}
-        include/foo/debug/todo.h)
+add_library(foo_core ${sources} ${headers})
 
 target_include_directories(foo_core
         PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
