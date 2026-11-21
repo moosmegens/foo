@@ -118,7 +118,7 @@ void main2()
 
     {
         foo::scoped_timer t("collecting");
-        r = foo::collect(foo_root() / "data", "skibidi");
+        r = foo::collect(foo_root() / "data", "a");
         for (const auto& err : r.errors)
         {
             if (err.file_id < 0)
@@ -133,6 +133,20 @@ void main2()
                 std::format("{}: {}", file.path.string(), err.message),
                 file.text,
                 err.span);
+        }
+    }
+
+    {
+        foo::scoped_timer t("ast print");
+
+        for (const auto& file : r.resolver_input.files)
+        {
+            std::cout << "file: " << file.path << std::endl;
+
+            for (const auto& decl : file.decls)
+            {
+                std::cout << foo::to_string(decl) << std::endl;
+            }
         }
     }
 
@@ -180,13 +194,14 @@ void main2()
         }
     }
 
+
     foo::RuntimeInput ri{o, _t};
     foo::Runtime runtime{ri};
 
-    for (const auto& [index, item] : std::views::enumerate(ri.native_table.get_infos()))
-    {
-        std::cout << item.api << std::endl;
-    }
+    // for (const auto& [index, item] : std::views::enumerate(ri.native_table.get_infos()))
+    // {
+    //     std::cout << item.api << std::endl;
+    // }
 
     {
         foo::scoped_timer t("running");

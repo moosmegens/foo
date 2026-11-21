@@ -30,6 +30,24 @@ namespace foo
                 init(source);
                 ParseOutput result;
 
+                while (!at_end())
+                {
+
+                    const size_t before = _pos;
+                    auto decl = parse_decl();
+
+                    if (decl)
+                    {
+                        result.decls.push_back(std::move(decl));
+                        continue;
+                    }
+
+                    if (_pos == before && !at_end())
+                        skip_token();
+
+                    synchronize_declaration(before);
+                }
+
                 result.errors = std::move(_errors);
                 result.imports = std::move(_imports);
                 return result;
@@ -459,6 +477,141 @@ namespace foo
 
                 error_at(SourceSpan{_prev_end, 1}, std::move(message));
             }
+
+            void synchronize_declaration(size_t start_pos)
+            {
+                while (!at_end())
+                {
+                    if (_pos > start_pos && is_declaration_start())
+                        return;
+
+                    skip_token();
+                }
+            }
+
+            bool is_statement_start() const
+            {
+                const auto word = peek_word();
+
+                return word == "var"
+                    || word == "return"
+                    || word == "if"
+                    || word == "while"
+                    || word == "for"
+                    || word == "check"
+                    || word == "continue"
+                    || word == "break"
+                    || at("{");
+            }
+
+            bool is_declaration_start()
+            {
+                return at_kw("fn")
+                    || at_kw("struct")
+                    || at_kw("enum")
+                    || at_kw("import")
+                    || at_alias_decl();
+            }
+
+            bool is_expr_boundary() const
+            {
+                return at(",")
+                    || at(";")
+                    || at(")")
+                    || at("]")
+                    || at("}")
+                    || at("=>")
+                    || at_end();
+            }
+
+            bool is_closing_delimiter() const
+            {
+                return at(")")
+                    || at("]")
+                    || at("}");
+            }
+
+            bool is_recovery_boundary() const
+            {
+                return is_closing_delimiter()
+                    || at(";")
+                    || at("=>")
+                    || at_end();
+            }
+
+            ast::DeclPtr parse_decl()
+            {
+                const size_t start = _pos;
+
+                bool pub = true;
+                if (at_kw("priv"))
+                {
+                    bump(4);
+                    pub = false;
+
+                    if (!at_kw("fn"))
+                    {
+                        error_here("expected 'fn' after 'priv'");
+                        return nullptr;
+                    }
+                }
+
+
+                if (accept_kw("enum"))
+                {
+                    auto enumeration = parse_enum_decl();
+                    if (!enumeration)
+                        return nullptr;
+
+                    return std::make_unique<ast::Decl>(std::move(*enumeration), span_from(start));
+                }
+
+
+                error_here("expected declaration");
+                return nullptr;
+            }
+
+            std::optional<ast::EnumDecl> parse_enum_decl()
+            {
+                auto name = ident();
+                if (!name)
+                {
+                    error_here("expected enum name");
+                    return std::nullopt;
+                }
+
+                if (!expect("{"))
+                    return std::nullopt;
+
+                std::vector<ast::EnumVariant> variants;
+
+                while (!at("}") && !at_end())
+                {
+                    if (!at_ident())
+                    {
+                        error_here("expected variant name");
+
+                        while (!at_end() && !at(",") && !at("}"))
+                            skip_token();
+
+                        accept(",");
+                        continue;
+                    }
+
+                    const SourceSpan span = here_span();
+                    variants.push_back({*ident(), span});
+
+                    if (accept(","))
+                        continue;
+
+                    if (!at("}"))
+                        error_here("expected ',' or '}' after enum variant");
+                }
+
+                return ast::EnumDecl{std::move(*name), std::move(variants)};
+            }
+
+
         }; // parser
 
     } // namespace {
