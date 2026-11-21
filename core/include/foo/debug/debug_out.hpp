@@ -5,6 +5,7 @@
 #include <format>
 #include <source_location>
 #include <string>
+#include <cstdlib>
 
 namespace foo
 {
@@ -62,7 +63,7 @@ namespace foo
 
         std::cout.flush();
 
-        abort();
+        std::quick_exit(EXIT_FAILURE );
     }
 }
 

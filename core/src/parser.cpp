@@ -489,6 +489,27 @@ namespace foo
                 }
             }
 
+            bool is_struct_member_start()
+            {
+                return at_kw("fn")
+                    || at_kw("priv")
+                    || at_ident_then(":");
+            }
+
+            void synchronize_struct_member(size_t start_pos)
+            {
+                while (!at_end() && !at("}"))
+                {
+                    if (_pos > start_pos && is_struct_member_start())
+                        return;
+
+                    if (accept(";"))
+                        return;
+
+                    skip_token();
+                }
+            }
+
             bool is_statement_start() const
             {
                 const auto word = peek_word();
@@ -539,6 +560,326 @@ namespace foo
                     || at_end();
             }
 
+            void read_escape(std::string& out)
+            {
+                const size_t backslash = _pos - 1;
+
+                if (at_end())
+                    return;
+
+                switch (const char e = _src[_pos++])
+                {
+                    case 'n':  out += '\n'; break;
+                    case 't':  out += '\t'; break;
+                    case '\\': out += '\\'; break;
+                    case '"':  out += '"';  break;
+                    case '\'': out += '\''; break;
+                    case '{':  out += '{';  break;
+                    case 'x':
+                    {
+                        const int hi = hex_value(peek());
+                        const int lo = hex_value(peek(1));
+
+                        if (hi < 0 || lo < 0)
+                        {
+                            error_at(SourceSpan::between(backslash, _pos), "'\\x' must be followed by two hex digits");
+                            break;
+                        }
+
+                        _pos += 2;
+                        out += static_cast<char>(hi * 16 + lo);
+                        break;
+                    }
+                    default:
+                        error_at(SourceSpan::between(backslash, _pos), std::format("invalid escape: '{}'", e));
+                        break;
+                }
+            }
+
+            void read_string(std::string& out)
+            {
+                const size_t start = _pos;
+                _pos++;
+
+                while (true)
+                {
+                    if (at_end() || peek() == '\n')
+                    {
+                        error_at(SourceSpan::between(start, _pos), "unterminated string");
+                        break;
+                    }
+
+                    const char c = _src[_pos++];
+
+                    if (c == '"')
+                        break;
+
+                    if (c == '\\')
+                        read_escape(out);
+                    else
+                        out += c;
+                }
+
+                finish_token(start);
+            }
+
+
+            // types
+
+            ast::TypeExprPtr parse_type()
+            {
+                const size_t start = _pos;
+                ast::TypeExprPtr base = nullptr;
+
+
+
+                // map or set
+                if (at("["))
+                {
+                    bump(1);
+
+                    auto first_type = parse_type();
+                    if (!first_type)
+                        return nullptr;
+
+                    ast::TypeExprPtr second_type;
+
+                    if (accept(","))
+                    {
+                        second_type = parse_type();
+                        if (!second_type)
+                            return nullptr;
+                    }
+
+                    if (!at("]"))
+                    {
+                        error_here(second_type ? "expected ']' after map value type"
+                                               : "expected ',' or ']'");
+                        return nullptr;
+                    }
+
+                    bump(1);
+
+                    base = std::make_unique<ast::TypeExpr>();
+                    if (second_type)
+                        base->type = ast::MapType{std::move(first_type), std::move(second_type)};
+                    else
+                        base->type = ast::SetType{std::move(first_type)};
+                    base->span = span_from(start);
+                }
+                // tuple, variant or for forcing primary
+                else if (at("("))
+                {
+                    bump(1);
+
+                    std::vector<ast::TupleElem> items;
+                    bool is_variant = false;
+
+                    while (true)
+                    {
+                        ast::TupleElem item;
+
+                        // an optional name, only documentation
+                        if (at_ident_then(":"))
+                        {
+                            item.name = *ident();
+                            bump(1); // ':'
+                        }
+
+                        item.type = parse_type();
+                        if (!item.type)
+                            return nullptr;
+
+                        items.push_back(std::move(item));
+
+                        if (at(",") || at("|"))
+                        {
+                            const bool pipe = at("|");
+
+                            if (items.size() == 1)
+                            {
+                                is_variant = pipe;
+                            }
+                            else if (pipe != is_variant)
+                            {
+                                error_here("cannot mix ',' and '|', wrap one of them in parentheses");
+                                return nullptr;
+                            }
+
+                            bump(1);
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    if (!expect(")"))
+                        return nullptr;
+
+                    const SourceSpan span = span_from(start);
+
+                    if (items.size() == 1 && items[0].name.empty())
+                    {
+                        // (T) is T, this is what makes (fn(int) -> int)? an optional function
+                        base = std::move(items[0].type);
+                    }
+                    else if (items.size() < 2)
+                    {
+                        error_at(span, "a tuple or variant needs at least 2 types");
+                        return nullptr;
+                    }
+                    else
+                    {
+                        base = std::make_unique<ast::TypeExpr>();
+
+                        if (is_variant)
+                        {
+                            ast::VariantType variant;
+                            for (auto& item : items)
+                                variant.alternatives.push_back(std::move(item.type));
+
+                            base->type = std::move(variant);
+                        }
+                        else
+                            base->type = ast::TupleType{std::move(items)};
+
+                        base->span = span;
+                    }
+                }
+                // fn(int, string) -> bool
+                else if (at_kw("fn"))
+                {
+                    bump(2);
+
+                    if (!expect("("))
+                        return nullptr;
+
+                    ast::FnType fn;
+
+                    while (!at(")") && !at_end())
+                    {
+                        auto param = parse_type();
+                        if (!param)
+                            return nullptr;
+
+                        fn.params.push_back(std::move(param));
+
+                        if (!accept(","))
+                            break;
+                    }
+
+                    if (!expect(")"))
+                        return nullptr;
+
+                    // `fn(int) -> int?` is a function that returns an int?
+                    if (accept("->"))
+                    {
+                        fn.ret = parse_type();
+                        if (!fn.ret)
+                            return nullptr;
+                    }
+
+                    base = std::make_unique<ast::TypeExpr>();
+                    base->type = std::move(fn);
+                    base->span = span_from(start);
+                }
+                // named
+                else if (at_ident())
+                {
+                    std::vector<std::string> parts;
+                    parts.push_back(*ident());
+
+                    while (accept("::"))
+                    {
+                        if (!at_ident())
+                        {
+                            error_here("expected identifier after '::'");
+                            return nullptr;
+                        }
+
+                        parts.push_back(*ident());
+                    }
+
+                    base = std::make_unique<ast::TypeExpr>();
+                    base->type = ast::NamedType{std::move(parts)};
+                    base->span = span_from(start);
+                }
+                else
+                {
+                    error_after_prev("expected type expression");
+                    return nullptr;
+                }
+
+
+                // 2 modifiers, optional and array
+
+                bool last_was_optional = false;
+                while (true)
+                {
+                    if (at("[")) // array
+                    {
+                        bump(1);
+
+                        if (!expect("]"))
+                            break;
+
+                        auto arr = std::make_unique<ast::TypeExpr>();
+                        arr->type = ast::ArrayType{std::move(base)};
+                        arr->span = span_from(start);
+                        base = std::move(arr);
+
+                        last_was_optional = false;
+                    }
+                    else
+                    if (accept_raw('?')) // optional
+                    {
+                        if (last_was_optional)
+                        {
+                            error_at(SourceSpan::between(_prev_start, _prev_end), "you can't have an optional of an optional");
+                            continue;
+                        }
+
+                        auto optional = std::make_unique<ast::TypeExpr>();
+                        optional->type = ast::OptionalType{std::move(base)};
+                        optional->span = span_from(start);
+                        base = std::move(optional);
+
+                        last_was_optional = true;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+
+                return base;
+            }
+
+
+            // decls
+
+            void parse_import()
+            {
+                do
+                {
+                    if (peek() != '"')
+                    {
+                        error_after_prev("expected import path string");
+                        break;
+                    }
+
+                    const size_t start = _pos;
+                    std::string path;
+
+                    read_string(path);
+                    _imports.push_back({std::move(path), span_from(start)});
+                }
+                while (accept(","));
+
+                accept(";");
+            }
+
             ast::DeclPtr parse_decl()
             {
                 const size_t start = _pos;
@@ -564,6 +905,26 @@ namespace foo
                         return nullptr;
 
                     return std::make_unique<ast::Decl>(std::move(*enumeration), span_from(start));
+                }
+
+                if (at_alias_decl())
+                {
+                    bump(4); // 'type'
+
+                    auto alias = parse_alias_decl();
+                    if (!alias)
+                        return nullptr;
+
+                    return std::make_unique<ast::Decl>(std::move(*alias), span_from(start));
+                }
+
+                if (accept_kw("struct"))
+                {
+                    auto strukt = parse_struct_decl();
+                    if (!strukt)
+                        return nullptr;
+
+                    return std::make_unique<ast::Decl>(std::move(*strukt), span_from(start));
                 }
 
 
@@ -613,6 +974,115 @@ namespace foo
 
                 return ast::EnumDecl{std::move(*name), std::move(variants)};
             }
+
+            std::optional<ast::AliasDecl> parse_alias_decl()
+            {
+                auto name = ident();
+                if (!name)
+                {
+                    error_here("expected alias name");
+                    return std::nullopt;
+                }
+
+                if (!expect("="))
+                    return std::nullopt;
+
+                auto type = parse_type();
+                if (!type)
+                    return std::nullopt;
+
+                accept(";");
+                return ast::AliasDecl{std::move(*name), std::move(type)};
+            }
+
+            std::optional<ast::StructDecl> parse_struct_decl()
+            {
+                auto name = ident();
+                if (!name)
+                {
+                    error_here("expected struct name");
+                    return std::nullopt;
+                }
+
+                if (!at("{"))
+                {
+                    error_here("expected open brace");
+                    return std::nullopt;
+                }
+                bump(1);
+
+                std::vector<ast::StructField> fields;
+                std::vector<ast::FnDecl> fns;
+
+                while (!at("}") && !at_end())
+                {
+                    const size_t member_start = _pos;
+
+                    bool pub = true;
+                    if (accept_kw("priv"))
+                        pub = false;
+
+                    if (at_ident())
+                    {
+                        const size_t field_start = _pos;
+                        std::string field_name = *ident();
+
+                        if (!expect(":"))
+                        {
+                            synchronize_struct_member(member_start);
+                            continue;
+                        }
+
+                        auto type = parse_type();
+
+                        if (!type)
+                        {
+                            synchronize_struct_member(member_start);
+                            continue;
+                        }
+
+                        fields.push_back({
+                            std::move(field_name),
+                            std::move(type),
+                            pub,
+                            span_from(field_start)
+                        });
+
+                        accept(";");
+                        continue;
+                    }
+
+                    if (accept_kw("fn"))
+                    {
+                        // auto fn = parse_fn_decl(pub);
+                        //
+                        // if (fn)
+                        //     fns.push_back(std::move(*fn));
+                        // else
+                        //     synchronize_struct_member(member_start);
+
+                        continue;
+                    }
+
+                    // the old parser looped forever here
+                    error_here("expected a field or a method");
+
+                    if (_pos == member_start)
+                        skip_token();
+
+                    synchronize_struct_member(member_start);
+                }
+
+                expect("}");
+
+                return ast::StructDecl{
+                    std::move(*name), std::move(fields), std::move(fns)
+                };
+            }
+
+            // expressions
+
+            // stmts
 
 
         }; // parser

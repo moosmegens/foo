@@ -2,7 +2,8 @@ enum a
 {
     a, b, c
 }
-enum a
+
+struct b
 {
-    a, b, c
+
 }
