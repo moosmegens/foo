@@ -129,6 +129,17 @@ namespace foo
             return cmp_ref(a.v, b.v);
         }
 
+        Ord cmp(const Closure& a, const Closure& b)
+        {
+            if (auto c = std::compare_three_way{}(a.lambda, b.lambda); c != 0)
+                return c;
+
+            return std::lexicographical_compare_three_way(
+                a.captured->begin(), a.captured->end(),
+                b.captured->begin(), b.captured->end(),
+                cmp_ref);
+        }
+
 
         ValueRef clone_value(const ValueRef& r)
         {
@@ -180,6 +191,16 @@ namespace foo
             return m;
         }
 
+        Storage clone_of(const Set& x)
+        {
+            Set m;
+
+            for (const auto& e : x.items)
+                m.items.emplace(clone_value(e));
+
+            return m;
+        }
+
         Storage clone_of(const Struct& x)
         {
             Struct s;
@@ -197,6 +218,17 @@ namespace foo
                 return std::move(*c);
 
             return x;
+        }
+
+        Storage clone_of(const Closure& x)
+        {
+            auto captured = make<std::vector<ValueRef>>();
+            captured->reserve(x.captured->size());
+
+            for (const ValueRef& e : *x.captured)
+                captured->push_back(clone_value(e));
+
+            return Closure{x.lambda, std::move(captured)};
         }
 
         void show(std::string& o, const Value& v, bool nested, const ResolveOutput* names)
@@ -293,7 +325,8 @@ namespace foo
                     o += "<enum>";
                 },
                 [&](const Rc<Native>& n)    { o += "<native>"; },
-                [&](const Boxed& b)         { show(o, *b.v, nested, names); }
+                [&](const Boxed& b)         { show(o, *b.v, nested, names); },
+                [&](const Closure&)         { o += "<fn>"; }
             }, v.v);
         }
 

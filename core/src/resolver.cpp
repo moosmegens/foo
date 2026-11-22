@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <iostream>
+#include <utility>
 #include <foo/resolver.hpp>
 
 #include <foo/debug/debug_out.hpp>
@@ -201,6 +202,28 @@ namespace foo
                 return out + ")";
             }
 
+            case TypeKind::Function:
+            {
+                std::string out = "fn(";
+                bool first = true;
+
+                for (TypeId param : types.members(type))
+                {
+                    if (!first)
+                        out += ", ";
+
+                    first = false;
+                    out += type_name(param, output);
+                }
+
+                out += ")";
+
+                if (types.function_return(type) != BaseTypes::Void)
+                    out += " -> " + type_name(types.function_return(type), output);
+
+                return out;
+            }
+
             case TypeKind::Struct:
             {
                 StructId id = types.struct_id(type);
@@ -271,6 +294,40 @@ namespace foo
             const ast::Expr* receiver = nullptr;
         };
 
+        struct AliasInfo : DeclInfo
+        {
+            const ast::AliasDecl* decl = nullptr;
+
+            TypeId type = EmptyType;
+            StructVisitState state = StructVisitState::NotVisited;
+        };
+
+        // while the body of a lambda is resolved, the members _locals, _next_slot, ... describe the lambda,
+        // and the function (or lambda) around it is parked in _enclosing.
+        // _lambdas[i] is the lambda whose surrounding context is _enclosing[i]
+        struct SavedContext
+        {
+            std::vector<LocalScope> locals;
+            SlotId next_slot = 0;
+            SlotId max_slot = 0;
+            TypeId return_type = -1;
+            int loop_depth = 0;
+        };
+
+        struct LambdaScope
+        {
+            std::vector<LambdaCapture> captures;
+            std::vector<TypeId> types; // parallel to captures
+            std::unordered_map<std::string, size_t> by_name;
+        };
+
+        struct VarRef
+        {
+            TypeId type = EmptyType;
+            RefKind ref = RefKind::None;
+            Id index = -1;
+        };
+
 
         // ------------------------------------------
 
@@ -280,6 +337,9 @@ namespace foo
         std::map<Path, StructId> _struct_map;
         std::map<Path, EnumId> _enum_map;
         std::map<Path, FunctionId> _function_map;
+
+        std::vector<AliasInfo> _aliases;
+        std::map<Path, size_t> _alias_map;
 
         int _loop_depth = 0;
 
@@ -299,6 +359,9 @@ namespace foo
         SlotId _max_slot = 0;
         TypeId _current_return_type = -1;
         FunctionInfo* _current_resolving_function = nullptr;
+
+        std::vector<SavedContext> _enclosing;
+        std::vector<LambdaScope> _lambdas;
 
 
 
@@ -427,6 +490,11 @@ namespace foo
             return type != EmptyType && types().kind(type) == TypeKind::Struct;
         }
 
+        bool is_function_type(TypeId type)
+        {
+            return type != EmptyType && types().kind(type) == TypeKind::Function;
+        }
+
         // ------------------------------------------
 
         void discover_decls_from_files()
@@ -475,7 +543,10 @@ namespace foo
                     {
                         discover_decls(n.decls, path_child(scope, n.name));
                     },
-                    [](const auto&)  { todo(); }
+                    [&](const ast::AliasDecl& a)
+                    {
+                        discover_alias(a, d->span, scope);
+                    }
                 }, d->kind);
             }
         }
@@ -531,8 +602,9 @@ namespace foo
             info.decl = &decl;
             info.type = types().enum_of(id);
 
-            // enums and structs share one namespace, they are both types
-            if (_struct_map.contains(info.path) || !_enum_map.emplace(info.path, id).second)
+            // enums, structs and aliases share one namespace, they are all types
+            if (_struct_map.contains(info.path) || _alias_map.contains(info.path)
+                || !_enum_map.emplace(info.path, id).second)
             {
                 error(span, "'" + to_string(info.path) + "' is already declared");
                 return;
@@ -554,6 +626,26 @@ namespace foo
 
             _output.to_file_index[&decl] = _file_id;
             _output.enums.push_back(std::move(info));
+        }
+
+        void discover_alias(const ast::AliasDecl& decl, const SourceSpan& span, const Path& scope)
+        {
+            AliasInfo info;
+            info.path = path_child(scope, decl.name);
+            info.file_index = _file_id;
+            info.span = span;
+            info.decl = &decl;
+
+            // aliases, structs and enums share one namespace, they are all types
+            if (_struct_map.contains(info.path) || _enum_map.contains(info.path)
+                || !_alias_map.emplace(info.path, _aliases.size()).second)
+            {
+                error(span, "'" + to_string(info.path) + "' is already declared");
+                return;
+            }
+
+            _output.to_file_index[&decl] = _file_id;
+            _aliases.push_back(std::move(info));
         }
 
         void discover_method(StructId owner, const ast::FnDecl& m, const SourceSpan& span)
@@ -582,7 +674,7 @@ namespace foo
 
         bool add_struct(const Path& path, StructId id, const SourceSpan& span)
         {
-            if (!_enum_map.contains(path) && _struct_map.emplace(path, id).second)
+            if (!_enum_map.contains(path) && !_alias_map.contains(path) && _struct_map.emplace(path, id).second)
                 return true;
 
             error(span, "'" + to_string(path) + "' is already declared");
@@ -624,6 +716,18 @@ namespace foo
             return std::nullopt;
         }
 
+        std::optional<size_t> lookup_alias(const Path& name) const
+        {
+            for (const Path& candidate : candidate_paths(name))
+            {
+                auto found = _alias_map.find(candidate);
+                if (found != _alias_map.end())
+                    return found->second;
+            }
+
+            return std::nullopt;
+        }
+
         std::optional<FunctionId> lookup_function(const Path& name) const
         {
             for (const Path& candidate : candidate_paths(name))
@@ -636,8 +740,55 @@ namespace foo
             return std::nullopt;
         }
 
+        // an alias is just another name for its type, it is resolved the first time somebody needs it
+        TypeId resolve_alias(size_t index)
+        {
+            AliasInfo& alias = _aliases[index];
+
+            if (alias.state == StructVisitState::Done)
+                return alias.type;
+
+            if (alias.state == StructVisitState::Visiting)
+            {
+                _output.errors.push_back({
+                    "type alias '" + to_string(alias.path) + "' refers to itself",
+                    alias.file_index,
+                    alias.span
+                });
+
+                return BaseTypes::Error;
+            }
+
+            alias.state = StructVisitState::Visiting;
+
+            // an alias is resolved in its own file and scope, no matter who asked for it
+            const int file_id = _file_id;
+            const Path scope = _scope;
+            const bool allow_infer = _allow_infer;
+
+            _file_id = alias.file_index;
+            _scope = alias.path;
+            _scope.pop_back();
+            _allow_infer = false;
+
+            const TypeId type = resolve_type(alias.decl->type);
+
+            _file_id = file_id;
+            _scope = scope;
+            _allow_infer = allow_infer;
+
+            alias.type = type;
+            alias.state = StructVisitState::Done;
+
+            return type;
+        }
+
         void resolve_types()
         {
+            // aliases first, so a broken alias is reported even when nothing uses it
+            for (size_t i = 0; i < _aliases.size(); i++)
+                resolve_alias(i);
+
             for (StructInfo& info : _output.structs)
             {
                 enter(info);
@@ -786,7 +937,32 @@ namespace foo
 
                     return types().variant_of(std::move(alternatives));
                 },
-                [](const auto&) -> TypeId { todo(); }
+                [&](const ast::FnType& f) -> TypeId
+                {
+                    // `_` is only supported in the written type of a variable, not inside a function type
+                    const bool allow_infer = std::exchange(_allow_infer, false);
+
+                    std::vector<TypeId> params;
+
+                    for (const ast::TypeExprPtr& param : f.params)
+                    {
+                        TypeId id = resolve_type(param);
+
+                        if (id == BaseTypes::Void)
+                        {
+                            error(param->span, "a function type parameter cannot be void");
+                            id = BaseTypes::Error;
+                        }
+
+                        params.push_back(id);
+                    }
+
+                    const TypeId ret = f.ret ? resolve_type(f.ret) : BaseTypes::Void;
+
+                    _allow_infer = allow_infer;
+
+                    return types().function_of(std::move(params), ret);
+                }
             }, te->type);
         }
 
@@ -820,6 +996,10 @@ namespace foo
             std::optional<EnumId> found_enum = lookup_enum(parts);
             if (found_enum.has_value())
                 return enum_at(*found_enum).type;
+
+            std::optional<size_t> found_alias = lookup_alias(parts);
+            if (found_alias.has_value())
+                return resolve_alias(*found_alias);
 
             if (TypeId t = find_native_type(parts); t != EmptyType)
                 return t;
@@ -932,7 +1112,8 @@ namespace foo
                     return ok;
                 }
 
-                // no default for variants and enums on purpose, giving one later is not a breaking change
+                // no default for variants and enums on purpose, giving one later is not a breaking change.
+                // functions have none either, there is no function that makes sense as a default
                 default:
                     return false;
             }
@@ -1092,17 +1273,54 @@ namespace foo
             return local;
         }
 
-        const LocalInfo* find_local(const std::string& name) const
+        static const LocalInfo* find_in_scopes(const std::vector<LocalScope>& scopes, const std::string& name)
         {
-            for (const auto & local : std::views::reverse(_locals))
+            for (const auto& scope : std::views::reverse(scopes))
             {
-                auto found = local.names.find(name);
+                auto found = scope.names.find(name);
 
-                if (found != local.names.end())
+                if (found != scope.names.end())
                     return &found->second;
             }
 
             return nullptr;
+        }
+
+        std::optional<VarRef> find_variable(const std::string& name)
+        {
+            return find_variable_at(name, _lambdas.size());
+        }
+
+        // level == _lambdas.size() is the context that is being resolved right now,
+        // level 0 is the function around all the lambdas.
+        // a name that is not a local of a lambda is captured from the context around it
+        std::optional<VarRef> find_variable_at(const std::string& name, size_t level)
+        {
+            const std::vector<LocalScope>& scopes =
+                (level == _lambdas.size()) ? _locals : _enclosing[level].locals;
+
+            if (const LocalInfo* local = find_in_scopes(scopes, name))
+                return VarRef{local->type, RefKind::Local, local->slot};
+
+            if (level == 0)
+                return std::nullopt;
+
+            LambdaScope& lambda = _lambdas[level - 1];
+
+            if (auto known = lambda.by_name.find(name); known != lambda.by_name.end())
+                return VarRef{lambda.types[known->second], RefKind::Capture, static_cast<Id>(known->second)};
+
+            const std::optional<VarRef> outer = find_variable_at(name, level - 1);
+
+            if (!outer)
+                return std::nullopt;
+
+            const size_t index = lambda.captures.size();
+            lambda.captures.push_back({outer->ref, outer->index});
+            lambda.types.push_back(outer->type);
+            lambda.by_name.emplace(name, index);
+
+            return VarRef{outer->type, RefKind::Capture, static_cast<Id>(index)};
         }
 
         void resolve_block(const ast::Block& block)
@@ -1388,6 +1606,21 @@ namespace foo
 
         void resolve_return(const ast::Return& ret, const SourceSpan& span)
         {
+            // a lambda without a written return type: the first `return` decides what it returns
+            if (_current_return_type == EmptyType)
+            {
+                TypeId type = ret.value ? resolve_expr(*ret.value) : BaseTypes::Void;
+
+                if (type == BaseTypes::None)
+                {
+                    error(span, "cannot infer the return type from 'none', write the return type down");
+                    type = BaseTypes::Error;
+                }
+
+                _current_return_type = type;
+                return;
+            }
+
             if (!ret.value)
             {
                 if (_current_return_type != BaseTypes::Void)
@@ -1557,14 +1790,16 @@ namespace foo
         // exprs
 
         // lvalues, this is true for anything on the left side of =.
-        // a name only counts when it is a local, Color::red is a name but not something you can assign to
+        // a name only counts when it is a local (or a captured local),
+        // Color::red is a name but not something you can assign to
         bool is_lvalue(const ast::Expr& expr) const
         {
             return std::visit(overload{
                 [&](const ast::Name&)
                 {
                     const auto it = _output.exprs.find(&expr);
-                    return it != _output.exprs.end() && it->second.ref == RefKind::Local;
+                    return it != _output.exprs.end()
+                        && (it->second.ref == RefKind::Local || it->second.ref == RefKind::Capture);
                 },
                 [&](const ast::Index& index)
                 {
@@ -1661,7 +1896,7 @@ namespace foo
             [&](const ast::StaticCall& e)       { return resolve_static_call(e, span); },
             [&](const ast::As& e)               { return resolve_as(e, span); },
             [&](const ast::PatternAssign& e)    { return resolve_pattern_assign(e); },
-            [](const auto&) -> ExprInfo { todo(); }
+            [&](const ast::Lambda& e)           { return resolve_lambda(e, span, expected_type); }
             }, expr.kind);
 
             _output.exprs[&expr] = info;
@@ -1772,6 +2007,101 @@ namespace foo
             return make_einfo(BaseTypes::Void);
         }
 
+        ExprInfo resolve_lambda(const ast::Lambda& lambda, const SourceSpan& span, TypeId expected)
+        {
+            if (expected != EmptyType && types().kind(expected) == TypeKind::Optional)
+                expected = types().element(expected);
+
+            std::vector<TypeId> hint_params;
+            TypeId hint_ret = EmptyType;
+
+            if (is_function_type(expected) && types().members(expected).size() == lambda.params.size())
+            {
+                hint_params = types().members(expected);
+                hint_ret = types().function_return(expected);
+            }
+
+            std::vector<TypeId> param_types;
+
+            for (size_t i = 0; i < lambda.params.size(); ++i)
+            {
+                const ast::Param& param = lambda.params[i];
+                TypeId type = BaseTypes::Error;
+
+                if (param.type)
+                    type = resolve_type(param.type);
+                else if (!hint_params.empty())
+                    type = hint_params[i];
+                else
+                    error(param.span, "cannot infer the type of parameter '" + param.name + "', add a type annotation");
+
+                if (type == BaseTypes::Void)
+                {
+                    error(param.span, "a parameter cannot be void");
+                    type = BaseTypes::Error;
+                }
+
+                param_types.push_back(type);
+            }
+
+            // EmptyType means: infer it from the body
+            TypeId ret = EmptyType;
+
+            if (lambda.return_type)
+                ret = resolve_type(lambda.return_type);
+            else if (hint_ret != EmptyType && hint_ret != BaseTypes::Void && hint_ret != BaseTypes::Error)
+                ret = hint_ret;
+
+            // function around the lambda, the lambda gets its own slots
+            _enclosing.push_back({std::move(_locals), _next_slot, _max_slot, _current_return_type, _loop_depth});
+            _lambdas.emplace_back();
+
+            _locals.clear();
+            _next_slot = 0;
+            _max_slot = 0;
+            _current_return_type = ret;
+            _loop_depth = 0;
+
+            push_locals();
+
+            for (size_t i = 0; i < lambda.params.size(); ++i)
+                declare_local(lambda.params[i].name, param_types[i], lambda.params[i].span);
+
+            resolve_block(lambda.body);
+
+            const TypeId final_ret = _current_return_type == EmptyType ? BaseTypes::Void : _current_return_type;
+
+            if (final_ret != BaseTypes::Void && final_ret != BaseTypes::Error && !block_always_returns(lambda.body))
+                error(span, "lambda does not return a value on every path");
+
+            pop_locals();
+
+            LambdaInfo info;
+
+            for (TypeId type : param_types)
+                info.sig.params.push_back({type, false});
+
+            info.sig.ret = final_ret;
+            info.slot_count = _max_slot;
+            info.file_index = _file_id;
+            info.captures = std::move(_lambdas.back().captures);
+
+            _lambdas.pop_back();
+
+            SavedContext saved = std::move(_enclosing.back());
+            _enclosing.pop_back();
+
+            _locals = std::move(saved.locals);
+            _next_slot = saved.next_slot;
+            _max_slot = saved.max_slot;
+            _current_return_type = saved.return_type;
+            _loop_depth = saved.loop_depth;
+
+            _output.lambdas[&lambda] = std::move(info);
+
+            return make_einfo(types().function_of(std::move(param_types), final_ret));
+        }
+
         ExprInfo resolve_struct_lit(const ast::StructLit& lit, const SourceSpan& span)
         {
             TypeId type = resolve_type(lit.type);
@@ -1849,10 +2179,8 @@ namespace foo
         {
             if (name.path.size() == 1)
             {
-                const LocalInfo* local = find_local(name.path[0]);
-
-                if (local != nullptr)
-                    return make_einfo(local->type, RefKind::Local, local->slot);
+                if (const auto variable = find_variable(name.path[0]))
+                    return make_einfo(variable->type, variable->ref, variable->index);
             }
 
             // Color::red
@@ -1860,7 +2188,20 @@ namespace foo
             {
                 const Path type_path(name.path.begin(), name.path.end() - 1);
 
-                if (auto found = lookup_enum(type_path))
+                std::optional<EnumId> found = lookup_enum(type_path);
+
+                if (!found)
+                {
+                    if (const auto alias = lookup_alias(type_path))
+                    {
+                        const TypeId aliased = resolve_alias(*alias);
+
+                        if (types().kind(aliased) == TypeKind::Enum)
+                            found = types().enum_id(aliased);
+                    }
+                }
+
+                if (found)
                 {
                     const EnumInfo& info = enum_at(*found);
                     const auto variant = std::ranges::find(info.variants, name.path.back());
@@ -2116,7 +2457,12 @@ namespace foo
                 return fail_call(call.args);
             }
 
-            _output.exprs[call.callee.get()] = make_einfo(callee->sig.ret, callee->ref, callee->index);
+            const bool closure = callee->ref == RefKind::Closure;
+
+            // a function value keeps the info it already has (a local, a capture, a field, ...),
+            // the runtime evaluates it to get the function
+            if (!closure)
+                _output.exprs[call.callee.get()] = make_einfo(callee->sig.ret, callee->ref, callee->index);
 
             if (callee->ref == RefKind::Native || callee->ref == RefKind::NativeMethod)
                 _output.native_sigs[&call] = callee->sig;
@@ -2128,7 +2474,7 @@ namespace foo
 
             resolve_args(callee->sig, call.args, span);
 
-            return make_einfo(callee->sig.ret);
+            return make_einfo(callee->sig.ret, closure ? RefKind::Closure : RefKind::None);
         }
 
         ExprInfo resolve_static_call(const ast::StaticCall& call, const SourceSpan& span)
@@ -2199,18 +2545,62 @@ namespace foo
             return std::nullopt;
         }
 
+        Callee closure_callee(TypeId type)
+        {
+            FunctionSig sig;
+
+            for (TypeId param : types().members(type))
+                sig.params.push_back({param, false});
+
+            sig.ret = types().function_return(type);
+
+            return make_callee(sig, RefKind::Closure, -1);
+        }
+
+        std::optional<Callee> resolve_local_function(const ast::Expr& expr, const ast::Name& name)
+        {
+            if (name.path.size() != 1)
+                return std::nullopt;
+
+            const auto variable = find_variable(name.path[0]);
+
+            if (!variable || !is_function_type(variable->type))
+                return std::nullopt;
+
+            _output.exprs[&expr] = make_einfo(variable->type, variable->ref, variable->index);
+            return closure_callee(variable->type);
+        }
+
+        std::optional<Callee> resolve_function_value(const ast::Expr& expr)
+        {
+            const TypeId type = resolve_expr(expr);
+
+            if (type == BaseTypes::Error)
+                return std::nullopt;
+
+            if (!is_function_type(type))
+            {
+                error(expr.span, "'" + type_name(type) + "' cannot be called");
+                return std::nullopt;
+            }
+
+            return closure_callee(type);
+        }
+
         std::optional<Callee> resolve_callee(const ast::Expr& expr)
         {
-            const ast::Name* name = std::get_if<ast::Name>(&expr.kind);
-            if (name != nullptr)
+            if (const ast::Name* name = std::get_if<ast::Name>(&expr.kind))
+            {
+                if (auto closure = resolve_local_function(expr, *name))
+                    return closure;
+
                 return resolve_function_callee(*name, expr.span);
+            }
 
-            const ast::Member* member = std::get_if<ast::Member>(&expr.kind);
-            if (member != nullptr)
-                return resolve_method_callee(*member, expr.span);
+            if (const ast::Member* member = std::get_if<ast::Member>(&expr.kind))
+                return resolve_method_callee(expr, *member);
 
-            error(expr.span, "this expression cannot be called");
-            return std::nullopt;
+            return resolve_function_value(expr);
         }
 
         std::optional<Callee> resolve_function_callee(const ast::Name& name, const SourceSpan& span)
@@ -2238,8 +2628,10 @@ namespace foo
             return std::nullopt;
         }
 
-        std::optional<Callee> resolve_method_callee(const ast::Member& member, const SourceSpan& span)
+        std::optional<Callee> resolve_method_callee(const ast::Expr& expr, const ast::Member& member)
         {
+            const SourceSpan& span = expr.span;
+
             TypeId receiver_type = resolve_expr(*member.target);
 
             if (receiver_type == BaseTypes::Error)
@@ -2265,6 +2657,19 @@ namespace foo
                         return std::nullopt;
 
                     return make_callee(function.sig, RefKind::Method, found->second, member.target.get());
+                }
+
+                const int field_index = find_field(info, member.name);
+
+                if (field_index >= 0 && is_function_type(info.fields[static_cast<size_t>(field_index)].type))
+                {
+                    const FieldInfo& field = info.fields[static_cast<size_t>(field_index)];
+
+                    if (!ensure_access_field(info, field, span, _current_resolving_function))
+                        return std::nullopt;
+
+                    _output.exprs[&expr] = make_einfo(field.type, RefKind::Field, field_index);
+                    return closure_callee(field.type);
                 }
             }
 

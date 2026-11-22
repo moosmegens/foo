@@ -43,7 +43,7 @@ namespace foo
         // only exists while resolving
         Infer,
 
-        Range, Array, Map, Set, Optional, Struct, Native, Tuple, Variant, Enum
+        Range, Array, Map, Set, Optional, Struct, Native, Tuple, Variant, Enum, Function
     };
 
     constexpr std::array BaseKinds =
@@ -102,6 +102,11 @@ namespace foo
             return intern(TypeKind::Tuple, EmptyId, EmptyId, std::move(elements));
         }
 
+        TypeId function_of(std::vector<TypeId> params, TypeId ret)
+        {
+            return intern(TypeKind::Function, ret, EmptyId, std::move(params));
+        }
+
         // flattens nested variants, sorts and removes duplicates, so (int | string) is (string | int).
         // one alternative left is just that alternative, an Error alternative makes the whole thing Error
         TypeId variant_of(std::vector<TypeId> alternatives);
@@ -115,6 +120,9 @@ namespace foo
         StructId struct_id(TypeId t) const      { return at(t).a; }
         EnumId enum_id(TypeId t) const          { return at(t).a; }
         NativeTypeId native_id(TypeId t) const  { return at(t).a; }
+
+        TypeId function_return(TypeId t) const { return at(t).a; }
+        const std::vector<TypeId>& args(TypeId t) const { return at(t).list; }
 
         // tuple elements, or variant alternatives
         const std::vector<TypeId>& members(TypeId t) const { return at(t).list; }
@@ -316,7 +324,9 @@ namespace foo
         Native,         // index = NativeId
         NativeMethod,   // index = NativeId
         StructLit,      // StructLit: index = StructId
-        EnumVariant     // Color::red: index = variant index
+        EnumVariant,    // Color::red: index = variant index
+        Capture,        // index = position in the captured values of the running closure
+        Closure         // a call through a function value (only on Call expressions)
     };
 
     struct ExprInfo
@@ -332,6 +342,20 @@ namespace foo
         TypeId type = EmptyType;
 
         SlotId slot = -1;
+    };
+
+    struct LambdaCapture
+    {
+        RefKind from = RefKind::None;
+        Id index = -1;
+    };
+
+    struct LambdaInfo
+    {
+        FunctionSig sig;
+        int slot_count = 0;
+        int file_index = -1;
+        std::vector<LambdaCapture> captures;
     };
 
 
@@ -370,6 +394,7 @@ namespace foo
         std::unordered_map<const ast::PatName*, LocalInfo> pattern_vars;
         std::unordered_map<const ast::ForIn*, LocalInfo> for_vars;
         std::unordered_map<const ast::Check*, LocalInfo> check_vars;
+        std::unordered_map<const ast::Lambda*, LambdaInfo> lambdas;
 
         std::unordered_map<const void*, int> to_file_index;
     };

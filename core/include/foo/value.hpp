@@ -81,6 +81,15 @@ namespace foo
         TypeId type = EmptyType;
     };
 
+    // a lambda together with the values it captured when it was created.
+    // `captured` is shared between the calls of one closure (so a closure can keep state),
+    // and it is deep copied when the closure value is copied. It is never null.
+    struct Closure
+    {
+        const ast::Lambda* lambda = nullptr;
+        Rc<std::vector<ValueRef>> captured;
+    };
+
     struct Native
     {
         virtual ~Native() = default;
@@ -108,7 +117,8 @@ namespace foo
             Struct,
             EnumValue,
             Boxed,
-            Rc<Native>
+            Rc<Native>,
+            Closure
         >;
 
         explicit Value(Storage s) : v(std::move(s)) {}
