@@ -14,8 +14,8 @@ namespace foo
     std::string to_string(const ast::Decl& decl, int i = 0);
     std::string to_string(const ast::DeclPtr& decl_ptr, int i = 0);
 
-    std::string to_string(const ast::Expr& decl);
-    std::string to_string(const ast::ExprPtr& decl_ptr);
+    std::string to_string(const ast::Expr& decl, int i = 0);
+    std::string to_string(const ast::ExprPtr& decl_ptr, int i = 0);
 
     std::string to_string(const ast::Stmt& decl, int i = 0);
     std::string to_string(const ast::StmtPtr& decl_ptr, int i = 0);

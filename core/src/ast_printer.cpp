@@ -69,7 +69,7 @@ namespace foo
         return out;
     }
 
-    static std::string list(const std::vector<ExprPtr>& items)
+    static std::string list(const std::vector<ExprPtr>& items, int indent = 0)
     {
         std::string out;
         for (size_t i = 0; i < items.size(); i++)
@@ -77,7 +77,7 @@ namespace foo
             if (i)
                 out += ", ";
 
-            out += to_string(items[i]);
+            out += to_string(items[i], indent);
         }
         return out;
     }
@@ -156,7 +156,7 @@ namespace foo
         }, t.type);
     }
 
-    std::string to_string(const Expr& e)
+    std::string to_string(const Expr& e, int indent)
     {
         return std::visit(overload{
             [](const IntLit& n)
@@ -171,11 +171,11 @@ namespace foo
             [](const BoolLit& n)
                 { return std::string(n.value ? "true" : "false"); },
 
-            [](const ArrayLit& n)
-                { return "[" + list(n.elements) + "]"; },
+            [&](const ArrayLit& n)
+                { return "[" + list(n.elements, indent) + "]"; },
 
-            [](const TupleLit& n)
-                { return "(" + list(n.elements) + ")"; },
+            [&](const TupleLit& n)
+                { return "(" + list(n.elements, indent) + ")"; },
 
             [](const NoneLit&) -> std::string
                 { return "none"; },
@@ -183,31 +183,31 @@ namespace foo
             [](const Name& n)
                 { return join(n.path, "::"); },
 
-            [](const Unary& n)
-                { return std::format("({}{})", op_str(n.op), to_string(n.operant)); },
+            [&](const Unary& n)
+                { return std::format("({}{})", op_str(n.op), to_string(n.operant, indent)); },
 
-            [](const Binary& n)
-                { return std::format("({} {} {})", to_string(n.lhs), op_str(n.op), to_string(n.rhs)); },
+            [&](const Binary& n)
+                { return std::format("({} {} {})", to_string(n.lhs, indent), op_str(n.op), to_string(n.rhs, indent)); },
 
-            [](const Index& n)
+            [&](const Index& n)
                 { return std::format("{}[{}]", to_string(n.target), to_string(n.indexer)); },
 
-            [](const Call& n)
-                { return std::format("{}({})", to_string(n.callee), list(n.args)); },
+            [&](const Call& n)
+                { return std::format("{}({})", to_string(n.callee, indent), list(n.args, indent)); },
 
             [](const Member& n)
                 { return std::format("{}.{}", to_string(n.target), n.name); },
 
-            [](const StaticCall& n)
-                { return std::format("@{}.{}({})", to_string(n.target), n.method, list(n.args)); },
+            [&](const StaticCall& n)
+                { return std::format("@{}.{}({})", to_string(n.target), n.method, list(n.args, indent)); },
 
-            [](const As& n)
-                { return std::format("({} as {})", to_string(n.expr), to_string(n.type)); },
+            [&](const As& n)
+                { return std::format("({} as {})", to_string(n.expr, indent), to_string(n.type)); },
 
-            [](const PatternAssign& n)
-                { return std::format("({} = {})", print_pattern(*n.pattern), to_string(n.value)); },
+            [&](const PatternAssign& n)
+                { return std::format("({} = {})", print_pattern(*n.pattern), to_string(n.value, indent)); },
 
-            [](const StructLit& n)
+            [&](const StructLit& n)
                 {
                     std::string out = "#" + to_string(n.type) + "{";
                     for (size_t i = 0; i < n.fields.size(); ++i)
@@ -215,15 +215,15 @@ namespace foo
                         if (i)
                             out += ", ";
 
-                        out += n.fields[i].name + " = " + to_string(n.fields[i].value);
+                        out += n.fields[i].name + " = " + to_string(n.fields[i].value, indent);
                     }
                     return out + "}";
                 },
 
-            [](const Lambda& n)
+            [&](const Lambda& n)
                 {
                     std::string out = "|";
-                    for (size_t i = 0; i < n.params.size(); ++i)
+                    for (size_t i = 0; i < n.params.size(); i++)
                     {
                         if (i)
                             out += ", ";
@@ -238,7 +238,7 @@ namespace foo
                     if (n.return_type)
                         out += " -> " + to_string(n.return_type);
 
-                    return out + " " + print(n.body, 0);
+                    return out + " " + print(n.body, indent);
                 },
 
         }, e.kind);
@@ -281,6 +281,7 @@ namespace foo
         std::string out = "{\n";
         for (const auto& s : b.statements)
             out += pad(indent + 1) + print(s, indent + 1) + "\n";
+
         return out + pad(indent) + "}";
     }
 
@@ -290,21 +291,21 @@ namespace foo
             [&](const Break& n) { return std::string{"break"}; },
             [&](const Continue& n) { return std::string{"continue"}; },
             [&](const Block& n) { return print(n, indent); },
-            [&](const ExprStmt& n) { return to_string(n.expr) + ";"; },
+            [&](const ExprStmt& n) { return to_string(n.expr, indent) + ";"; },
             [&](const VarDecl& n)
             {
                 std::string out = "var " + print_pattern(*n.pattern);
                 if (n.type) out += ": " + to_string(n.type);
-                if (n.init) out += " = " + to_string(n.init);
+                if (n.init) out += " = " + to_string(n.init, indent);
                 return out + ";";
             },
             [&](const Return& n)
             {
-                return n.value ? "return " + to_string(n.value) + ";" : std::string("return;");
+                return n.value ? "return " + to_string(n.value, indent) + ";" : std::string("return;");
             },
             [&](const If& n)
             {
-                std::string out = "if " + to_string(n.cond) + body(n.then_branch, indent);
+                std::string out = "if " + to_string(n.cond, indent) + body(n.then_branch, indent);
                 if (n.else_branch)
                 {
                     out += "\n" + pad(indent) + "else";
@@ -316,7 +317,7 @@ namespace foo
             },
             [&](const Check& n)
             {
-                std::string out = "check " + to_string(n.expr) + " => " + n.variable_name +body(n.good_branch, indent);
+                std::string out = "check " + to_string(n.expr, indent) + " => " + n.variable_name + body(n.good_branch, indent);
                 if (n.bad_branch)
                 {
                     out += "\n" + pad(indent) + "else";
@@ -324,10 +325,10 @@ namespace foo
                 }
                 return out;
             },
-            [&](const While& n) { return "while " + to_string(n.cond) + body(n.body, indent); },
+            [&](const While& n) { return "while " + to_string(n.cond, indent) + body(n.body, indent); },
             [&](const ForIn& n)
             {
-                return "for " + n.variable_name + " in " + to_string(n.iterable) + body(n.body, indent);
+                return "for " + n.variable_name + " in " + to_string(n.iterable, indent) + body(n.body, indent);
             },
         }, s.kind);
     }
@@ -391,7 +392,8 @@ namespace foo
     std::string to_string(const Decl& d, int i) { return pad(i) + print(d, i); }
 
     std::string to_string(const TypeExprPtr& t) { return t ? to_string(*t) : "<null>"; }
-    std::string to_string(const ExprPtr& e)     { return e ? to_string(*e) : "<null>"; }
+
+    std::string to_string(const ExprPtr& e, int i) { return e ? to_string(*e, i) : "<null>"; }
 
     std::string to_string(const StmtPtr& s, int i) { return s ? to_string(*s, i) : pad(i) + "<null>"; }
     std::string to_string(const DeclPtr& d, int i) { return d ? to_string(*d, i) : pad(i) + "<null>"; }
