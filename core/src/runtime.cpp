@@ -881,7 +881,6 @@ namespace foo
         ValueResult eval_lambda(const Expr& e, const Lambda& x)
         {
             const LambdaInfo& li = lookup(resolved().lambdas, &x, "lambda");
-            std::cout << "Lambda by_ref: " << li.by_ref << '\n';
 
             auto captured = make<std::vector<ValueRef>>();
             captured->reserve(li.captures.size());
