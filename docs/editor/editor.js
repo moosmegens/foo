@@ -142,7 +142,7 @@ function renderGutter(target, text, marks) {
 
 // ---------- the editor ----------
 
-export function createEditor(options) {
+export function createEditor(options) {                       
     const {
         editor, output = null, problems = null, status = null, cursor = null,
         runButton = null, checkButton = null,
