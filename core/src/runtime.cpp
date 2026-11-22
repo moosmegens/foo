@@ -223,7 +223,13 @@ namespace foo
         struct Frame
         {
             std::vector<ValueRef> slots;
-            const FunctionInfo* fn = nullptr;
+
+            int file_index = -1;
+
+            TypeId ret = BaseTypes::Void;
+
+            // lambdas only
+            Rc<std::vector<ValueRef>> captures;
         };
 
         struct FramePopHelper
@@ -275,7 +281,8 @@ namespace foo
 
         bool callable(RefKind k)
         {
-            return k == RefKind::Function || k == RefKind::Method || k == RefKind::Native || k == RefKind::NativeMethod;
+            return k == RefKind::Function || k == RefKind::Method || k == RefKind::Native
+                || k == RefKind::NativeMethod || k == RefKind::Closure;
         }
     }
 
@@ -346,9 +353,7 @@ namespace foo
 
         std::unexpected<RuntimeError> error(const std::string& what, const SourceSpan& span) const
         {
-            const FunctionInfo* fn = _frames.empty() ? nullptr : _frames.back().fn;
-
-            return error(what, fn ? fn->file_index : -1, span);
+            return error(what, _frames.empty() ? -1 : _frames.back().file_index, span);
         }
 
         static std::unexpected<RuntimeError> error(const std::string& what, int file_index = -1, SourceSpan span = {})
@@ -403,6 +408,16 @@ namespace foo
                 return error("internal: use of an uninitialized variable");
 
             return all[static_cast<size_t>(s)];
+        }
+
+        ValueResult capture(Id index)
+        {
+            const auto& captures = _frames.back().captures;
+
+            if (!captures || index < 0 || static_cast<size_t>(index) >= captures->size())
+                return error("internal: bad capture");
+
+            return (*captures)[static_cast<size_t>(index)];
         }
 
         void bind(SlotId s, ValueRef v)
@@ -548,7 +563,7 @@ namespace foo
                 [&](const StaticCall& x)                { return eval_static_call(e, x); },
                 [&](const As& x)                        { return eval_as(e, x); },
                 [&](const PatternAssign& x)             { return eval_pattern_assign(x); },
-                [](const auto&) -> ValueResult           { todo(); }
+                [&](const Lambda& x)                    { return eval_lambda(e, x); }
             }, e.kind);
         }
 
@@ -639,6 +654,9 @@ namespace foo
 
             if (i.ref == RefKind::Local)
                 return local(i.index);
+
+            if (i.ref == RefKind::Capture)
+                return capture(i.index);
 
             if (i.ref == RefKind::EnumVariant)
                 return make_value(EnumValue{resolved().type_table.enum_id(i.type), static_cast<int>(i.index)});
@@ -782,7 +800,6 @@ namespace foo
 
             if (auto* tuple = std::get_if<Tuple>(&t.v))
             {
-                // the resolver already checked literal indices, this is a safety net
                 const int64_t i = as_int(key);
                 const auto at = index_in(i, tuple->items.size());
 
@@ -860,6 +877,31 @@ namespace foo
             return copy(boxed->v);
         }
 
+        ValueResult eval_lambda(const Expr& e, const Lambda& x)
+        {
+            const LambdaInfo& li = lookup(resolved().lambdas, &x, "lambda");
+
+            auto captured = make<std::vector<ValueRef>>();
+            captured->reserve(li.captures.size());
+
+            for (const LambdaCapture& c : li.captures)
+            {
+                if (c.from == RefKind::Capture)
+                {
+                    FOO_TRY(value, capture(c.index));
+                    captured->push_back(copy(value));
+                }
+                else
+                {
+                    FOO_TRY(value, local(c.index));
+                    captured->push_back(copy(value));
+                }
+            }
+
+            (void)e;
+            return make_value(Closure{&x, std::move(captured)});
+        }
+
         ValueResult eval_call(const Expr& e, const Call& c)
         {
             const ExprInfo* target = find_info(*c.callee);
@@ -869,6 +911,9 @@ namespace foo
 
             if (!target || !callable(target->ref))
                 return error("internal: call target was not resolved");
+
+            if (target->ref == RefKind::Closure)
+                return eval_closure_call(e, c);
 
             const Expr* self = nullptr;
 
@@ -883,6 +928,53 @@ namespace foo
             }
 
             return invoke(*target, self, c.args, &c, e.span);
+        }
+
+        ValueResult eval_closure_call(const Expr& e, const Call& c)
+        {
+            FOO_TRY(callee, ref(*c.callee));
+
+            const auto* held = std::get_if<Closure>(&callee->v);
+
+            if (!held || !held->lambda)
+                return error("internal: calling something that is not a function", e.span);
+
+            const Closure closure = *held;
+            const LambdaInfo& li = lookup(resolved().lambdas, closure.lambda, "lambda");
+
+            if (li.sig.params.size() != c.args.size())
+                return error("internal: wrong number of arguments", e.span);
+
+            std::vector<ValueRef> args;
+            args.reserve(c.args.size());
+
+            for (size_t i = 0; i < c.args.size(); i++)
+            {
+                const Expr& a = *c.args[i];
+
+                FOO_TRY(argument, val(a));
+                args.push_back(nudge_value(std::move(argument), info(a).type, li.sig.params[i].type));
+            }
+
+            if (li.slot_count < 0 || static_cast<size_t>(li.slot_count) < args.size())
+                return error("internal: lambda has too few slots", e.span);
+
+            if (_frames.size() >= _input.max_depth)
+                return error("recursion limit exceeded", e.span);
+
+            _frames.emplace_back();
+            FramePopHelper pop{_frames};
+
+            Frame& frame = _frames.back();
+            frame.file_index = li.file_index;
+            frame.ret = li.sig.ret;
+            frame.captures = closure.captured;
+            frame.slots.resize(static_cast<size_t>(li.slot_count));
+
+            for (size_t i = 0; i < args.size(); i++)
+                frame.slots[i] = std::move(args[i]);
+
+            return run_body(closure.lambda->body, li.file_index, e.span);
         }
 
         ValueResult eval_static_call(const Expr& e, const StaticCall& c)
@@ -994,6 +1086,29 @@ namespace foo
             }
         }
 
+        ValueResult run_body(const Block& body, int file_index, const SourceSpan& span)
+        {
+            FOO_TRY(flow, exec_block(body));
+
+            switch (flow)
+            {
+            case Flow::Break:
+                return error("'break' outside of a loop", file_index, span);
+
+            case Flow::Continue:
+                return error("'continue' outside of a loop", file_index, span);
+
+            case Flow::Return:
+            case Flow::Next:
+                break;
+            }
+
+            ValueRef result = std::move(_ret);
+            _ret = nullptr;
+
+            return result ? result : make_void();
+        }
+
         ValueResult call_function(FunctionId id, std::vector<ValueRef> args, const SourceSpan& call_span)
         {
             const FunctionInfo& f = function(id);
@@ -1016,35 +1131,14 @@ namespace foo
             FramePopHelper pop{_frames};
 
             Frame& frame = _frames.back();
-            frame.fn = &f;
+            frame.file_index = f.file_index;
+            frame.ret = f.sig.ret;
             frame.slots.resize(static_cast<size_t>(f.slot_count));
 
             for (size_t i = 0; i < expected; i++)
                 frame.slots[i] = std::move(args[i]);
 
-            FOO_TRY(flow, exec_block(f.decl->body));
-
-            ValueRef result;
-
-            switch (flow)
-            {
-            case Flow::Return:
-                result = std::move(_ret);
-                break;
-
-            case Flow::Break:
-                return error("'break' outside of a loop", f);
-
-            case Flow::Continue:
-                return error("'continue' outside of a loop", f);
-
-            case Flow::Next:
-                break;
-            }
-
-            _ret = nullptr;
-
-            return result ? result : make_void();
+            return run_body(f.decl->body, f.file_index, f.span);
         }
 
         ValueResult lvalue(const Expr& e)
@@ -1055,6 +1149,9 @@ namespace foo
 
                 if (i.ref == RefKind::Local)
                     return local(i.index);
+
+                if (i.ref == RefKind::Capture)
+                    return capture(i.index);
             }
             else if (const auto* m = std::get_if<Member>(&e.kind))
             {
@@ -1206,7 +1303,7 @@ namespace foo
 
             FOO_TRY(value, r.reffed ? ref(*r.value) : val(*r.value));
 
-            _ret = nudge_value(std::move(value), info(*r.value).type, _frames.back().fn->sig.ret);
+            _ret = nudge_value(std::move(value), info(*r.value).type, _frames.back().ret);
             return Flow::Return;
         }
 
@@ -1992,30 +2089,30 @@ namespace foo
             {"(T[]).reversed() -> T[]", "returns a reversed copy"});
 
 
-        def.function("testing::assert", {{ParamSig{BaseTypes::Bool}}},
+        def.function("debug::assert", {{ParamSig{BaseTypes::Bool}}},
             [](Runtime&, Args a, const auto&)
             {
                 bool cond = as_bool(a[0]);
 
                 if (cond == false)
-                    throw std::runtime_error("testing: assertion failed!");
+                    throw std::runtime_error("debugging: assertion failed!");
 
                 return make_void();
             },
-            {"testing::assert(cond: bool)"});
+            {"debug::assert(cond: bool)"});
 
-        def.function("testing::assert_eq", {{ParamSig{BaseTypes::Any}, ParamSig{BaseTypes::Any}}},
+        def.function("debug::assert_eq", {{ParamSig{BaseTypes::Any}, ParamSig{BaseTypes::Any}}},
             [](Runtime&, Args a, const auto&)
             {
                 const auto& _1 = a[0];
                 const auto& _2 = a[1];
 
                 if (*_1 != *_2)
-                    throw std::runtime_error("testing: assertion eq failed!");
+                    throw std::runtime_error("debugging: assertion eq failed!");
 
 
                 return make_void();
             },
-            {"testing::assert_eq(any, any)"});
+            {"debug::assert_eq(any, any)"});
     }
 }

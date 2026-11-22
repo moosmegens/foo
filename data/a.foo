@@ -1,12 +1,16 @@
-fn e() -> int
+type Op = ( fn(float, float) -> float )
+
+fn DoOp(a: float, b: float, op: Op) -> float
 {
-    return -1
+    return op(a, b)
 }
 
-fn main() -> int
+fn main()
 {
-    var a = || e()
+    var add: Op     = |a, b| a + b
+    var mult: Op    = |a, b| a * b
 
+    var (a, b) = (2,5)
 
-    return a()
+    println(DoOp(a,b, mult))
 }

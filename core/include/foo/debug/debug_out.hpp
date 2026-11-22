@@ -47,10 +47,10 @@ namespace foo
         std::string_view message = {},
         std::source_location location = std::source_location::current())
     {
-        print("TODO:");
+        foo::print("TODO:");
 
         if (!message.empty())
-            print(" ", message);
+            foo::print(" ", message);
 
         foo::println(
             "\n  at ",
