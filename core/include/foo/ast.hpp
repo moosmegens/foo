@@ -352,11 +352,14 @@ namespace foo::ast
         TypeExprPtr return_type;
         Block body;
 
+        bool reffed = false;
+
         bool operator==(const Lambda& other) const
         {
             return params == other.params
                 && ptr_equal(return_type, other.return_type)
-                && body == other.body;
+                && body == other.body
+                && reffed == other.reffed;;
         }
     };
 

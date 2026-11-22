@@ -193,7 +193,7 @@ namespace foo
                     i += (_src[i] == '\\') ? 2 : 1;
 
                 if (i < _src.size() && _src[i] == quote)
-                    ++i;
+                    i++;
 
                 return std::min(i, _src.size());
             }
@@ -393,6 +393,19 @@ namespace foo
                 const Mark m = mark();
                 bump(peek_word().size());
                 const bool result = at(op);
+                reset(m);
+
+                return result;
+            }
+
+            bool at_ref_lambda()
+            {
+                if (!at_kw("ref"))
+                    return false;
+
+                const Mark m = mark();
+                bump(3);
+                const bool result = peek() == '|';
                 reset(m);
 
                 return result;
@@ -1703,7 +1716,7 @@ namespace foo
 
                 if (!at(";") && !at("}") && !at_end() && !is_statement_start())
                 {
-                    reffed = accept_kw("ref");
+                    reffed = !at_ref_lambda() && accept_kw("ref");
 
                     value = parse_expr();
 
@@ -1875,6 +1888,19 @@ namespace foo
 
                 if (c == '|')
                     return parse_lambda();
+
+                if (at_ref_lambda())
+                {
+                    bump(3);
+
+                    auto lambda = parse_lambda();
+                    if (!lambda)
+                        return nullptr;
+
+                    std::get<ast::Lambda>(lambda->kind).reffed = true;
+                    lambda->span = span_from(start);
+                    return lambda;
+                }
 
                 if (c == '#')
                     return parse_struct_literal();

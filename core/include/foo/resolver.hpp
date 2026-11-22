@@ -120,11 +120,9 @@ namespace foo
         StructId struct_id(TypeId t) const      { return at(t).a; }
         EnumId enum_id(TypeId t) const          { return at(t).a; }
         NativeTypeId native_id(TypeId t) const  { return at(t).a; }
+        TypeId function_return(TypeId t) const  { return at(t).a; }
 
-        TypeId function_return(TypeId t) const { return at(t).a; }
-        const std::vector<TypeId>& args(TypeId t) const { return at(t).list; }
-
-        // tuple elements, or variant alternatives
+        // tuple elements, variant alternatives, or function parameters
         const std::vector<TypeId>& members(TypeId t) const { return at(t).list; }
 
     private:
@@ -353,8 +351,12 @@ namespace foo
     struct LambdaInfo
     {
         FunctionSig sig;
+
         int slot_count = 0;
         int file_index = -1;
+
+        bool by_ref = false;
+
         std::vector<LambdaCapture> captures;
     };
 
@@ -394,6 +396,7 @@ namespace foo
         std::unordered_map<const ast::PatName*, LocalInfo> pattern_vars;
         std::unordered_map<const ast::ForIn*, LocalInfo> for_vars;
         std::unordered_map<const ast::Check*, LocalInfo> check_vars;
+
         std::unordered_map<const ast::Lambda*, LambdaInfo> lambdas;
 
         std::unordered_map<const void*, int> to_file_index;

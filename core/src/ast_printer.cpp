@@ -222,7 +222,7 @@ namespace foo
 
             [&](const Lambda& n)
                 {
-                    std::string out = "|";
+                std::string out = n.reffed ? "ref |" : "|";
                     for (size_t i = 0; i < n.params.size(); i++)
                     {
                         if (i)

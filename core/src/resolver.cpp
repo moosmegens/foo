@@ -2085,6 +2085,7 @@ namespace foo
             info.slot_count = _max_slot;
             info.file_index = _file_id;
             info.captures = std::move(_lambdas.back().captures);
+            info.by_ref = lambda.reffed;
 
             _lambdas.pop_back();
 

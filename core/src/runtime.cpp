@@ -1,13 +1,14 @@
 #include <foo/runtime.hpp>
 
-#include "foo/util/overloaded.hpp"
+#include <foo/util/overloaded.hpp>
 
 #include <cmath>
 #include <iostream>
 #include <utility>
 
-#include "foo/natives.hpp"
-#include "foo/debug/debug_out.hpp"
+#include <foo/natives.hpp>
+#include <foo/debug/debug_out.hpp>
+
 
 namespace foo
 {
@@ -880,26 +881,23 @@ namespace foo
         ValueResult eval_lambda(const Expr& e, const Lambda& x)
         {
             const LambdaInfo& li = lookup(resolved().lambdas, &x, "lambda");
+            std::cout << "Lambda by_ref: " << li.by_ref << '\n';
 
             auto captured = make<std::vector<ValueRef>>();
             captured->reserve(li.captures.size());
 
             for (const LambdaCapture& c : li.captures)
             {
-                if (c.from == RefKind::Capture)
-                {
-                    FOO_TRY(value, capture(c.index));
-                    captured->push_back(copy(value));
-                }
-                else
-                {
-                    FOO_TRY(value, local(c.index));
-                    captured->push_back(copy(value));
-                }
+                ValueResult source = c.from == RefKind::Capture ? capture(c.index) : local(c.index);
+
+                if (!source)
+                    return std::unexpected(std::move(source.error()));
+
+                captured->push_back(li.by_ref ? *source : copy(*source));
             }
 
             (void)e;
-            return make_value(Closure{&x, std::move(captured)});
+            return make_value(Closure{&x, std::move(captured), li.by_ref});
         }
 
         ValueResult eval_call(const Expr& e, const Call& c)

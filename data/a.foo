@@ -1,16 +1,10 @@
-type Op = ( fn(float, float) -> float )
-
-fn DoOp(a: float, b: float, op: Op) -> float
+fn main() -> int[]
 {
-    return op(a, b)
-}
 
-fn main()
-{
-    var add: Op     = |a, b| a + b
-    var mult: Op    = |a, b| a * b
+    var arr: int[] = [1, 2, 3]
+    var f = ref |a: int| arr.push(a)
 
-    var (a, b) = (2,5)
+    f(1)
 
-    println(DoOp(a,b, mult))
+    return arr
 }

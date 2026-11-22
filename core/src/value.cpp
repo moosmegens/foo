@@ -222,6 +222,9 @@ namespace foo
 
         Storage clone_of(const Closure& x)
         {
+            if (x.by_ref)
+                return x;
+
             auto captured = make<std::vector<ValueRef>>();
             captured->reserve(x.captured->size());
 

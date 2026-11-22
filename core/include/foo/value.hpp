@@ -88,6 +88,7 @@ namespace foo
     {
         const ast::Lambda* lambda = nullptr;
         Rc<std::vector<ValueRef>> captured;
+        bool by_ref = false;
     };
 
     struct Native
