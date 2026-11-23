@@ -1592,6 +1592,9 @@ namespace foo
 
                 if (!accept(":"))
                 {
+                    if (name == "self")
+                        return ast::Param{std::move(name), nullptr, is_ref, span_from(start)};
+
                     error_after_prev("expected ':', parameter requires a type");
                     return std::nullopt;
                 }
