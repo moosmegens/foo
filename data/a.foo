@@ -1,4 +1,15 @@
-interface a
+interface Drawable
+{
+    draw(x: int, y: int)
+    resize(width: int, height: int) -> bool
+    clear()
+}
+
+interface Mutable
+{
+    update(ref value: int)
+    get() -> int
+}
 
 fn repeat(c: int, f: fn())
 {

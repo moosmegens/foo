@@ -88,6 +88,33 @@ namespace foo
         return element && std::holds_alternative<FnType>(element->type) ? "(" + text + ")" : text;
     }
 
+    static std::string print_signature(
+        const std::string& name,
+        const FunctionSignature& signature)
+    {
+        std::string out = name + "(";
+
+        for (size_t i = 0; i < signature.params.size(); ++i)
+        {
+            if (i)
+                out += ", ";
+
+            const auto& param = signature.params[i];
+
+            if (param.reffed)
+                out += "ref ";
+
+            out += param.name + ": " + to_string(param.type);
+        }
+
+        out += ")";
+
+        if (signature.return_type)
+            out += " -> " + to_string(signature.return_type);
+
+        return out;
+    }
+
     std::string to_string(const TypeExpr& t)
     {
         return std::visit(overload{
@@ -340,16 +367,8 @@ namespace foo
 
     static std::string print(const FnDecl& f, int indent)
     {
-        std::string out = "fn " + f.name + "(";
-        for (size_t i = 0; i < f.params.size(); i++)
-        {
-            if (i) out += ", ";
-            out += (f.params[i].reffed ? "ref " : "") + f.params[i].name + ": " + to_string(f.params[i].type);
-        }
-        out += ")";
-        if (f.return_type) out += " -> " + to_string(f.return_type);
-
-        return out + "\n" + pad(indent) + print(f.body, indent);
+        return "fn " + print_signature(f.name, f.signature)
+            + "\n" + pad(indent) + print(f.body, indent);
     }
 
     static std::string print(const Decl& d, int indent)
@@ -385,7 +404,12 @@ namespace foo
             },
             [&](const InterfaceDecl& n)
             {
-                return "interface " + n.name + ";";
+                std::string out = "interface " + n.name + "\n" + pad(indent) + "{\n";
+
+                for (const auto& f : n.functions)
+                    out += pad(indent + 1) + print_signature(f.name, f.signature) + ";\n";
+
+                return out + pad(indent) + "}";
             }
         }, d.kind);
     }

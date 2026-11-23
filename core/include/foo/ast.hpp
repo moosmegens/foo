@@ -575,38 +575,46 @@ namespace foo::ast
 
     // declarations
 
+    struct FunctionSignature
+    {
+        std::vector<Param> params;
+        TypeExprPtr return_type;
+
+        bool operator==(const FunctionSignature& other) const
+        {
+            return params == other.params
+                && ptr_equal(return_type, other.return_type);
+        }
+    };
+
     struct FnInterface
     {
         std::string name;
-        std::vector<Param> params;
-        TypeExprPtr return_type;
+        FunctionSignature signature;
 
         bool operator==(const FnInterface& other) const
         {
             return name == other.name
-                && ptr_equal(return_type, other.return_type)
-                && params == other.params;
-        };
+                && signature == other.signature;
+        }
     };
 
     struct FnDecl
     {
         std::string name;
-        std::vector<Param> params;
-        TypeExprPtr return_type;
+        FunctionSignature signature;
         Block body;
 
         bool pub = true;
-
         SourceSpan decl_span = {};
 
         bool operator==(const FnDecl& other) const
         {
             return name == other.name
-                && ptr_equal(return_type, other.return_type)
-                && params == other.params
-                && body == other.body;
-        };
+                && signature == other.signature
+                && body == other.body
+                && pub == other.pub;
+        }
     };
 
     struct StructField
@@ -678,13 +686,12 @@ namespace foo::ast
     struct InterfaceDecl
     {
         std::string name;
-        std::vector<FnInterface> interfaces;
-
+        std::vector<FnInterface> functions;
 
         bool operator==(const InterfaceDecl& other) const
         {
             return name == other.name
-                && interfaces == other.interfaces;
+                && functions == other.functions;
         }
     };
 

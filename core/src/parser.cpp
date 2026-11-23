@@ -177,8 +177,10 @@ namespace foo
             static bool is_reserved(std::string_view w)
             {
                 static constexpr std::string_view words[] = {
-                    "var", "fn", "struct", "enum", "ref", "if", "else", "while", "for", "in", "return",
-                    "true", "false", "import", "check", "as", "none", "priv", "break", "continue"
+                    "var", "fn", "struct", "enum", "interface", "ref",
+                    "if", "else", "while", "for", "in", "return",
+                    "true", "false", "import", "check", "as", "none",
+                    "priv", "break", "continue"
                 };
 
                 return std::find(std::begin(words), std::end(words), w) != std::end(words);
@@ -543,6 +545,20 @@ namespace foo
                 }
             }
 
+            void synchronize_interface_member(size_t start_pos)
+            {
+                while (!at_end() && !at("}"))
+                {
+                    if (_pos > start_pos && _newline_before && at_ident())
+                        return;
+
+                    if (accept(";"))
+                        return;
+
+                    skip_token();
+                }
+            }
+
             bool is_statement_start() const
             {
                 const auto word = peek_word();
@@ -563,6 +579,7 @@ namespace foo
                 return at_kw("fn")
                     || at_kw("struct")
                     || at_kw("enum")
+                    || at_kw("interface")
                     || at_kw("import")
                     || at_alias_decl();
             }
@@ -1200,11 +1217,11 @@ namespace foo
 
                 if (accept_kw("interface"))
                 {
-                    auto enumeration = parse_interface_decl();
-                    if (!enumeration)
+                    auto interface = parse_interface_decl();
+                    if (!interface)
                         return nullptr;
 
-                    return std::make_unique<ast::Decl>(std::move(*enumeration), span_from(start));
+                    return std::make_unique<ast::Decl>(std::move(*interface), span_from(start));
                 }
 
 
@@ -1254,14 +1271,58 @@ namespace foo
             std::optional<ast::InterfaceDecl> parse_interface_decl()
             {
                 auto name = ident();
+
                 if (!name)
                 {
                     error_here("expected interface name");
                     return std::nullopt;
                 }
 
+                if (!expect("{"))
+                    return std::nullopt;
 
-                return ast::InterfaceDecl{std::move(*name), {}};
+                std::vector<ast::FnInterface> functions;
+
+                while (!at("}") && !at_end())
+                {
+                    const size_t member_start = _pos;
+
+                    auto fn_name = ident();
+
+                    if (!fn_name)
+                    {
+                        error_here("expected function name in interface");
+
+                        if (_pos == member_start)
+                            skip_token();
+
+                        synchronize_interface_member(member_start);
+                        continue;
+                    }
+
+                    auto signature = parse_function_signature();
+
+                    if (!signature)
+                    {
+                        synchronize_interface_member(member_start);
+                        continue;
+                    }
+
+                    functions.push_back({
+                        std::move(*fn_name),
+                        std::move(*signature)
+                    });
+
+                    accept(";");
+                }
+
+                if (!expect("}"))
+                    return std::nullopt;
+
+                return ast::InterfaceDecl{
+                    std::move(*name),
+                    std::move(functions)
+                };
             }
 
             std::optional<ast::EnumDecl> parse_enum_decl()
@@ -1419,16 +1480,38 @@ namespace foo
                     pub = false;
 
                 auto name = ident();
+
                 if (!name)
                 {
                     error_here("expected function name");
                     return std::nullopt;
                 }
 
-                if (!expect("("))
+                auto signature = parse_function_signature();
+
+                if (!signature)
                     return std::nullopt;
 
+                const SourceSpan decl_span = span_from(decl_start);
+
+                auto body = parse_block_body();
+
+                if (!body)
+                    return std::nullopt;
+
+                return ast::FnDecl{
+                    std::move(*name),
+                    std::move(*signature),
+                    std::move(*body),
+                    pub,
+                    decl_span
+                };
+            }
+
+            std::optional<std::vector<ast::Param>> parse_params()
+            {
                 std::vector<ast::Param> params;
+
                 while (!at(")") && !at_end())
                 {
                     const size_t before = _pos;
@@ -1457,29 +1540,40 @@ namespace foo
                             break;
                         }
                     }
+                    else
+                    {
+                        break;
+                    }
                 }
 
                 if (!expect(")"))
                     return std::nullopt;
 
-                ast::TypeExprPtr return_type = nullptr;
+                return params;
+            }
+
+            std::optional<ast::FunctionSignature> parse_function_signature()
+            {
+                if (!expect("("))
+                    return std::nullopt;
+
+                auto params = parse_params();
+                if (!params)
+                    return std::nullopt;
+
+                ast::TypeExprPtr return_type;
+
                 if (accept("->"))
                 {
                     return_type = parse_type();
+
                     if (!return_type)
                         return std::nullopt;
                 }
 
-                const SourceSpan decl_span = span_from(decl_start);
-
-                auto body = parse_block_body();
-                if (!body)
-                    return std::nullopt;
-
-                return ast::FnDecl{
-                    std::move(*name), std::move(params), std::move(return_type), std::move(*body),
-                    pub,
-                    decl_span
+                return ast::FunctionSignature{
+                    std::move(*params),
+                    std::move(return_type)
                 };
             }
 

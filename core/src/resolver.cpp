@@ -669,7 +669,7 @@ namespace foo
             info.span = span;
             info.decl = &m;
             info.owner_type = s.type;
-            info.is_method = !m.params.empty() && m.params[0].name == "self";
+            info.is_method = !m.signature.params.empty() && m.signature.params[0].name == "self";
             info.pub = m.pub;
 
             _output.to_file_index[&m] = s.file_index;
@@ -1043,12 +1043,12 @@ namespace foo
             if (info.is_method)
             {
                 first_param = 1;
-                sig.self_by_ref = decl.params[0].reffed;
+                sig.self_by_ref = decl.signature.params[0].reffed;
             }
 
-            for (size_t i = first_param; i < decl.params.size(); ++i)
+            for (size_t i = first_param; i < decl.signature.params.size(); i++)
             {
-                const ast::Param& param = decl.params[i];
+                const ast::Param& param = decl.signature.params[i];
 
                 TypeId type = resolve_type(param.type);
                 if (type == BaseTypes::Void)
@@ -1060,8 +1060,8 @@ namespace foo
                 sig.params.push_back({type, param.reffed});
             }
 
-            if (decl.return_type)
-                sig.ret = resolve_type(decl.return_type);
+            if (decl.signature.return_type)
+                sig.ret = resolve_type(decl.signature.return_type);
             else
                 sig.ret = BaseTypes::Void;
 
@@ -1218,13 +1218,13 @@ namespace foo
             size_t first_param = 0;
             if (info.is_method)
             {
-                declare_local("self", info.owner_type, decl.params[0].span);
+                declare_local("self", info.owner_type, decl.signature.params[0].span);
                 first_param = 1;
             }
 
-            for (size_t i = first_param; i < decl.params.size(); i++)
+            for (size_t i = first_param; i < decl.signature.params.size(); i++)
             {
-                const ast::Param& param = decl.params[i];
+                const ast::Param& param = decl.signature.params[i];
                 TypeId type = info.sig.params[i - first_param].type;
 
                 declare_local(param.name, type, param.span);
