@@ -1198,6 +1198,15 @@ namespace foo
                     }
                 }
 
+                if (accept_kw("interface"))
+                {
+                    auto enumeration = parse_interface_decl();
+                    if (!enumeration)
+                        return nullptr;
+
+                    return std::make_unique<ast::Decl>(std::move(*enumeration), span_from(start));
+                }
+
 
                 if (accept_kw("enum"))
                 {
@@ -1240,6 +1249,19 @@ namespace foo
 
                 error_here("expected declaration");
                 return nullptr;
+            }
+
+            std::optional<ast::InterfaceDecl> parse_interface_decl()
+            {
+                auto name = ident();
+                if (!name)
+                {
+                    error_here("expected interface name");
+                    return std::nullopt;
+                }
+
+
+                return ast::InterfaceDecl{std::move(*name), {}};
             }
 
             std::optional<ast::EnumDecl> parse_enum_decl()

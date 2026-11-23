@@ -546,6 +546,10 @@ namespace foo
                     [&](const ast::AliasDecl& a)
                     {
                         discover_alias(a, d->span, scope);
+                    },
+                    [&](const ast::InterfaceDecl& i)
+                    {
+                        foo::println("discovered interface:", i.name);
                     }
                 }, d->kind);
             }

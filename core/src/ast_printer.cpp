@@ -382,6 +382,10 @@ namespace foo
             [&](const AliasDecl& n)
             {
                 return "type " + n.name + " = " + to_string(n.type) + ";";
+            },
+            [&](const InterfaceDecl& n)
+            {
+                return "interface " + n.name + ";";
             }
         }, d.kind);
     }

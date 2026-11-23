@@ -575,6 +575,20 @@ namespace foo::ast
 
     // declarations
 
+    struct FnInterface
+    {
+        std::string name;
+        std::vector<Param> params;
+        TypeExprPtr return_type;
+
+        bool operator==(const FnInterface& other) const
+        {
+            return name == other.name
+                && ptr_equal(return_type, other.return_type)
+                && params == other.params;
+        };
+    };
+
     struct FnDecl
     {
         std::string name;
@@ -661,6 +675,19 @@ namespace foo::ast
         }
     };
 
+    struct InterfaceDecl
+    {
+        std::string name;
+        std::vector<FnInterface> interfaces;
+
+
+        bool operator==(const InterfaceDecl& other) const
+        {
+            return name == other.name
+                && interfaces == other.interfaces;
+        }
+    };
+
     struct ImportDecl
     {
         std::string name;
@@ -672,7 +699,7 @@ namespace foo::ast
         }
     };
 
-    using DeclKind = std::variant<FnDecl, StructDecl, EnumDecl, NamespaceDecl, AliasDecl>;
+    using DeclKind = std::variant<FnDecl, StructDecl, EnumDecl, NamespaceDecl, AliasDecl, InterfaceDecl>;
 
     struct Decl
     {

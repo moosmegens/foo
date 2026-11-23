@@ -63,7 +63,7 @@ namespace foo
 
         std::cout.flush();
 
-        std::quick_exit(EXIT_FAILURE );
+        std::exit( EXIT_FAILURE );
     }
 }
 
