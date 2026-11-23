@@ -491,7 +491,7 @@ fn main() -> int
         },
     });
 
-    add("functions",
+    add("ref_params",
 {
 {"main",
 R"AAA(
@@ -512,7 +512,39 @@ fn main() -> int
     },
 });
 
+    add("lambdas",
+{
+{"main",
+R"AAA(
+type Op = fn(int, int) -> int
 
+fn apply(f: Op, a: int, b: int) -> int
+{
+    return f(a, b)
+}
+
+fn main() -> void
+{
+    // a lambda: parameters between | |, then the body
+    var add: Op = |a, b| a + b
+    println(apply(add, 1, 2))                   // 3
+
+    // helpers that take a lambda
+    var numbers = [1, 2, 3, 4, 5]
+    println(numbers.map(|x| x * 2))             // [2, 4, 6, 8, 10]
+    println(numbers.filter(|x| x % 2 == 0))     // [2, 4]
+    println(numbers.fold(0, |acc, x| acc + x))  // 15
+
+    // a plain lambda copies the variables it uses, a ref lambda changes the originals
+    var total = 0
+    var add_to_total = ref |x: int| { total = total + x }
+
+    add_to_total(10)
+    println(total)                              // 10
+}
+)AAA"
+},
+});
 
     add("if",
 {
@@ -639,7 +671,7 @@ fn main() -> void
     var a: [string, int] = @[string, int].new()
 
     a["1"] = 1
-    b["2"] = 2
+    a["2"] = 2
 
     println(a)
 }
@@ -835,19 +867,6 @@ fn main() -> void
 });
 
 
-    //     add("hello_world",
-    // {
-    //     {"main",
-    // R"AAA(
-    // fn main() -> void
-    // {
-    //     println("Hello, World!")
-    // }
-    // )AAA"
-    //         },
-    //     });
-
-
     add("any",
 {
 {"main",
@@ -983,206 +1002,159 @@ static void show_api()
 
 static void show_syntax(const std::vector<std::string>& kinds)
 {
-    auto wants = [&](auto... names)
+    auto wants = [&](std::string_view name)
     {
-        return kinds.empty()
-            || ((std::ranges::find(kinds, std::string_view{names}) != kinds.end()) || ...);
+        return kinds.empty() || std::ranges::find(kinds, name) != kinds.end();
     };
 
-    const int row_width = 34;
-    const int label_width = 10;
+    constexpr size_t column = 30;
+    const std::string margin(column + 2, ' ');
 
-    auto indent = [](int depth) { foo::print(foo::str_repeat("  ", depth)); };
-
-    bool first_header = true;
-    bool first_sheader = true;
-    auto header = [&](std::string_view h)
+    auto title = [&](std::string_view text)
     {
-        if (!first_header)
-            foo::println("");
-
-        first_header = false;
-        first_sheader = true;
-
-        foo::println(colored(std::string{h}, clr::bright_magenta));
-    };
-
-    auto sheader = [&](std::string_view h)
-    {
-        if (!first_sheader)
-            foo::println("");
-
-        first_sheader = false;
-
-        indent(1);
-        foo::println(colored(std::string{h}, clr::bright_cyan));
+        std::cout << '\n' << clr::bright_magenta << text << clr::reset << '\n';
     };
 
     auto row = [&](std::string_view syntax, std::string_view text)
     {
-        indent(2);
-        foo::println(colored(std::format("{:<{}}", syntax, row_width), clr::green) + " " + std::string{text});
+        std::cout << "  " << clr::green << syntax << clr::reset;
+
+        if (text.empty())
+        {
+            std::cout << '\n';
+            return;
+        }
+
+        if (syntax.size() < column)
+            std::cout << std::string(column - syntax.size(), ' ');
+        else
+            std::cout << '\n' << margin;
+
+        std::cout << text << '\n';
     };
 
-    auto form = [&](std::string_view f)
+    auto eg = [&](std::string_view code)
     {
-        indent(2);
-        foo::println(colored(std::string{f}, clr::green));
+        std::cout << margin << clr::bright_yellow << code << clr::reset << '\n';
     };
 
-    auto part = [&](std::string_view label, std::string_view text)
+    auto line = [&](std::string_view text)
     {
-        indent(3);
-        foo::println(std::format("{:<{}} {}", label, label_width, text));
+        std::cout << "  " << clr::green << text << clr::reset << '\n';
     };
 
-    auto more = [&](std::string_view text)
+    auto note = [&](std::string_view text)
     {
-        part("", text);
+        std::cout << "  " << clr::bright_black << text << clr::reset << '\n';
     };
 
     {
-        header("");
-
-        sheader("how to read this");
-        row("<name>",                               "something you fill in");
-
-        sheader("names");
-        row("counter   _tmp   player_2",            "letters, digits and _, not starting with a digit");
-        row("a::b::c",                              ":: reaches into the names of another file");
-
-        sheader("comments (C style)");
-        row("// text",                              "ignored until the end of the line");
-        row("/* text */",                           "");
-
-        sheader("semicolons");
-        row(";",                                    "optional");
+        title("basics");
+        row("name",                         "letters, digits and _, not starting with a digit");
+        row("a::b",                         "reaches into the names of another file");
+        row("// text   /* text */",         "comments");
+        row(";",                            "optional");
     }
 
     if (wants("types"))
     {
-        header("types");
-
-        row("int  float  bool  string  any",        "built-in types");
-        row("void",                                 "only for functions");
-        row("<type>[]",                             "array of <type>: int[]   int[][]");
-        row("[<type>]",                             "set of <type>: [string]");
-        row("<type>?",                              "a <type> or nothing: int?   (int?? is not allowed)");
-        row("[<key>, <value>]",                     "map from one type to another: [string, int]");
-        row("<path>::<name>",                       "a named type from another file: lib_b::Point");
+        title("types");
+        row("int  float  bool  string",     "whole numbers, decimals, true/false, text");
+        row("any",                          "holds a value of any type");
+        row("void",                         "no value, for functions that return nothing");
+        row("T[]",                          "array");
+        eg("int[]   string[][]");
+        row("[T]",                          "set, every value once");
+        eg("[string]");
+        row("[K, V]",                       "map from keys to values");
+        eg("[string, int]");
+        row("T?",                           "a value, or none");
+        eg("int?   string[]?");
+        row("(A, B, ...)",                       "tuple: a fixed number of values, mixed types");
+        eg("(int, string)");
+        row("(A | B | ...)",                      "variant: one of several types");
+        eg("(int | string)");
+        row("fn(A, B) -> R",                "function, `-> R` left out means void");
+        eg("fn(int, int) -> int");
+        row("lib::Name",                    "a type from another file");
     }
 
     if (wants("decls"))
     {
-        header("declarations");
-
-        sheader("imports");
-        form(R"AAA(import "<path>", ...)AAA");
-        part(R"AAA("<path>")AAA",   "a file from the project root, written without .foo");
-        part("then",                R"AAA(import "lib/b" gives you the names lib::b::<name>)AAA");
-        part("e.g.",                R"AAA(import "lib/b")AAA");
-        more(R"AAA(import "a", "b")AAA");
-
-        sheader("functions");
-        form("fn <name>(<params>) -> <type> { ... }");
-        part("<params>",            "name: type, separated by commas");
-        more("put ref in front of a name to let the function edit the caller's value");
-        part("<type>",              "what it gives back, void for nothing");
-        part("e.g.",                "fn add(a: int, b: int) -> int { ... }");
-        more("fn double(ref a: int) -> void { ... }");
-
-        sheader("structs");
-        form("struct <name> { <fields> <methods> }");
-        part("field",               "<name>: <type>");
-        part("method",              "a function inside the struct");
-        more("its first parameter is the struct itself, usually ref self: <name>");
-        part("e.g.",                "struct Point");
-        more("{");
-        more("    x: int");
-        more("    y: int");
-        more("");
-        more("    fn sum(ref self: Point) -> int { ... }");
-        more("}");
+        title("declarations");
+        row(R"(import "lib/b", "c")",       "use other files (path without .foo), reached as lib::b::name");
+        row("type Name = T",                "another name for a type");
+        eg("type Grid = int[][]");
+        row("fn name(a: T) -> R { }",       "function, `ref a: T` lets it change the caller's variable");
+        eg("fn add(a: int, b: int) -> int { return a + b }");
+        eg("fn double(ref x: int) { x = x * 2 }");
+        row("struct Name { }",              "fields `x: int` and methods, a method's first parameter is `self`");
+        eg("struct Point");
+        eg("{");
+        eg("    x: int");
+        eg("    y: int");
+        eg("    fn shift(ref self: Point, dx: int) { self.x = self.x + dx }");
+        eg("}");
+        row("enum Name { a, b }",           "named choices, used as Name::a");
+        eg("enum Color { red, green }    var c = Color::red");
+        row("priv",                         "before a fn or a field: only usable in its own file / struct");
     }
 
     if (wants("stmts"))
     {
-        header("statements");
-
-        sheader("variables");
-        form("var <name>: <type> = <expr>");
-        part(": <type>",            "can be left out when there is a value");
-        part("= <expr>",            "can be left out when there is a type");
-        part("note",                "you need at least one of the two");
-        part("e.g.",                "var count = 5");
-        more("var names: string[] = []");
-        more("var total: int");
-
-        sheader("if");
-        form("if <expr> { ... } else if <expr> { ... } else { ... }");
-        form("if <expr> <stmt> else <stmt> ");
-        part("<expr>",              "must be true or false; parentheses around it are optional");
-        part("else",                "can be left out, and else if can repeat");
-
-        sheader("while");
-        form("while <expr> { ... }");
-        part("<expr>",              "the block repeats as long as it is true");
-
-        sheader("for");
-        form("for <name> in <expr> { ... }");
-        part("<name>",              "holds the next value each time round");
-        part("<expr>",              "what to loop over, such as the range 0..10");
-        more("0..10 stops before 10, 0..=10 includes it");
-
-        sheader("break");
-        sheader("continue");
-
-        sheader("check");
-        form("check <expr> => <name> { ... } else { ... }");
-        part("<expr>",              "an optional value, such as a variable of type int?");
-        part("<name>",              "what the value is called inside the first block");
-        part("else",                "runs when there was no value, can be left out");
-
-        sheader("return");
-        form("return <expr>");
-        part("<expr>",              "the value to give back");
-        part("alone",               "return;  leaves without a value (the ; is needed here)");
-
-        sheader("blocks and expressions");
-        form("{ ... }");
-        part("block",               "variables declared inside end at the }");
-        part("alone",               "any expression can be a statement, e.g. println(a)");
+        title("statements");
+        row("var x = v",                    "new variable, the type is inferred");
+        row("var x: T = v",                 "type written down, `= v` is optional");
+        eg("var names: string[] = []");
+        eg("var opt_int: _? = 1       // `_` is inferred to int, so int? as its type");
+        row("var (a, b) = t",               "take a tuple apart, `(a, b) = (b, a)` swaps");
+        row("x = v",                        "assign to a variable, a field (p.x) or an element (a[i])");
+        row("if c { } else { }",            "c is a bool, `else if` chains more");
+        row("while c { }",                  "repeat while c is true");
+        row("for x in it { }",              "it is a range, array, set or map (x gets the keys)");
+        eg("for i in 0..3      // 0 1 2, and 0..=3 gives 0 1 2 3");
+        row("for ref x in a { }",           "x is the element itself, changes stick");
+        row("break   continue",             "leave the loop, or go to its next round");
+        row("return v",                     "gives v back, a bare `return` ends a void function");
+        row("check opt => v { } else { }",  "first block runs with v when opt has a value, else the second");
+        eg(R"(check maybe => v { println(v) } else { println("none") })");
+        row("{ }",                          "block, its variables end at the }");
     }
 
     if (wants("exprs"))
     {
-        header("expressions");
+        title("expressions");
+        row(R"(5  1.5  true  "hi")",         R"(int, float, bool, string (escapes: \n \t \" \\ \xNN))");
+        row(R"('x = {x + 1}')",              R"(format string: {expr} goes into the text, \{ is a plain brace)");
+        row("none",                         "no value, for optionals");
+        row("[1, 2]",                       "array");
+        row(R"((1, "a"))",                  "tuple, t[0] reads an element (literal index only)");
+        row("#Point{ x = 1, y = 2 }",       "struct value");
+        row("a.b   a[i]   f(x)",            "field, element, call");
+        row("@T.name(args)",                "function that belongs to a type");
+        eg("@[string, int].new()");
+        eg("@[int].from([1, 2])");
+        eg("@int.unbox(v)        // int?, v is an any");
+        row("v as T",                       "T?: v when it holds a T (variant or any), else none");
 
-        sheader("values");
-        row(R"AAA(5   1.5   "text"   true)AAA",      "int, float, string, bool");
-        row("[<expr>, ...]",                         "an array: [1, 2, 3]");
-        row("#<type>{ <name> = <expr>, ... }",       "a struct: #Point{ x = 1, y = 2 }");
-        row("",                                      "fields use =, types use :");
+        title("lambdas");
+        row("|a, b| a + b",                 "a function you can store in a variable and pass around");
+        eg("var double = |a: int| a * 2     // parameter types can be left out when known");
+        eg("double(5)                       // 10");
+        eg("|x| { return x }    || 5        // a block as body, no parameters");
+        eg("[1, 2, 3].map(|x| x * 2)        // [2, 4, 6]");
+        row("ref |a| ...",                  "changes the variables it uses, instead of copying them");
+        eg("var total = 0");
+        eg("var add = ref |a: int| { total = total + a }");
+        eg("add(5)                          // total is 5");
 
-        sheader("using values");
-        row("<expr>.<name>",                         "a field of a struct: p.x");
-        row("<expr>(<args>)",                        "a call: add(1, 2)   p.sum()");
-        row("<expr>[<expr>]",                        "an element of an array: list[0]");
-        row("@<type>.<name>(<args>)",                "a function of a type: @int.from(a)");
-        row("(<expr>)",                              "grouping: (a + b) * c");
-
-        sheader("operators (strongest first)");
-        row(". () []",                               "field, call, element");
-        row("-a   !a",                               "negative, not");
-        row("*  /  %",                               "multiply, divide, remainder");
-        row("+  -",                                  "add, subtract");
-        row("<  <=  >  >=",                          "compare");
-        row("==  !=",                                "equal, not equal");
-        row("&&",                                    "and");
-        row("||",                                    "or");
-        row("..  ..=",                               "a range of numbers");
-        row("=",                                     "assign");
+        title("operators, strongest first");
+        line(". () []   -a !a   as   * / %   + -");
+        line("< <= > >=   == !=   &&   ||   .. ..=   =");
+        note("+ also joins strings, arrays and sets, % needs ints, < > need numbers or strings");
     }
+
+    std::cout << '\n';
 }
 
 static void add_flag(argparse::ArgumentParser& program, const char* help, const char* name)
@@ -1259,11 +1231,11 @@ int main(int argc, char** argv)
     if (should_run)
         run_script(script);
 
-    if (api)
-        show_api();
-
     if (want_syntax)
         show_syntax(syntax_kinds);
+
+    if (api)
+        show_api();
 
 
     return exit_code;
