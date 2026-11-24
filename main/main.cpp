@@ -159,7 +159,7 @@ void main2()
 
         r.resolver_input.natives = std::move(natives);
 
-        foo::Runtime::inject(r.resolver_input.types, r.resolver_input.natives, _t);
+        foo::inject_std(r.resolver_input.types, r.resolver_input.natives, _t);
         foo::inject_rng(r.resolver_input.types, r.resolver_input.natives, _t);
         foo::inject_io(r.resolver_input.types, r.resolver_input.natives, _t);
         foo::inject_os(r.resolver_input.types, r.resolver_input.natives, _t);

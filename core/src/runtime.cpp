@@ -313,6 +313,17 @@ namespace foo
             return _input;
         }
 
+        ValueResult call_closure_value(const ValueRef& fn, std::vector<ValueRef> args)
+        {
+            const auto* held = std::get_if<Closure>(&fn->v);
+
+            if (!held || !held->lambda)
+                return error("internal: calling something that is not a function");
+
+            const Closure closure = *held;
+            return call_closure(closure, std::move(args), {});
+        }
+
         ValueResult call(FunctionId fn, Args args)
         {
             const auto& functions = resolved().functions;
@@ -929,6 +940,34 @@ namespace foo
             return invoke(*target, self, c.args, &c, e.span);
         }
 
+        ValueResult call_closure(const Closure& closure, std::vector<ValueRef> args, const SourceSpan& span)
+        {
+            const LambdaInfo& li = lookup(resolved().lambdas, closure.lambda, "lambda");
+
+            if (li.sig.params.size() != args.size())
+                return error("internal: wrong number of arguments", span);
+
+            if (li.slot_count < 0 || static_cast<size_t>(li.slot_count) < args.size())
+                return error("internal: lambda has too few slots", span);
+
+            if (_frames.size() >= _input.max_depth)
+                return error("recursion limit exceeded", span);
+
+            _frames.emplace_back();
+            FramePopHelper pop{_frames};
+
+            Frame& frame = _frames.back();
+            frame.file_index = li.file_index;
+            frame.ret = li.sig.ret;
+            frame.captures = closure.captured;
+            frame.slots.resize(static_cast<size_t>(li.slot_count));
+
+            for (size_t i = 0; i < args.size(); i++)
+                frame.slots[i] = std::move(args[i]);
+
+            return run_body(closure.lambda->body, li.file_index, span);
+        }
+
         ValueResult eval_closure_call(const Expr& e, const Call& c)
         {
             FOO_TRY(callee, ref(*c.callee));
@@ -955,25 +994,7 @@ namespace foo
                 args.push_back(nudge_value(std::move(argument), info(a).type, li.sig.params[i].type));
             }
 
-            if (li.slot_count < 0 || static_cast<size_t>(li.slot_count) < args.size())
-                return error("internal: lambda has too few slots", e.span);
-
-            if (_frames.size() >= _input.max_depth)
-                return error("recursion limit exceeded", e.span);
-
-            _frames.emplace_back();
-            FramePopHelper pop{_frames};
-
-            Frame& frame = _frames.back();
-            frame.file_index = li.file_index;
-            frame.ret = li.sig.ret;
-            frame.captures = closure.captured;
-            frame.slots.resize(static_cast<size_t>(li.slot_count));
-
-            for (size_t i = 0; i < args.size(); i++)
-                frame.slots[i] = std::move(args[i]);
-
-            return run_body(closure.lambda->body, li.file_index, e.span);
+            return call_closure(closure, std::move(args), e.span);
         }
 
         ValueResult eval_static_call(const Expr& e, const StaticCall& c)
@@ -1552,6 +1573,16 @@ namespace foo
         return call(*fn, args);
     }
 
+    ValueRef Runtime::call_closure(const ValueRef& fn, std::vector<ValueRef> args)
+    {
+        auto result = _runner->call_closure_value(fn, std::move(args));
+
+        if (!result)
+            throw RuntimeError(result.error());
+
+        return *result;
+    }
+
     const TypeTable& Runtime::types() const
     {
         return _runner->get_input().resolver_info.type_table;
@@ -1560,604 +1591,5 @@ namespace foo
     const ResolveOutput& Runtime::resolved() const
     {
         return _runner->get_input().resolver_info;
-    }
-
-    void Runtime::inject(TypeTable& types, NativeRegistry& natives, NativeTable& table)
-    {
-        (void)types;
-
-        auto signature = [](std::vector<ParamSig> params, TypeId ret, bool self_by_ref = false, bool variadic = false)
-        {
-            FunctionSig s;
-            s.params = std::move(params);
-            s.ret = ret;
-            s.self_by_ref = self_by_ref;
-            s.variadic = variadic;
-            return s;
-        };
-
-        NativeDef def(types, natives, table);
-
-
-        auto printer = [](bool newline)
-        {
-            return [newline](Runtime& rt, Args a, const auto&)
-            {
-                std::string line;
-
-                for (size_t i = 0; i < a.size(); i++)
-                {
-                    if (i)
-                        line += ' ';
-
-                    line += to_string(*a[i], &rt.resolved());
-                }
-
-                if (newline)
-                    line += '\n';
-
-                std::cout << line;
-                return make_void();
-            };
-        };
-
-        FunctionSig print_sig = signature({ParamSig{BaseTypes::Any, false}}, BaseTypes::Void);
-        print_sig.variadic = true;
-
-        def.function("println", print_sig, printer(true), {"println(any...) -> void"});
-        def.function("print", print_sig, printer(false), {"print(any...) -> void"});
-
-        def.static_function("new",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) != TypeKind::Map)
-                    return std::nullopt;
-
-                return signature({}, receiver);
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                return make_value(Map{});
-            },
-            {"(map).new() -> (map)"});
-
-        auto set_binary_sig = [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-        {
-            if (ts.kind(receiver) != TypeKind::Set)
-                return std::nullopt;
-
-            return signature({ParamSig{receiver, false}}, receiver);
-        };
-
-        def.static_function("new",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) != TypeKind::Set)
-                    return std::nullopt;
-
-                return signature({}, receiver);
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                return make_value(Set{});
-            },
-            {"(set).new() -> (set)"});
-
-        def.method("add",
-        [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-        {
-            if (ts.kind(receiver) != TypeKind::Set)
-                return std::nullopt;
-
-            return signature({ParamSig{ts.element(receiver), false}}, BaseTypes::Bool, true);
-        },
-        [](Runtime&, Args a, const auto&)
-        {
-            return make_bool(as_set(a[0]).items.insert(copy(a[1])).second);
-        },
-        {"(set).add(set.element) -> bool", "returns false if it was already present"});
-
-        def.method("remove",
-    [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-    {
-        if (ts.kind(receiver) != TypeKind::Set)
-            return std::nullopt;
-
-        return signature({ParamSig{ts.element(receiver), false}}, BaseTypes::Bool, true);
-    },
-    [](Runtime&, Args a, const auto&)
-    {
-        return make_bool(as_set(a[0]).items.erase(a[1]) > 0);
-    },
-    {"(set).remove(set.element) -> bool", "returns false if it wasn't present"});
-
-    def.method("contains",
-    [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-    {
-        if (ts.kind(receiver) != TypeKind::Set)
-            return std::nullopt;
-
-        return signature({ParamSig{ts.element(receiver), false}}, BaseTypes::Bool);
-    },
-    [](Runtime&, Args a, const auto&)
-    {
-        return make_bool(as_set(a[0]).items.contains(a[1]));
-    },
-    {"(set).contains(set.element) -> bool"});
-
-    def.method("union", set_binary_sig,
-    [](Runtime&, Args a, const auto&)
-    {
-        Set result;
-
-        for (const auto& x : as_set(a[0]).items)
-            result.items.insert(copy(x));
-        for (const auto& x : as_set(a[1]).items)
-            result.items.insert(copy(x));
-
-        return make_value(std::move(result));
-    },
-    {"(set).union(set) -> set", "all elements from both sets"});
-
-    def.method("intersect", set_binary_sig,
-    [](Runtime&, Args a, const auto&)
-    {
-        const auto& other = as_set(a[1]).items;
-        Set result;
-
-        for (const auto& x : as_set(a[0]).items)
-            if (other.contains(x))
-                result.items.insert(copy(x));
-
-        return make_value(std::move(result));
-    },
-    {"(set).intersect(set) -> set", "elements present in both sets"});
-
-    def.method("difference", set_binary_sig,
-    [](Runtime&, Args a, const auto&)
-    {
-        const auto& other = as_set(a[1]).items;
-        Set result;
-
-        for (const auto& x : as_set(a[0]).items)
-            if (!other.contains(x))
-                result.items.insert(copy(x));
-
-        return make_value(std::move(result));
-    },
-    {"(set).difference(set) -> set", "elements in this set but not in the other"});
-
-    def.method("is_subset",
-        [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-        {
-            if (ts.kind(receiver) != TypeKind::Set)
-                return std::nullopt;
-
-            return signature({ParamSig{receiver, false}}, BaseTypes::Bool);
-        },
-        [](Runtime&, Args a, const auto&)
-        {
-            const auto& other = as_set(a[1]).items;
-
-            for (const auto& x : as_set(a[0]).items)
-                if (!other.contains(x))
-                    return make_bool(false);
-
-            return make_bool(true);
-        },
-        {"(set).is_subset(set) -> bool"});
-
-        def.static_function("fromv",
-    [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-    {
-        if (ts.kind(receiver) != TypeKind::Set)
-            return std::nullopt;
-
-        return signature(
-            {ParamSig{ts.element(receiver), false}}, receiver,
-            false, true);
-    },
-    [](Runtime&, Args a, const auto&)
-    {
-        Set result;
-
-        for (const auto& arg : a)
-            result.items.insert(copy(arg));
-
-        return make_value(std::move(result));
-    },
-    {"(set).from(set.element...) -> (set)", "build a set from an elements, duplicates collapse", "@[int].from(1, 2, 3)"});
-
-        def.static_function("from",
-    [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-    {
-        if (ts.kind(receiver) != TypeKind::Set)
-            return std::nullopt;
-
-        return signature(
-            {ParamSig{ts.array_of(ts.element(receiver)), false}},
-            receiver);
-    },
-    [](Runtime&, Args a, const auto&)
-    {
-        Set result;
-
-        for (const auto& x : as_array(a[0]).items)
-            result.items.insert(copy(x));
-
-        return make_value(std::move(result));
-    },
-    {"(set).from(set.element[]) -> (set)", "build a set from an array, duplicates collapse", "@[int].from([1, 2, 3])"});
-
-
-        def.method("to_array",
-        [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-        {
-            if (ts.kind(receiver) != TypeKind::Range)
-                return std::nullopt;
-
-            return signature({}, ts.array_of(ts.element(receiver)));
-        },
-        [](Runtime&, Args a, const auto&)
-        {
-            const Range& r = expect<Range>(*a[0]);
-            const int64_t count = range_length(r);
-
-            constexpr int64_t max_items = 10'000'000;
-            if (count > max_items)
-                throw std::runtime_error("range is too large to convert to an array");
-
-            const int64_t lo = as_int(r.lo);
-
-            Array result;
-            result.items.reserve(static_cast<size_t>(count));
-
-            for (int64_t i = 0; i < count; i++)
-                result.items.push_back(make_int(lo + i));
-
-            return make_value(std::move(result));
-        },
-        {"(range).to_array() -> int[]", "(0..3).to_array() is [0, 1, 2]"});
-
-        def.static_function("unbox",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                return signature(
-                    {ParamSig{BaseTypes::Any, false}},
-                    ts.optional_of(receiver));
-            },
-            [](Runtime& rt, Args a, const FunctionSig& sig) -> ValueRef
-            {
-                const TypeTable& types = rt.types();
-                const TypeId requested = types.element(sig.ret);
-
-                if (std::holds_alternative<std::monostate>(a[0]->v))
-                    return make_void();
-
-                const auto* boxed = std::get_if<Boxed>(&a[0]->v);
-                if (!boxed || boxed->type != requested)
-                    return make_void();
-
-                return copy(boxed->v);
-            },
-            {"T.unbox(any) -> T?", "use to safely convert any to T"});
-
-
-
-        def.method("or",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) == TypeKind::Optional)
-                    return signature({ParamSig{ts.element(receiver), false}}, ts.element(receiver));
-
-                return std::nullopt;
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                if (std::holds_alternative<std::monostate>(a[0]->v))
-                    return copy(a[1]);
-
-                return copy(a[0]);
-            },
-            {"(T?).or(T) -> T", "safe default value for T?", "maybe_int().or(-1)"});
-
-        def.method("unwrap",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) == TypeKind::Optional)
-                    return signature({}, ts.element(receiver));
-
-                return std::nullopt;
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                if (std::holds_alternative<std::monostate>(a[0]->v))
-                    throw std::runtime_error{"unwrap failed!"};
-
-                return copy(a[0]);
-            },
-            {"(T?).unwrap() -> T", "force unwrap T?, (throws if none)"});
-
-        def.method("to_string",
-            [=](TypeTable&, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                return signature({}, BaseTypes::String);
-            },
-            [](Runtime& rt, Args a, const auto&) -> ValueRef
-            {
-                return make_value(to_string(*a[0], &rt.resolved()));
-            },
-            {"T.to_string() -> string", "convert any value to its string representation"});
-
-        def.method("join",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) != TypeKind::Array)
-                    return std::nullopt;
-
-                if (ts.element(receiver) != BaseTypes::String)
-                    return std::nullopt;
-
-                return NativeDef::sig(
-                    { ParamSig{BaseTypes::String, false} },
-                    BaseTypes::String,
-                    true
-                );
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                const auto& items = as_array(a[0]).items;
-                const std::string& separator = as_string(a[1]);
-
-                std::string result;
-
-                for (size_t i = 0; i < items.size(); ++i)
-                {
-                    if (i != 0)
-                        result += separator;
-
-                    result += as_string(items[i]);
-                }
-
-                return make_string(std::move(result));
-            },
-            {"(string[]).join(separator: string) -> string"});
-
-
-        def.method("at",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) == TypeKind::Array)
-                    return signature({ParamSig{BaseTypes::Int, false}}, ts.optional_of(ts.element(receiver)));
-
-                if (ts.kind(receiver) == TypeKind::String)
-                    return signature({ParamSig{BaseTypes::Int, false}}, ts.optional_of(BaseTypes::String));
-
-                if (ts.kind(receiver) == TypeKind::Map)
-                    return signature({ParamSig{ts.key(receiver), false}}, ts.optional_of(ts.value(receiver)));
-
-                return std::nullopt;
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-
-                if (const auto* map = std::get_if<Map>(&a[0]->v))
-                {
-                    const auto it = map->items.find(a[1]);
-
-                    if (it == map->items.end())
-                        return make_void();
-
-                    return copy(it->second);
-                }
-
-                const int64_t i = as_int(a[1]);
-
-                if (const auto* arr = std::get_if<Array>(&a[0]->v))
-                {
-                    if (i < 0 || static_cast<uint64_t>(i) >= arr->items.size())
-                        return make_void();
-
-                    return copy(arr->items[static_cast<size_t>(i)]);
-                }
-
-                const std::string& s = as_string(a[0]);
-
-                if (i < 0 || static_cast<uint64_t>(i) >= s.size())
-                    return make_void();
-
-                return make_string(std::string(1, s[static_cast<size_t>(i)]));
-            },
-            {"(array | string).at(int) -> element | (map).at(key) -> map.value?"});
-
-
-        def.method("length",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                switch (ts.kind(receiver))
-                {
-                case TypeKind::Array:
-                case TypeKind::Map:
-                case TypeKind::String:
-                    case TypeKind::Set:
-                    return signature({}, BaseTypes::Int);
-
-                default:
-                    return std::nullopt;
-                }
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                const Value& v = *a[0];
-
-                if (const auto* arr = std::get_if<Array>(&v.v))
-                    return make_int(static_cast<int64_t>(arr->items.size()));
-
-                if (const auto* m = std::get_if<Map>(&v.v))
-                    return make_int(static_cast<int64_t>(m->items.size()));
-
-                if (const auto* s = std::get_if<Set>(&v.v))
-                    return make_int(static_cast<int64_t>(s->items.size()));
-
-                return make_int(static_cast<int64_t>(as_string(a[0]).size()));
-            },
-            {"(map | array | string).length() -> int"});
-
-        def.method("push",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) != TypeKind::Array)
-                    return std::nullopt;
-
-                return signature({ParamSig{ts.element(receiver), false}}, BaseTypes::Void, true);
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                as_array(a[0]).items.push_back(copy(a[1]));
-                return make_void();
-            },
-            {"(array).push(array.element) -> void"});
-
-        def.method("pop",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) != TypeKind::Array)
-                    return std::nullopt;
-
-                return signature({}, ts.optional_of(ts.element(receiver)), true);
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                auto& items = as_array(a[0]).items;
-
-                if (items.empty())
-                    return make_void();
-
-                ValueRef last = std::move(items.back());
-                items.pop_back();
-                return last;
-            },
-            {"(array).pop() -> void"});
-
-        def.method("clear",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (
-                    ts.kind(receiver) != TypeKind::Array &&
-                    ts.kind(receiver) != TypeKind::Map &&
-                    ts.kind(receiver) != TypeKind::Set)
-                        return std::nullopt;
-
-                return signature({}, BaseTypes::Void, true);
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                if (auto* arr = std::get_if<Array>(&a[0]->v))
-                    arr->items.clear();
-                else if (auto* set = std::get_if<Set>(&a[0]->v))
-                    set->items.clear();
-                else
-                    as_map(a[0]).items.clear();
-
-                return make_void();
-            },
-            {"(array | map).clear() -> void"});
-
-            def.method("remove",
-                [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-                {
-                    if (ts.kind(receiver) != TypeKind::Map)
-                        return std::nullopt;
-
-                    return signature({ParamSig{ts.key(receiver), false}}, BaseTypes::Bool, true);
-                },
-                [](Runtime&, Args a, const auto&)
-                {
-                    return make_bool(as_map(a[0]).items.erase(a[1]) > 0);
-                },
-                {"(map).remove() -> bool"});
-
-        def.method("contains",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) == TypeKind::Map)
-                    return signature({ParamSig{ts.key(receiver), false}}, BaseTypes::Bool);
-
-                if (ts.kind(receiver) == TypeKind::Array)
-                    return signature({ParamSig{ts.element(receiver), false}}, BaseTypes::Bool);
-
-                return std::nullopt;
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                if (const auto* m = std::get_if<Map>(&a[0]->v))
-                    return make_bool(m->items.contains(a[1]));
-
-                for (const ValueRef& item : as_array(a[0]).items)
-                    if (*item == *a[1])
-                        return make_bool(true);
-
-                return make_bool(false);
-            },
-            {"(map | array).contains((key | element)) -> bool"});
-
-        def.method("reverse",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) != TypeKind::Array)
-                    return std::nullopt;
-
-                return signature({}, BaseTypes::Void, true);
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                auto& items = as_array(a[0]).items;
-                std::reverse(items.begin(), items.end());
-                return make_void();
-            },
-            {"(T[]).reverse() -> void", "reverses in place"});
-
-        def.method("reversed",
-            [=](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
-            {
-                if (ts.kind(receiver) != TypeKind::Array)
-                    return std::nullopt;
-
-                return signature({}, receiver);
-            },
-            [](Runtime&, Args a, const auto&)
-            {
-                Array result = as_array(copy(a[0]));
-                std::reverse(result.items.begin(), result.items.end());
-                return make_value(std::move(result));
-            },
-            {"(T[]).reversed() -> T[]", "returns a reversed copy"});
-
-
-        def.function("debug::assert", {{ParamSig{BaseTypes::Bool}}},
-            [](Runtime&, Args a, const auto&)
-            {
-                bool cond = as_bool(a[0]);
-
-                if (cond == false)
-                    throw std::runtime_error("debugging: assertion failed!");
-
-                return make_void();
-            },
-            {"debug::assert(cond: bool)"});
-
-        def.function("debug::assert_eq", {{ParamSig{BaseTypes::Any}, ParamSig{BaseTypes::Any}}},
-            [](Runtime&, Args a, const auto&)
-            {
-                const auto& _1 = a[0];
-                const auto& _2 = a[1];
-
-                if (*_1 != *_2)
-                    throw std::runtime_error("debugging: assertion eq failed!");
-
-
-                return make_void();
-            },
-            {"debug::assert_eq(any, any)"});
     }
 }

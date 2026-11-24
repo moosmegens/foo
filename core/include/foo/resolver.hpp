@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <deque>
+#include <expected>
 #include <functional>
 #include <map>
 #include <optional>
@@ -184,6 +185,7 @@ namespace foo
 
 
     using NativeResolver = std::function<std::optional<FunctionSig>(TypeTable&, TypeId receiver)>;
+    using NativeRefine = std::function<std::expected<TypeId, std::string>(TypeTable&, TypeId, const std::vector<TypeId>&)>;
 
 
     class NativeRegistry
@@ -193,6 +195,7 @@ namespace foo
         {
             NativeFunctionId id;
             FunctionSig sig;
+            NativeRefine refine = nullptr;
         };
 
         TypeId type(TypeTable& types, std::string_view full_name);
@@ -202,7 +205,7 @@ namespace foo
         const std::vector<std::string>& type_names() const { return _type_names; }
 
 
-        NativeFunctionId add_function(std::string name, FunctionSig sig);
+        NativeFunctionId add_function(std::string name, FunctionSig sig, NativeRefine refine = nullptr);
 
         NativeFunctionId add_static_function(std::string name, TypeId target, FunctionSig sig);
 
@@ -210,7 +213,7 @@ namespace foo
 
         NativeFunctionId add_method(std::string name, TypeId target, FunctionSig sig);
 
-        NativeFunctionId add_method(std::string name, NativeResolver resolve);
+        NativeFunctionId add_method(std::string name, NativeResolver resolve, NativeRefine refine = nullptr);
 
 
         std::optional<Match> find_function(TypeTable& types, std::string_view name) const
@@ -235,9 +238,10 @@ namespace foo
             std::string name;
             Kind kind;
             NativeResolver resolve;
+            NativeRefine refine;
         };
 
-        NativeFunctionId add(std::string name, Kind kind, NativeResolver resolve);
+        NativeFunctionId add(std::string name, Kind kind, NativeResolver resolve, NativeRefine refine = nullptr);
 
         std::optional<Match> find(
             Kind kind, TypeTable& types, TypeId receiver, std::string_view name) const;

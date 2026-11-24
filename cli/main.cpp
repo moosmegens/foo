@@ -132,7 +132,7 @@ static void print_diagnostics(
 
 static void inject(foo::TypeTable& types, foo::NativeRegistry& natives, foo::NativeTable& table)
 {
-    foo::Runtime::inject(types, natives, table);
+    foo::inject_std(types, natives, table);
 
     foo::inject_io(types, natives, table);
     foo::inject_os(types, natives, table);

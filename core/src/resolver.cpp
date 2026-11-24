@@ -76,13 +76,14 @@ namespace foo
         return types.native_of(it->second);
     }
 
-    NativeFunctionId NativeRegistry::add_function(std::string name, FunctionSig sig)
+    NativeFunctionId NativeRegistry::add_function(std::string name, FunctionSig sig, NativeRefine refine)
     {
         return add(std::move(name), Kind::Function,
             [sig = std::move(sig)](TypeTable&, TypeId) -> std::optional<FunctionSig>
             {
                 return sig;
-            });
+            },
+            std::move(refine));
     }
 
     NativeFunctionId NativeRegistry::add_method(std::string name, TypeId receiver, FunctionSig sig)
@@ -97,9 +98,9 @@ namespace foo
             });
     }
 
-    NativeFunctionId NativeRegistry::add_method(std::string name, NativeResolver resolve)
+    NativeFunctionId NativeRegistry::add_method(std::string name, NativeResolver resolve, NativeRefine refine)
     {
-        return add(std::move(name), Kind::Method, std::move(resolve));
+        return add(std::move(name), Kind::Method, std::move(resolve), std::move(refine));
     }
 
     NativeFunctionId NativeRegistry::add_static_function(std::string name, TypeId target, FunctionSig sig)
@@ -120,9 +121,9 @@ namespace foo
     }
 
 
-    NativeFunctionId NativeRegistry::add(std::string name, Kind kind, NativeResolver resolve)
+    NativeFunctionId NativeRegistry::add(std::string name, Kind kind, NativeResolver resolve, NativeRefine refine)
     {
-        _entries.push_back({std::move(name), kind, std::move(resolve)});
+        _entries.push_back({std::move(name), kind, std::move(resolve), std::move(refine)});
 
         return static_cast<NativeFunctionId>(_entries.size() - 1);
     }
@@ -138,7 +139,7 @@ namespace foo
                 continue;
 
             if (auto sig = e.resolve(types, receiver))
-                return Match{static_cast<NativeFunctionId>(i), std::move(*sig)};
+                return Match{static_cast<NativeFunctionId>(i), std::move(*sig), e.refine};
         }
 
         return std::nullopt;
@@ -300,6 +301,9 @@ namespace foo
             Id index = -1;
 
             const ast::Expr* receiver = nullptr;
+
+            NativeRefine refine;
+            TypeId receiver_type = EmptyType;
         };
 
         struct AliasInfo : DeclInfo
@@ -2102,6 +2106,11 @@ namespace foo
                 if (types().kind(to) == TypeKind::Interface)
                     return _output.impls.contains(std::pair<TypeId, InterfaceId>{from, types().interface_id(to)});
 
+                if (types().kind(to) == TypeKind::Function && types().kind(from) == TypeKind::Function
+                    && types().function_return(to) == BaseTypes::Infer
+                    && types().members(to) == types().members(from))
+                    return true;
+
                 if (types().kind(to) == TypeKind::Optional && from == BaseTypes::None)
                     return true;
 
@@ -2306,7 +2315,8 @@ namespace foo
 
             if (lambda.return_type)
                 ret = resolve_type(lambda.return_type);
-            else if (hint_ret != EmptyType && hint_ret != BaseTypes::Void && hint_ret != BaseTypes::Error)
+            else if (hint_ret != EmptyType && hint_ret != BaseTypes::Void && hint_ret != BaseTypes::Error
+                && hint_ret != BaseTypes::Infer)
                 ret = hint_ret;
 
             // function around the lambda, the lambda gets its own slots
@@ -2717,21 +2727,35 @@ namespace foo
             }
 
             const bool closure = callee->ref == RefKind::Closure;
+            const bool native = callee->ref == RefKind::Native || callee->ref == RefKind::NativeMethod;
 
-            // a function value keeps the info it already has (a local, a capture, a field, ...),
-            // the runtime evaluates it to get the function
+            const std::vector<TypeId> arg_types = resolve_args(callee->sig, call.args, span);
+
+            if (native && callee->refine)
+            {
+                const bool usable = arg_types.size() == callee->sig.params.size()
+                    && std::ranges::none_of(arg_types, [](TypeId t) { return t == BaseTypes::Error; });
+
+                if (!usable)
+                {
+                    callee->sig.ret = BaseTypes::Error;
+                }
+                else if (auto refined = callee->refine(types(), callee->receiver_type, arg_types))
+                {
+                    callee->sig.ret = *refined;
+                }
+                else
+                {
+                    error(span, refined.error());
+                    callee->sig.ret = BaseTypes::Error;
+                }
+            }
+
             if (!closure)
                 _output.exprs[call.callee.get()] = make_einfo(callee->sig.ret, callee->ref, callee->index);
 
-            if (callee->ref == RefKind::Native || callee->ref == RefKind::NativeMethod)
+            if (native)
                 _output.native_sigs[&call] = callee->sig;
-
-
-            //bool needs_variable = (callee->receiver != nullptr) && callee->sig.self_by_ref;
-            // if (needs_variable && is_lvalue(*callee->receiver) == false)
-            //     error(callee->receiver->span, "this method takes self by reference, the receiver must be a lvalue");
-
-            resolve_args(callee->sig, call.args, span);
 
             return make_einfo(callee->sig.ret, closure ? RefKind::Closure : RefKind::None);
         }
@@ -2872,7 +2896,11 @@ namespace foo
 
             auto match = natives().find_function(types(), full_name);
             if (match.has_value())
-                return make_callee(match->sig, RefKind::Native, match->id);
+            {
+                Callee callee = make_callee(match->sig, RefKind::Native, match->id);
+                callee.refine = match->refine;
+                return callee;
+            }
 
 
             error(span, "unknown function '" + full_name + "'");
@@ -2938,7 +2966,12 @@ namespace foo
 
             auto match = natives().find_method(types(), receiver_type, member.name);
             if (match.has_value())
-                return make_callee(match->sig, RefKind::NativeMethod, match->id, member.target.get());
+            {
+                Callee callee = make_callee(match->sig, RefKind::NativeMethod, match->id, member.target.get());
+                callee.refine = match->refine;
+                callee.receiver_type = receiver_type;
+                return callee;
+            }
 
             error(span, "'" + type_name(receiver_type) + "' has no method '" + member.name + "'");
             return std::nullopt;
@@ -2955,8 +2988,11 @@ namespace foo
             return nullptr;
         }
 
-        void resolve_args(const FunctionSig& sig, const std::vector<ast::ExprPtr>& args, const SourceSpan& span)
+        std::vector<TypeId> resolve_args(const FunctionSig& sig, const std::vector<ast::ExprPtr>& args, const SourceSpan& span)
         {
+            std::vector<TypeId> arg_types;
+            arg_types.reserve(args.size());
+
             const size_t param_count = sig.params.size();
             const size_t arg_count = args.size();
 
@@ -2981,11 +3017,12 @@ namespace foo
 
                 if (param == nullptr)
                 {
-                    resolve_expr(arg);
+                    arg_types.push_back(resolve_expr(arg));
                     continue;
                 }
 
                 TypeId arg_type = resolve_expr(arg, param->type);
+                arg_types.push_back(arg_type);
 
                 if (param->by_ref)
                 {
@@ -3001,6 +3038,8 @@ namespace foo
                 }
 
             }
+
+            return arg_types;
         }
 
         ExprInfo fail_call(const std::vector<ast::ExprPtr>& args)

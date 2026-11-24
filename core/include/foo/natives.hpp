@@ -56,7 +56,14 @@ namespace foo
         {
             table.set(natives.add_static_function(std::move(name), std::move(resolve)), std::move(fn), info);
         }
+
+        void generic_method(std::string name, NativeResolver resolve, NativeRefine refine, NativeFn fn, const NativeTable::Info& info = {})
+        {
+            table.set(natives.add_method(std::move(name), std::move(resolve), std::move(refine)), std::move(fn), info);
+        }
     };
+
+    void inject_std(TypeTable& types, NativeRegistry& natives, NativeTable& table);
 
     void inject_rng(TypeTable& types, NativeRegistry& natives, NativeTable& table);
 

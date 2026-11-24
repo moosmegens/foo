@@ -147,11 +147,13 @@ namespace foo
         Runtime(RuntimeInput input);
         ~Runtime();
 
-        static void inject(TypeTable& types, NativeRegistry& natives, NativeTable& table);
+        //static void inject(TypeTable& types, NativeRegistry& natives, NativeTable& table);
 
         std::optional<FunctionId> find_function(std::string_view name) const;
         Result<ValueRef, RuntimeError> call(FunctionId fn, Args args);
         Result<ValueRef, RuntimeError> call(std::string_view name, Args args);
+
+        ValueRef call_closure(const ValueRef& fn, std::vector<ValueRef> args);
 
         const TypeTable& types() const;
 
