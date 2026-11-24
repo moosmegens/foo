@@ -1088,16 +1088,24 @@ static void show_syntax(const std::vector<std::string>& kinds)
         row("fn name(a: T) -> R { }",       "function, `ref a: T` lets it change the caller's variable");
         eg("fn add(a: int, b: int) -> int { return a + b }");
         eg("fn double(ref x: int) { x = x * 2 }");
-        row("struct Name { }",              "fields `x: int` and methods, a method's first parameter is `self`");
         eg("struct Point");
         eg("{");
         eg("    x: int");
         eg("    y: int");
-        eg("    fn shift(ref self: Point, dx: int) { self.x = self.x + dx }");
+        eg("}");
+        row("code T { ... } (as I)",         "declares a code block for type 'T', and optionally for interface 'I'");
+        eg("code Point");
+        eg("{");
+        eg("    fn add(self, other: Point) -> Point { return #Point{ x = self.x + other.x, y = self.y + other.y }; } }");
+        eg("}");
+        row("interface interface { ... }",         "declares an interface");
+        eg("interface Reader");
+        eg("{");
+        eg("    read(ref self, lines: int) -> string[]");
         eg("}");
         row("enum Name { a, b }",           "named choices, used as Name::a");
         eg("enum Color { red, green }    var c = Color::red");
-        row("priv",                         "before a fn or a field: only usable in its own file / struct");
+        row("priv",                         "before a fn or a field: only usable in its own namespace");
     }
 
     if (wants("stmts"))
