@@ -104,7 +104,10 @@ namespace foo
             if (param.reffed)
                 out += "ref ";
 
-            out += param.name + ": " + to_string(param.type);
+            out += param.name;
+
+            if (param.type)
+                out += ": " + to_string(param.type);
         }
 
         out += ")";
@@ -380,8 +383,7 @@ namespace foo
                 std::string out = "struct " + n.name + "\n" + pad(indent) + "{\n";
                 for (const auto& f : n.fields)
                     out += pad(indent + 1) + f.name + ": " + to_string(f.type) + ";\n";
-                for (const auto& m : n.methods)
-                    out += pad(indent + 1) + print(m, indent + 1) + "\n";
+
                 return out + pad(indent) + "}";
             },
             [&](const EnumDecl& n)
@@ -396,6 +398,20 @@ namespace foo
                 std::string out = "namespace " + n.name + "\n" + pad(indent) + "{\n";
                 for (const auto& child : n.decls)
                     out += pad(indent + 1) + (child ? print(*child, indent + 1) : "<null>") + "\n";
+                return out + pad(indent) + "}";
+            },
+            [&](const CodeDecl& n)
+            {
+                std::string out = "code " + to_string(n.target);
+
+                if (n.interface)
+                    out += " as " + to_string(n.interface);
+
+                out += "\n" + pad(indent) + "{\n";
+
+                for (const auto& f : n.functions)
+                    out += pad(indent + 1) + print(f, indent + 1) + "\n";
+
                 return out + pad(indent) + "}";
             },
             [&](const AliasDecl& n)

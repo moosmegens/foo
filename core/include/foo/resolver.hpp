@@ -27,6 +27,8 @@ namespace foo
     using StructId          = Id;
     using EnumId            = Id;
     using NativeTypeId      = Id;
+    using InterfaceId       = Id;
+    using InterfaceFnId     = Id;
 
     using FunctionId        = Id;
     using NativeFunctionId  = Id;
@@ -43,7 +45,7 @@ namespace foo
         // only exists while resolving
         Infer,
 
-        Range, Array, Map, Set, Optional, Struct, Native, Tuple, Variant, Enum, Function
+        Range, Array, Map, Set, Optional, Struct, Native, Tuple, Variant, Enum, Function, Interface
     };
 
     constexpr std::array BaseKinds =
@@ -96,6 +98,7 @@ namespace foo
         TypeId enum_of(EnumId e)            { return intern(TypeKind::Enum, e); }
         TypeId native_of(NativeTypeId n)    { return intern(TypeKind::Native, n); }
         TypeId set_of(TypeId n)             { return intern(TypeKind::Set, n); }
+        TypeId interface_of(InterfaceId i)  { return intern(TypeKind::Interface, i); }
 
         TypeId tuple_of(std::vector<TypeId> elements)
         {
@@ -119,6 +122,8 @@ namespace foo
         TypeId value(TypeId t) const            { return at(t).b; }
         StructId struct_id(TypeId t) const      { return at(t).a; }
         EnumId enum_id(TypeId t) const          { return at(t).a; }
+        InterfaceId interface_id(TypeId t) const { return at(t).a; }
+
         NativeTypeId native_id(TypeId t) const  { return at(t).a; }
         TypeId function_return(TypeId t) const  { return at(t).a; }
 
@@ -156,6 +161,8 @@ namespace foo
     {
         TypeId type = EmptyType;
         bool by_ref = false;
+
+        bool operator==(const ParamSig&) const = default;
     };
 
     struct FunctionSig
@@ -171,6 +178,8 @@ namespace foo
         bool self_by_ref = false;
 
         TypeId ret = BaseTypes::Void;
+
+        bool operator==(const FunctionSig&) const = default;
     };
 
 
@@ -267,6 +276,8 @@ namespace foo
         //  io::filesystem::dir
         Path path;
 
+        Path scope;
+
         bool pub = true;
 
         int file_index = -1;
@@ -287,7 +298,7 @@ namespace foo
         TypeId type = EmptyType;
 
         std::vector<FieldInfo> fields;
-        std::unordered_map<std::string, FunctionId> methods;
+        // std::unordered_map<std::string, FunctionId> methods;
     };
 
     struct EnumInfo : DeclInfo
@@ -312,6 +323,34 @@ namespace foo
         int slot_count = 0;
     };
 
+    struct InterfaceFnInfo
+    {
+        InterfaceId owner = EmptyId;
+        int index = 0;              // position inside the interface, also the position in a vtable
+        std::string name;
+        FunctionSig sig;            // without self, like every method
+        SourceSpan span = {};
+    };
+
+    struct InterfaceInfo : DeclInfo
+    {
+        const ast::InterfaceDecl* decl = nullptr;
+
+        TypeId type = EmptyType;
+
+        std::vector<InterfaceFnId> fns;
+    };
+
+    struct CodeInfo : DeclInfo
+    {
+        const ast::CodeDecl* decl = nullptr;
+
+        TypeId target = EmptyType;
+        InterfaceId interface = EmptyId;
+
+        std::vector<FunctionId> functions;
+    };
+
     enum class RefKind
     {
         None,
@@ -324,7 +363,8 @@ namespace foo
         StructLit,      // StructLit: index = StructId
         EnumVariant,    // Color::red: index = variant index
         Capture,        // index = position in the captured values of the running closure
-        Closure         // a call through a function value (only on Call expressions)
+        Closure,         // a call through a function value (only on Call expressions)
+        InterfaceMethod
     };
 
     struct ExprInfo
@@ -340,6 +380,9 @@ namespace foo
         TypeId type = EmptyType;
 
         SlotId slot = -1;
+
+        // a `reffed` local that can be used, but not assignable.
+        bool borrowed = false;
     };
 
     struct LambdaCapture
@@ -386,6 +429,14 @@ namespace foo
         std::vector<StructInfo> structs;
         std::vector<EnumInfo> enums;
         std::vector<FunctionInfo> functions;
+
+        std::vector<InterfaceInfo> interfaces;
+        std::vector<InterfaceFnInfo> interface_fns;
+        std::vector<CodeInfo> codes;
+
+        std::map<std::pair<TypeId, std::string>, FunctionId> methods;
+
+        std::map<std::pair<TypeId, InterfaceId>, std::vector<FunctionId>> impls;
 
         std::unordered_map<const ast::StructLit*, std::vector<int>> struct_lit_fields;
 

@@ -283,7 +283,7 @@ namespace foo
         bool callable(RefKind k)
         {
             return k == RefKind::Function || k == RefKind::Method || k == RefKind::Native
-                || k == RefKind::NativeMethod || k == RefKind::Closure;
+                || k == RefKind::NativeMethod || k == RefKind::Closure || k == RefKind::InterfaceMethod;
         }
     }
 
@@ -439,10 +439,11 @@ namespace foo
             while (types.kind(to) == TypeKind::Optional && types.kind(from) != TypeKind::Optional)
                 to = types.element(to);
 
-            // a variant value is a Boxed that remembers which alternative it holds,
-            // `from` is that alternative (the resolver only allows exact members)
-            if (types.kind(to) == TypeKind::Variant && from != to
-                && from != BaseTypes::None && types.kind(from) != TypeKind::Variant)
+            const TypeKind to_kind = types.kind(to);
+
+            if ((to_kind == TypeKind::Variant || to_kind == TypeKind::Interface) && from != to
+                && from != BaseTypes::None
+                && types.kind(from) != TypeKind::Variant && types.kind(from) != TypeKind::Interface)
             {
                 if (v.use_count() != 1)
                     v = copy(v);
@@ -450,8 +451,8 @@ namespace foo
                 return make_value(Boxed{std::move(v), from});
             }
 
-            // a variant already is an `any` that can only hold a few types, so it doesn't get boxed again
-            if (to == BaseTypes::Any && types.kind(from) == TypeKind::Variant)
+            if (to == BaseTypes::Any
+                && (types.kind(from) == TypeKind::Variant || types.kind(from) == TypeKind::Interface))
                 return v;
 
             if (to == BaseTypes::Any && from != BaseTypes::Any)
@@ -914,7 +915,8 @@ namespace foo
 
             const Expr* self = nullptr;
 
-            if (target->ref == RefKind::Method || target->ref == RefKind::NativeMethod)
+            if (target->ref == RefKind::Method || target->ref == RefKind::NativeMethod
+                || target->ref == RefKind::InterfaceMethod)
             {
                 const auto* m = std::get_if<Member>(&c.callee->kind);
 
@@ -984,10 +986,70 @@ namespace foo
             return invoke(target, nullptr, c.args, &c, e.span);
         }
 
+         ValueResult eval_function_args(const FunctionInfo& f, const std::vector<ExprPtr>& arg_exprs, std::vector<ValueRef>& args)
+        {
+            for (size_t i = 0; i < arg_exprs.size(); i++)
+            {
+                const ParamSig& p = f.sig.params[i];
+                const Expr& a = *arg_exprs[i];
+
+                if (p.by_ref)
+                {
+                    FOO_TRY(argument, ref(a));
+
+                    const TypeId from = info(a).type;
+                    const TypeTable& types = resolved().type_table;
+
+                    if (types.kind(p.type) == TypeKind::Interface && from != p.type)
+                        args.push_back(make_value(Boxed{std::move(argument), from}));
+                    else
+                        args.push_back(std::move(argument));
+                }
+                else
+                {
+                    FOO_TRY(argument, val(a));
+                    args.push_back(nudge_value(std::move(argument), info(a).type, p.type));
+                }
+            }
+
+            return make_void();
+        }
+
         ValueResult invoke(const ExprInfo& target, const Expr* self, const std::vector<ExprPtr>& arg_exprs, const void* call_node, const SourceSpan& span)
         {
             std::vector<ValueRef> args;
             args.reserve(arg_exprs.size() + 1);
+
+            if (target.ref == RefKind::InterfaceMethod)
+            {
+                if (!self)
+                    return error("internal: interface call without a receiver", span);
+
+                const InterfaceFnInfo& ifn = resolved().interface_fns[static_cast<size_t>(target.index)];
+
+                FOO_TRY(receiver, ref(*self));
+
+                const auto* boxed = std::get_if<Boxed>(&receiver->v);
+                if (!boxed)
+                    return error("internal: an interface value is not boxed", span);
+
+                const auto impl = resolved().impls.find(std::pair<TypeId, InterfaceId>{boxed->type, ifn.owner});
+                if (impl == resolved().impls.end() || static_cast<size_t>(ifn.index) >= impl->second.size())
+                    return error("internal: no implementation found for this interface call", span);
+
+                const FunctionId id = impl->second[static_cast<size_t>(ifn.index)];
+                const FunctionInfo& f = function(id);
+
+                if (f.sig.params.size() != arg_exprs.size())
+                    return error("internal: wrong number of arguments", span);
+
+                args.push_back(f.sig.self_by_ref ? boxed->v : copy(boxed->v));
+
+                FOO_TRY(done, eval_function_args(f, arg_exprs, args));
+                (void)done;
+
+                return call_function(id, std::move(args), span);
+            }
 
             if (target.ref == RefKind::Function || target.ref == RefKind::Method)
             {
@@ -1010,22 +1072,8 @@ namespace foo
                     }
                 }
 
-                for (size_t i = 0; i < arg_exprs.size(); i++)
-                {
-                    const ParamSig& p = f.sig.params[i];
-                    const Expr& a = *arg_exprs[i];
-
-                    if (p.by_ref)
-                    {
-                        FOO_TRY(argument, ref(a));
-                        args.push_back(std::move(argument));
-                    }
-                    else
-                    {
-                        FOO_TRY(argument, val(a));
-                        args.push_back(nudge_value(std::move(argument), info(a).type, p.type));
-                    }
-                }
+                FOO_TRY(done, eval_function_args(f, arg_exprs, args));
+                (void)done;
 
                 return call_function(target.index, std::move(args), span);
             }

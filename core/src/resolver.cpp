@@ -182,6 +182,12 @@ namespace foo
             case TypeKind::Set:
                 return "set<" + type_name(types.element(type), output) + ">";
 
+            case TypeKind::Interface:
+            {
+                InterfaceId id = types.interface_id(type);
+                return to_string(output.interfaces[static_cast<size_t>(id)].path);
+            }
+
             case TypeKind::Tuple:
             case TypeKind::Variant:
             {
@@ -259,7 +265,9 @@ namespace foo
 
             discover_decls_from_files();
             resolve_types();
+            resolve_codes();
             resolve_function_sigs();
+            check_impls();
             resolve_functions();
 
             return std::move(_output);
@@ -326,6 +334,8 @@ namespace foo
             TypeId type = EmptyType;
             RefKind ref = RefKind::None;
             Id index = -1;
+
+            bool borrowed = false;
         };
 
 
@@ -337,6 +347,7 @@ namespace foo
         std::map<Path, StructId> _struct_map;
         std::map<Path, EnumId> _enum_map;
         std::map<Path, FunctionId> _function_map;
+        std::map<Path, InterfaceId> _interface_map;
 
         std::vector<AliasInfo> _aliases;
         std::map<Path, size_t> _alias_map;
@@ -452,21 +463,13 @@ namespace foo
         void enter(const StructInfo& info)
         {
             _file_id = info.file_index;
-
-            _scope = info.path;
-            _scope.pop_back(); // i remove the struct from the path, so lib::struct to just lib
+            _scope = info.scope;
         }
 
         void enter(const FunctionInfo& info)
         {
             _file_id = info.file_index;
-
-            _scope = info.path;
-            _scope.pop_back();  // i remove the function from the path, so lib::function to just lib
-
-            bool is_in_struct = (info.owner_type != EmptyType);
-            if (is_in_struct)
-                _scope.pop_back(); // i remove the struct from the path, so lib::struct::function to just lib
+            _scope = info.scope;
         }
 
         static int find_field(const StructInfo& info, const std::string& name)
@@ -549,7 +552,11 @@ namespace foo
                     },
                     [&](const ast::InterfaceDecl& i)
                     {
-                        foo::println("discovered interface:", i.name);
+                        discover_interface(i, d->span, scope);
+                    },
+                    [&](const ast::CodeDecl& c)
+                    {
+                        discover_code(c, d->span, scope);
                     }
                 }, d->kind);
             }
@@ -561,6 +568,7 @@ namespace foo
 
             FunctionInfo info;
             info.path = path_child(scope, fn.name);
+            info.scope = scope;
             info.file_index = _file_id;
             info.span = fn.decl_span;
             info.decl = &fn;
@@ -580,6 +588,7 @@ namespace foo
 
             StructInfo info;
             info.path = path_child(scope, decl.name);
+            info.scope = scope;
             info.file_index = _file_id;
             info.span = span;
             info.decl = &decl;
@@ -590,9 +599,6 @@ namespace foo
 
             _output.to_file_index[&decl] = _file_id;
             _output.structs.push_back(std::move(info));
-
-            for (const ast::FnDecl& m : decl.methods)
-                discover_method(id, m, span);
         }
 
         void discover_enum(const ast::EnumDecl& decl, const SourceSpan& span, const Path& scope)
@@ -606,7 +612,6 @@ namespace foo
             info.decl = &decl;
             info.type = types().enum_of(id);
 
-            // enums, structs and aliases share one namespace, they are all types
             if (_struct_map.contains(info.path) || _alias_map.contains(info.path)
                 || !_enum_map.emplace(info.path, id).second)
             {
@@ -640,7 +645,6 @@ namespace foo
             info.span = span;
             info.decl = &decl;
 
-            // aliases, structs and enums share one namespace, they are all types
             if (_struct_map.contains(info.path) || _enum_map.contains(info.path)
                 || !_alias_map.emplace(info.path, _aliases.size()).second)
             {
@@ -652,33 +656,86 @@ namespace foo
             _aliases.push_back(std::move(info));
         }
 
-        void discover_method(StructId owner, const ast::FnDecl& m, const SourceSpan& span)
-        {
-            StructInfo& s = _output.structs[static_cast<size_t>(owner)];
-            const FunctionId id = static_cast<FunctionId>(_output.functions.size());
+        // void discover_method(StructId owner, const ast::FnDecl& m, const SourceSpan& span)
+        // {
+        //     StructInfo& s = _output.structs[static_cast<size_t>(owner)];
+        //     const FunctionId id = static_cast<FunctionId>(_output.functions.size());
+        //
+        //     if (!s.methods.try_emplace(m.name, id).second)
+        //     {
+        //         error(span, "'" + to_string(s.path) + "' already has a method '" + m.name + "'");
+        //         return;
+        //     }
+        //
+        //     FunctionInfo info;
+        //     info.path = path_child(s.path, m.name);
+        //     info.file_index = s.file_index;
+        //     info.span = span;
+        //     info.decl = &m;
+        //     info.owner_type = s.type;
+        //     info.is_method = !m.signature.params.empty() && m.signature.params[0].name == "self";
+        //     info.pub = m.pub;
+        //
+        //     _output.to_file_index[&m] = s.file_index;
+        //     _output.functions.push_back(std::move(info));
+        // }
 
-            if (!s.methods.try_emplace(m.name, id).second)
+        void discover_interface(const ast::InterfaceDecl& decl, const SourceSpan& span, const Path& scope)
+        {
+            const InterfaceId id = static_cast<InterfaceId>(_output.interfaces.size());
+
+            InterfaceInfo info;
+            info.path = path_child(scope, decl.name);
+            info.scope = scope;
+            info.file_index = _file_id;
+            info.span = span;
+            info.decl = &decl;
+            info.type = types().interface_of(id);
+
+            if (_struct_map.contains(info.path) || _enum_map.contains(info.path) || _alias_map.contains(info.path)
+                || !_interface_map.emplace(info.path, id).second)
             {
-                error(span, "'" + to_string(s.path) + "' already has a method '" + m.name + "'");
+                error(span, "'" + to_string(info.path) + "' is already declared");
                 return;
             }
 
-            FunctionInfo info;
-            info.path = path_child(s.path, m.name);
-            info.file_index = s.file_index;
-            info.span = span;
-            info.decl = &m;
-            info.owner_type = s.type;
-            info.is_method = !m.signature.params.empty() && m.signature.params[0].name == "self";
-            info.pub = m.pub;
+            _output.to_file_index[&decl] = _file_id;
+            _output.interfaces.push_back(std::move(info));
+        }
 
-            _output.to_file_index[&m] = s.file_index;
-            _output.functions.push_back(std::move(info));
+        void discover_code(const ast::CodeDecl& decl, const SourceSpan& span, const Path& scope)
+        {
+            CodeInfo code;
+            code.scope = scope;
+            code.file_index = _file_id;
+            code.span = span;
+            code.decl = &decl;
+
+            for (const ast::FnDecl& fn : decl.functions)
+            {
+                const FunctionId id = static_cast<FunctionId>(_output.functions.size());
+
+                FunctionInfo info;
+                info.path = path_child(scope, fn.name);
+                info.scope = scope;
+                info.file_index = _file_id;
+                info.span = fn.decl_span;
+                info.decl = &fn;
+                info.pub = fn.pub;
+                info.is_method = !fn.signature.params.empty() && fn.signature.params[0].name == "self";
+
+                _output.to_file_index[&fn] = _file_id;
+                _output.functions.push_back(std::move(info));
+                code.functions.push_back(id);
+            }
+
+            _output.codes.push_back(std::move(code));
         }
 
         bool add_struct(const Path& path, StructId id, const SourceSpan& span)
         {
-            if (!_enum_map.contains(path) && !_alias_map.contains(path) && _struct_map.emplace(path, id).second)
+            if (!_enum_map.contains(path) && !_alias_map.contains(path) && !_interface_map.contains(path)
+                && _struct_map.emplace(path, id).second)
                 return true;
 
             error(span, "'" + to_string(path) + "' is already declared");
@@ -730,6 +787,28 @@ namespace foo
             }
 
             return std::nullopt;
+        }
+
+        std::optional<InterfaceId> lookup_interface(const Path& name) const
+        {
+            for (const Path& candidate : candidate_paths(name))
+            {
+                auto found = _interface_map.find(candidate);
+                if (found != _interface_map.end())
+                    return found->second;
+            }
+
+            return std::nullopt;
+        }
+
+        std::optional<FunctionId> find_code_function(TypeId type, const std::string& name) const
+        {
+            auto it = _output.methods.find(std::pair<TypeId, std::string>{type, name});
+
+            if (it == _output.methods.end())
+                return std::nullopt;
+
+            return it->second;
         }
 
         std::optional<FunctionId> lookup_function(const Path& name) const
@@ -1001,6 +1080,10 @@ namespace foo
             if (found_enum.has_value())
                 return enum_at(*found_enum).type;
 
+            std::optional<InterfaceId> found_interface = lookup_interface(parts);
+            if (found_interface.has_value())
+                return _output.interfaces[static_cast<size_t>(*found_interface)].type;
+
             std::optional<size_t> found_alias = lookup_alias(parts);
             if (found_alias.has_value())
                 return resolve_alias(*found_alias);
@@ -1029,26 +1112,24 @@ namespace foo
             for (FunctionInfo& info : _output.functions)
             {
                 enter(info);
-                info.sig = make_signature(info);
+                info.sig = make_signature(info.decl->signature, info.is_method);
             }
         }
 
-        FunctionSig make_signature(const FunctionInfo& info)
+        FunctionSig make_signature(const ast::FunctionSignature& signature, bool is_method)
         {
-            const ast::FnDecl& decl = *info.decl;
-
             FunctionSig sig;
 
             size_t first_param = 0;
-            if (info.is_method)
+            if (is_method)
             {
                 first_param = 1;
-                sig.self_by_ref = decl.signature.params[0].reffed;
+                sig.self_by_ref = signature.params[0].reffed;
             }
 
-            for (size_t i = first_param; i < decl.signature.params.size(); i++)
+            for (size_t i = first_param; i < signature.params.size(); i++)
             {
-                const ast::Param& param = decl.signature.params[i];
+                const ast::Param& param = signature.params[i];
 
                 TypeId type = resolve_type(param.type);
                 if (type == BaseTypes::Void)
@@ -1060,12 +1141,181 @@ namespace foo
                 sig.params.push_back({type, param.reffed});
             }
 
-            if (decl.signature.return_type)
-                sig.ret = resolve_type(decl.signature.return_type);
+            if (signature.return_type)
+                sig.ret = resolve_type(signature.return_type);
             else
                 sig.ret = BaseTypes::Void;
 
             return sig;
+        }
+
+         void resolve_interfaces()
+        {
+            for (size_t i = 0; i < _output.interfaces.size(); i++)
+            {
+                InterfaceInfo& info = _output.interfaces[i];
+
+                _file_id = info.file_index;
+                _scope = info.scope;
+
+                for (const ast::FnInterface& fn : info.decl->functions)
+                {
+                    const bool explicit_self = !fn.signature.params.empty() && fn.signature.params[0].name == "self";
+
+                    InterfaceFnInfo ifn;
+                    ifn.owner = static_cast<InterfaceId>(i);
+                    ifn.index = static_cast<int>(info.fns.size());
+                    ifn.name = fn.name;
+                    ifn.span = info.span;
+
+                    for (InterfaceFnId other : info.fns)
+                        if (_output.interface_fns[static_cast<size_t>(other)].name == fn.name)
+                            error(info.span, "interface '" + to_string(info.path) + "' already has a function '" + fn.name + "'");
+
+                    ifn.sig = make_signature(fn.signature, explicit_self);
+
+                    info.fns.push_back(static_cast<InterfaceFnId>(_output.interface_fns.size()));
+                    _output.interface_fns.push_back(std::move(ifn));
+                }
+            }
+        }
+
+        void resolve_codes()
+        {
+            resolve_interfaces();
+
+            for (CodeInfo& code : _output.codes)
+            {
+                _file_id = code.file_index;
+                _scope = code.scope;
+
+                code.target = resolve_type(code.decl->target);
+
+                if (code.target != BaseTypes::Error)
+                {
+                    if (code.target == BaseTypes::Void)
+                    {
+                        error(code.decl->target->span, "cannot write code for 'void'");
+                        code.target = BaseTypes::Error;
+                    }
+                    else if (types().kind(code.target) == TypeKind::Interface)
+                    {
+                        error(code.decl->target->span, "cannot write code for an interface, use 'code T as "
+                            + type_name(code.target) + "' to implement it");
+                        code.target = BaseTypes::Error;
+                    }
+                }
+
+                if (code.decl->interface)
+                {
+                    const TypeId iface = resolve_type(code.decl->interface);
+
+                    if (iface != BaseTypes::Error)
+                    {
+                        if (types().kind(iface) == TypeKind::Interface)
+                            code.interface = types().interface_id(iface);
+                        else
+                            error(code.decl->interface->span, "'" + type_name(iface) + "' is not an interface");
+                    }
+                }
+
+                for (FunctionId id : code.functions)
+                {
+                    FunctionInfo& fn = function_at(id);
+                    const ast::FnDecl& decl = *fn.decl;
+
+                    fn.owner_type = code.target;
+                    fn.path = Path{type_name(code.target), decl.name};
+
+                    // `self` may be written with a type, but it has to be the target
+                    if (fn.is_method && decl.signature.params[0].type)
+                    {
+                        const TypeId self_type = resolve_type(decl.signature.params[0].type);
+
+                        if (self_type != BaseTypes::Error && code.target != BaseTypes::Error && self_type != code.target)
+                            error(decl.signature.params[0].span,
+                                "'self' must be '" + type_name(code.target) + "', or have no type");
+                    }
+
+                    if (code.target == BaseTypes::Error)
+                        continue;
+
+                    if (!_output.methods.try_emplace(std::pair<TypeId, std::string>{code.target, decl.name}, id).second)
+                        error(fn.span, "'" + type_name(code.target) + "' already has a function '" + decl.name + "'");
+                }
+            }
+        }
+
+        void check_impls()
+        {
+            for (CodeInfo& code : _output.codes)
+            {
+                if (code.interface == EmptyId || code.target == BaseTypes::Error)
+                    continue;
+
+                _file_id = code.file_index;
+                _scope = code.scope;
+
+                const InterfaceInfo& iface = _output.interfaces[static_cast<size_t>(code.interface)];
+                const std::pair<TypeId, InterfaceId> key{code.target, code.interface};
+
+                if (_output.impls.contains(key))
+                {
+                    error(code.span, "'" + type_name(code.target) + "' already implements '" + to_string(iface.path) + "'");
+                    continue;
+                }
+
+                std::vector<FunctionId> table;
+                table.reserve(iface.fns.size());
+
+                for (InterfaceFnId ifn_id : iface.fns)
+                {
+                    const InterfaceFnInfo& want = _output.interface_fns[static_cast<size_t>(ifn_id)];
+
+                    FunctionId found = EmptyId;
+                    for (FunctionId id : code.functions)
+                    {
+                        if (function_at(id).decl->name == want.name)
+                        {
+                            found = id;
+                            break;
+                        }
+                    }
+
+                    if (found == EmptyId)
+                    {
+                        error(code.span, "'" + type_name(code.target) + "' does not implement '" + want.name
+                            + "' of '" + to_string(iface.path) + "'");
+
+                        table.push_back(EmptyId);
+                        continue;
+                    }
+
+                    const FunctionInfo& fn = function_at(found);
+
+                    if (!fn.is_method || !(fn.sig == want.sig))
+                        error(fn.span, "'" + want.name + "' does not match the interface, expected "
+                            + (want.sig.self_by_ref ? "ref self, " : "self, ") + to_string(_output, want.sig));
+
+                    table.push_back(found);
+                }
+
+                for (FunctionId id : code.functions)
+                {
+                    const std::string& name = function_at(id).decl->name;
+
+                    const bool in_interface = std::ranges::any_of(iface.fns, [&](InterfaceFnId f)
+                    {
+                        return _output.interface_fns[static_cast<size_t>(f)].name == name;
+                    });
+
+                    if (!in_interface)
+                        error(function_at(id).span, "'" + name + "' is not part of '" + to_string(iface.path)
+                            + "', put it in a plain 'code' block");
+                }
+
+                _output.impls.emplace(key, std::move(table));
+            }
         }
 
 
@@ -1136,7 +1386,7 @@ namespace foo
             const FunctionInfo* caller = nullptr,
             const std::string& extra = "")
         {
-            const bool is_owner = caller != nullptr && caller->owner_type == info.type;
+            const bool is_owner = caller != nullptr && caller->scope == info.scope;
 
             if (field.pub || is_owner)
                 return true;
@@ -1154,38 +1404,12 @@ namespace foo
             const FunctionInfo* caller = nullptr,
             const std::string& extra = "")
         {
-            //println(fn.owner_type, fn.pub, fn.decl->name);
-
             if (fn.pub)
-            {
-                //println("fn.pub");
                 return true;
-            }
 
-            if (!caller)
-            {
-                //println("!caller");
-                return false;
-            }
-
-            if (fn.owner_type != EmptyType)
-            {
-                //println("fn.owner_type != EmptyType");
-                if (fn.owner_type != caller->owner_type)
-                {
-                    //println("fn.owner_type != caller->owner_type");
-                    goto error_label;
-                }
-            }
-
-            if (path_same_start(fn.path, caller->path))
-            {
-                //println("path_same_start(fn.path, caller->path)");
+            if (caller != nullptr && caller->scope == fn.scope)
                 return true;
-            }
 
-
-        error_label:
             error(span,
                 "function '" + to_string(fn.path) +
                 "' is private" + extra);
@@ -1228,6 +1452,9 @@ namespace foo
                 TypeId type = info.sig.params[i - first_param].type;
 
                 declare_local(param.name, type, param.span);
+
+                if (info.sig.params[i - first_param].by_ref && types().kind(type) == TypeKind::Interface)
+                    _locals.back().names[param.name].borrowed = true;
             }
 
             resolve_block(decl.body);
@@ -1304,7 +1531,7 @@ namespace foo
                 (level == _lambdas.size()) ? _locals : _enclosing[level].locals;
 
             if (const LocalInfo* local = find_in_scopes(scopes, name))
-                return VarRef{local->type, RefKind::Local, local->slot};
+                return VarRef{local->type, RefKind::Local, local->slot, local->borrowed};
 
             if (level == 0)
                 return std::nullopt;
@@ -1539,7 +1766,10 @@ namespace foo
                     if (!is_lvalue(*n.place))
                         error(n.place->span, "this is not an lvalue");
                     else
+                    {
+                        check_not_borrowed(*n.place);
                         expect_assignable(place_type, type, n.place->span);
+                    }
                 },
                 [&](const ast::PatTuple& t)
                 {
@@ -1820,6 +2050,20 @@ namespace foo
             }, expr.kind);
         }
 
+        void check_not_borrowed(const ast::Expr& place)
+        {
+            const auto* name = std::get_if<ast::Name>(&place.kind);
+
+            if (!name || name->path.size() != 1)
+                return;
+
+            const auto variable = find_variable(name->path[0]);
+
+            if (variable && variable->borrowed)
+                error(place.span, "cannot assign to '" + name->path[0]
+                    + "', it borrows the caller's value, and must remain the same type");
+        }
+
         // this checks if its assignable,
         // it has some leeway in that int's can be converted to floats, and T's to T?'s etc
         // strict means strict
@@ -1855,11 +2099,12 @@ namespace foo
                     return std::ranges::find(alternatives, from) != alternatives.end();
                 }
 
+                if (types().kind(to) == TypeKind::Interface)
+                    return _output.impls.contains(std::pair<TypeId, InterfaceId>{from, types().interface_id(to)});
+
                 if (types().kind(to) == TypeKind::Optional && from == BaseTypes::None)
                     return true;
 
-                if (types().kind(to) == TypeKind::Optional)
-                    return assignable(types().element(to), from, strict);
             } else
             {
                 return (to == from);
@@ -1996,9 +2241,17 @@ namespace foo
                     return make_einfo(BaseTypes::Error);
                 }
             }
+            else if (types().kind(source) == TypeKind::Interface)
+            {
+                if (!_output.impls.contains(std::pair<TypeId, InterfaceId>{target, types().interface_id(source)}))
+                {
+                    error(as.type->span, "'" + type_name(target) + "' does not implement '" + type_name(source) + "'");
+                    return make_einfo(BaseTypes::Error);
+                }
+            }
             else if (source != BaseTypes::Any)
             {
-                error(span, "'as' needs a variant or any, found '" + type_name(source) + "'");
+                error(span, "'as' needs a variant, an interface or any, found '" + type_name(source) + "'");
                 return make_einfo(BaseTypes::Error);
             }
 
@@ -2352,6 +2605,7 @@ namespace foo
         ExprInfo resolve_assign(const ast::Binary& assign)
         {
             TypeId target_type = resolve_expr(*assign.lhs);
+            check_not_borrowed(*assign.lhs);
             TypeId value_type = resolve_expr(*assign.rhs, target_type);
 
             // an unknown name already got its own error
@@ -2491,8 +2745,8 @@ namespace foo
 
             std::optional<Callee> callee;
 
-            if (is_struct_type(type))
-                callee = find_static_function(type, call.method, span);
+            if (const auto found = find_code_function(type, call.method))
+                callee = code_static_callee(*found, call.method, span);
             else
                 callee = find_native_static_function(type, call.method, span);
 
@@ -2509,18 +2763,10 @@ namespace foo
             return make_einfo(callee->sig.ret, callee->ref, callee->index);
         }
 
-        std::optional<Callee> find_static_function(TypeId struct_type, const std::string& name, const SourceSpan& span)
+        std::optional<Callee> code_static_callee(FunctionId id, const std::string& name, const SourceSpan& span)
         {
-            StructInfo& info = struct_of_type(struct_type);
+            FunctionInfo& function = function_at(id);
 
-            auto found = info.methods.find(name);
-            if (found == info.methods.end())
-            {
-                error(span, "'" + to_string(info.path) + "' has no function '" + name + "'");
-                return std::nullopt;
-            }
-
-            FunctionInfo& function = function_at(found->second);
             if (function.is_method)
             {
                 error(span, "'" + name + "' is a method, call it on a value");
@@ -2530,7 +2776,7 @@ namespace foo
             if (!ensure_access_function(function, span, _current_resolving_function))
                 return std::nullopt;
 
-            return make_callee(function.sig, RefKind::Function, found->second);
+            return make_callee(function.sig, RefKind::Function, id);
         }
 
         std::optional<Callee> find_native_static_function(TypeId type, const std::string& name, const SourceSpan& span)
@@ -2633,7 +2879,7 @@ namespace foo
             return std::nullopt;
         }
 
-        std::optional<Callee> resolve_method_callee(const ast::Expr& expr, const ast::Member& member)
+                std::optional<Callee> resolve_method_callee(const ast::Expr& expr, const ast::Member& member)
         {
             const SourceSpan& span = expr.span;
 
@@ -2642,28 +2888,40 @@ namespace foo
             if (receiver_type == BaseTypes::Error)
                 return std::nullopt;
 
+            // code blocks: structs, enums, ints, arrays... they all go through here
+            if (const auto found = find_code_function(receiver_type, member.name))
+            {
+                FunctionInfo& function = function_at(*found);
+
+                if (function.is_method == false)
+                {
+                    error(span, "'" + member.name + "' is a static function, not a method");
+                    return std::nullopt;
+                }
+
+                if (!ensure_access_function(function, span, _current_resolving_function))
+                    return std::nullopt;
+
+                return make_callee(function.sig, RefKind::Method, *found, member.target.get());
+            }
+
+            // an interface value: which function runs is decided at runtime
+            if (types().kind(receiver_type) == TypeKind::Interface)
+            {
+                const InterfaceInfo& iface = _output.interfaces[static_cast<size_t>(types().interface_id(receiver_type))];
+
+                for (InterfaceFnId id : iface.fns)
+                {
+                    const InterfaceFnInfo& ifn = _output.interface_fns[static_cast<size_t>(id)];
+
+                    if (ifn.name == member.name)
+                        return make_callee(ifn.sig, RefKind::InterfaceMethod, id, member.target.get());
+                }
+            }
+
             if (is_struct_type(receiver_type))
             {
                 StructInfo& info = struct_of_type(receiver_type);
-
-                auto found = info.methods.find(member.name);
-                if (found != info.methods.end())
-                {
-                    FunctionInfo& function = function_at(found->second);
-
-                    if (function.is_method == false)
-                    {
-                        error(span, "'" + member.name + "' is a static function, not a method");
-
-                        return std::nullopt;
-                    }
-
-                    if (!ensure_access_function(function, span, _current_resolving_function))
-                        return std::nullopt;
-
-                    return make_callee(function.sig, RefKind::Method, found->second, member.target.get());
-                }
-
                 const int field_index = find_field(info, member.name);
 
                 if (field_index >= 0 && is_function_type(info.fields[static_cast<size_t>(field_index)].type))
@@ -2678,11 +2936,9 @@ namespace foo
                 }
             }
 
-
             auto match = natives().find_method(types(), receiver_type, member.name);
             if (match.has_value())
                 return make_callee(match->sig, RefKind::NativeMethod, match->id, member.target.get());
-
 
             error(span, "'" + type_name(receiver_type) + "' has no method '" + member.name + "'");
             return std::nullopt;
@@ -2733,7 +2989,8 @@ namespace foo
 
                 if (param->by_ref)
                 {
-                    expect_assignable(param->type, arg_type, arg.span, true);
+                    const bool borrow = types().kind(param->type) == TypeKind::Interface && arg_type != param->type;
+                    expect_assignable(param->type, arg_type, arg.span, !borrow);
 
                     if (is_lvalue(arg) == false)
                         warn(arg.span, "this parameter is by reference, you are passing a rvalue");

@@ -126,6 +126,9 @@ namespace foo
 
         Ord cmp(const Boxed& a, const Boxed& b)
         {
+            if (auto c = a.type <=> b.type; c != 0)
+                return c;
+
             return cmp_ref(a.v, b.v);
         }
 

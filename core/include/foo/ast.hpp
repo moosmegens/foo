@@ -635,7 +635,6 @@ namespace foo::ast
     {
         std::string name;
         std::vector<StructField> fields;
-        std::vector<FnDecl> methods;
 
         bool operator==(const StructDecl&) const = default;
     };
@@ -706,7 +705,21 @@ namespace foo::ast
         }
     };
 
-    using DeclKind = std::variant<FnDecl, StructDecl, EnumDecl, NamespaceDecl, AliasDecl, InterfaceDecl>;
+    struct CodeDecl
+    {
+        TypeExprPtr target;
+        TypeExprPtr interface;
+        std::vector<FnDecl> functions;
+
+        bool operator==(const CodeDecl& other) const
+        {
+            return ptr_equal(target, other.target)
+                && ptr_equal(interface, other.interface)
+                && functions == other.functions;
+        }
+    };
+
+    using DeclKind = std::variant<FnDecl, StructDecl, EnumDecl, NamespaceDecl, AliasDecl, InterfaceDecl, CodeDecl>;
 
     struct Decl
     {

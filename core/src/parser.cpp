@@ -180,7 +180,7 @@ namespace foo
                     "var", "fn", "struct", "enum", "interface", "ref",
                     "if", "else", "while", "for", "in", "return",
                     "true", "false", "import", "check", "as", "none",
-                    "priv", "break", "continue"
+                    "priv", "break", "continue", "code"
                 };
 
                 return std::find(std::begin(words), std::end(words), w) != std::end(words);
@@ -581,6 +581,7 @@ namespace foo
                     || at_kw("enum")
                     || at_kw("interface")
                     || at_kw("import")
+                    || at_kw("code")
                     || at_alias_decl();
             }
 
@@ -1234,6 +1235,15 @@ namespace foo
                     return std::make_unique<ast::Decl>(std::move(*enumeration), span_from(start));
                 }
 
+                if (accept_kw("code"))
+                {
+                    auto code = parse_code_decl();
+                    if (!code)
+                        return nullptr;
+
+                    return std::make_unique<ast::Decl>(std::move(*code), span_from(start));
+                }
+
                 if (at_alias_decl())
                 {
                     bump(4); // 'type'
@@ -1368,6 +1378,55 @@ namespace foo
                 return ast::EnumDecl{std::move(*name), std::move(variants)};
             }
 
+            std::optional<ast::CodeDecl> parse_code_decl()
+            {
+                auto target = parse_type();
+                if (!target)
+                    return std::nullopt;
+
+                ast::TypeExprPtr interface;
+                if (accept_kw("as"))
+                {
+                    interface = parse_type();
+                    if (!interface)
+                        return std::nullopt;
+                }
+
+                if (!expect("{"))
+                    return std::nullopt;
+
+                std::vector<ast::FnDecl> fns;
+
+                while (!at("}") && !at_end())
+                {
+                    const size_t member_start = _pos;
+
+                    const bool pub = !accept_kw("priv");
+
+                    if (accept_kw("fn"))
+                    {
+                        if (auto fn = parse_fn_decl(pub))
+                            fns.push_back(std::move(*fn));
+                        else
+                            synchronize_struct_member(member_start);
+
+                        continue;
+                    }
+
+                    error_here("expected 'fn' inside a code block");
+
+                    if (_pos == member_start)
+                        skip_token();
+
+                    synchronize_struct_member(member_start);
+                }
+
+                if (!expect("}"))
+                    return std::nullopt;
+
+                return ast::CodeDecl{std::move(target), std::move(interface), std::move(fns)};
+            }
+
             std::optional<ast::AliasDecl> parse_alias_decl()
             {
                 auto name = ident();
@@ -1447,17 +1506,16 @@ namespace foo
 
                     if (accept_kw("fn"))
                     {
-                        auto fn = parse_fn_decl(pub);
+                        error_at(SourceSpan::between(_prev_start, _prev_end),
+                            "methods are declared in a 'code' block, not inside a struct");
 
-                        if (fn)
-                            fns.push_back(std::move(*fn));
-                        else
+                        if (!parse_fn_decl(pub))
                             synchronize_struct_member(member_start);
 
                         continue;
                     }
 
-                    error_here("expected a field or a method");
+                    error_here("expected a field");
 
                     if (_pos == member_start)
                         skip_token();
@@ -1468,7 +1526,7 @@ namespace foo
                 expect("}");
 
                 return ast::StructDecl{
-                    std::move(*name), std::move(fields), std::move(fns)
+                    std::move(*name), std::move(fields)
                 };
             }
 

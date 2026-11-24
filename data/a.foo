@@ -1,26 +1,30 @@
-interface Drawable
+struct MyStruct
 {
-    draw(x: int, y: int)
-    resize(width: int, height: int) -> bool
-    clear()
+    r: float
 }
 
-interface Mutable
+interface MyInterface
 {
-    update(ref value: int)
-    get() -> int
+    fun(ref self)
 }
 
-fn repeat(c: int, f: fn())
+code MyStruct as MyInterface
 {
-    for _ in 0..c f()
+    fn fun(ref self)
+    {
+
+    }
 }
 
-fn main() -> any
+fn fun(ref a: MyInterface)
 {
-    var a = 0
+    println(a)
+    a = #MyStruct{}
+}
 
-    repeat(10, ref || { a = a + 1 } )
+fn main()
+{
+    var a: MyStruct
 
-    return a
+    fun(a)
 }
