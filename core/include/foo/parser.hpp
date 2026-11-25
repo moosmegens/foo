@@ -5,7 +5,6 @@
 #include <span>
 #include <vector>
 
-#include <foo/token.hpp>
 #include <foo/ast.hpp>
 
 

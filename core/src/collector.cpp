@@ -9,9 +9,8 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "foo/lexer.hpp"
-#include "foo/parser.hpp"
-#include "foo/util/file.hpp"
+#include <foo/parser.hpp>
+#include <foo/util/file.hpp>
 
 
 namespace foo

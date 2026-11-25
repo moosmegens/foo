@@ -4,7 +4,6 @@
 #include <ostream>
 #include <ranges>
 
-#include <foo/lexer.hpp>
 
 #include <foo/util/scoped_timer.hpp>
 

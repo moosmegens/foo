@@ -1,16 +1,3 @@
-// core/src/natives_std.cpp
-//
-// the standard library, in one place: print, the basics of arrays / maps / sets / optionals,
-// and the methods on the builtin types, many of them taking lambdas
-//
-//   [1, 2, 3].map(|x| x * 2)
-//   (1..=5).filter(|i| i % 2 == 1).sum()
-//   "a,b".split(",")
-//   maybe().map(|v| v + 1).or(0)
-//
-// call inject_std(types, natives, table) next to inject_rng / inject_io / inject_os
-// (it replaces Runtime::inject)
-
 #include <foo/natives.hpp>
 #include <foo/runtime.hpp>
 #include <foo/value.hpp>
@@ -45,8 +32,6 @@ namespace foo
         namespace bt = BaseTypes;
 
 
-        // ------------------------------------------------ values
-
         bool is_none(const ValueRef& v)
         {
             return std::holds_alternative<std::monostate>(v->v);
@@ -57,8 +42,6 @@ namespace foo
             return std::holds_alternative<int64_t>(v->v);
         }
 
-        // the items of an array, a set or a range. it is a snapshot (the values are shared, not copied),
-        // so a callback can change the original while we loop
         std::vector<ValueRef> items_of(const ValueRef& v)
         {
             if (const auto* array = std::get_if<Array>(&v->v))
@@ -88,7 +71,6 @@ namespace foo
             return out;
         }
 
-        // calls a function value with copies of the arguments
         ValueRef invoke_fn(Runtime& rt, const ValueRef& fn, std::initializer_list<ValueRef> args)
         {
             std::vector<ValueRef> copies;
@@ -118,7 +100,6 @@ namespace foo
             return {static_cast<size_t>(start), static_cast<size_t>(end)};
         }
 
-        // items ordered by the key the function gives them (stable)
         std::vector<ValueRef> ordered_by(Runtime& rt, const std::vector<ValueRef>& items, const ValueRef& key_fn)
         {
             std::vector<std::pair<ValueRef, ValueRef>> keyed;
@@ -140,9 +121,7 @@ namespace foo
         }
 
 
-        // ------------------------------------------------ types
 
-        // the element of the things map / filter / ... work on: T[], (a..b) and [T]
         std::optional<TypeId> iter_element(const TypeTable& ts, TypeId receiver)
         {
             switch (ts.kind(receiver))
@@ -157,8 +136,6 @@ namespace foo
             }
         }
 
-        // (T[] | range | set).name(fn(T) -> fn_ret) -> ret(T)
-        // `plain`: refuse arrays of optionals, for results that would turn into T??
         NativeResolver iter_with_fn(TypeId fn_ret, std::function<TypeId(TypeTable&, TypeId)> ret, bool plain = false)
         {
             return [fn_ret, ret = std::move(ret), plain](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
@@ -175,7 +152,6 @@ namespace foo
             };
         }
 
-        // a method on any of `receivers`, taking `extra` parameters of the receiver's own type
         NativeResolver self_method(std::vector<TypeId> receivers, size_t extra = 0, std::optional<TypeId> ret = std::nullopt)
         {
             return [receivers = std::move(receivers), extra, ret](TypeTable&, TypeId receiver) -> std::optional<FunctionSig>
@@ -187,7 +163,6 @@ namespace foo
             };
         }
 
-        // the result of map: whatever the function returns, as an array
         std::expected<TypeId, std::string> array_of_result(TypeTable& ts, TypeId, const std::vector<TypeId>& args)
         {
             const TypeId ret = ts.function_return(args[0]);
@@ -242,11 +217,6 @@ namespace foo
         NativeDef def(types, natives, table);
 
 
-        // ################################################################ core: print, collections, optionals, debug
-
-
-        // ================================================================ print
-
         auto printer = [](bool newline)
         {
             return [newline](Runtime& rt, Args a, const auto&)
@@ -275,7 +245,6 @@ namespace foo
         def.function("print", print_sig, printer(false), {"print(any...) -> void"});
 
 
-        // ================================================================ maps
 
         def.static_function("new",
             on_kind(TypeKind::Map, [](TypeTable&, TypeId r) { return NativeDef::sig({}, r); }),
@@ -291,7 +260,6 @@ namespace foo
             {"(map).remove(key) -> bool", "returns false if the key wasn't there"});
 
 
-        // ================================================================ sets
 
         const NativeResolver set_binary = on_kind(TypeKind::Set, [](TypeTable&, TypeId r)
         {
@@ -416,8 +384,6 @@ namespace foo
             {"(set).from(set.element[]) -> (set)", "build a set from an array, duplicates collapse", "@[int].from([1, 2, 3])"});
 
 
-        // ================================================================ ranges
-
         def.method("to_array",
             on_kind(TypeKind::Range, [](TypeTable& ts, TypeId r)
             {
@@ -445,7 +411,6 @@ namespace foo
             {"(range).to_array() -> int[]", "", "(0..3).to_array()   // [0, 1, 2]"});
 
 
-        // ================================================================ any, optionals, to_string
 
         def.static_function("unbox",
             [](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
@@ -508,7 +473,6 @@ namespace foo
             {"T.to_string() -> string", "convert any value to its string representation"});
 
 
-        // ================================================================ arrays, maps and strings
 
         def.method("join",
             [](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
@@ -715,7 +679,6 @@ namespace foo
             {"(T[]).reversed() -> T[]", "returns a reversed copy"});
 
 
-        // ================================================================ debug::
 
         def.function("debug::assert", NativeDef::sig({ParamSig{bt::Bool, false}}, bt::Void),
             [](Runtime&, Args a, const auto&)
@@ -738,10 +701,6 @@ namespace foo
             {"debug::assert_eq(any, any)"});
 
 
-        // ################################################################ std: lambdas, strings, numbers, math
-
-        // ================================================================ arrays, ranges and sets
-        // all of these work on T[], (a..b) and [T]
 
         def.generic_method("map",
             iter_with_fn(bt::Infer, [](TypeTable&, TypeId) { return bt::Infer; }),
@@ -855,7 +814,7 @@ namespace foo
             },
             {"(T[] | range | set).find_index(fn(T) -> bool) -> int?"});
 
-        // fold(start, |acc, x| ...): the accumulator is a T too
+
         def.method("fold",
             [](TypeTable& ts, TypeId receiver) -> std::optional<FunctionSig>
             {
@@ -927,7 +886,6 @@ namespace foo
             {"(set).to_array() -> T[]"});
 
 
-        // ================================================================ arrays only
 
         def.method("first",
             on_kind(TypeKind::Array, [](TypeTable& ts, TypeId r) -> std::optional<FunctionSig>
@@ -1115,7 +1073,6 @@ namespace foo
             },
             {"(T[]).sorted() -> T[]", "a sorted copy"});
 
-        // sort_by(|p| p.age): the function gives the key to sort on
         def.method("sort_by",
             on_kind(TypeKind::Array, [](TypeTable& ts, TypeId r) -> std::optional<FunctionSig>
             {
@@ -1227,7 +1184,6 @@ namespace foo
             {"(int[] | float[]).max() -> T?", "none when the array is empty"});
 
 
-        // ================================================================ optionals
 
         auto optional_sig = [](TypeTable& ts, TypeId r, auto make) -> std::optional<FunctionSig>
         {
@@ -1295,8 +1251,6 @@ namespace foo
             {"(T?).or_else(fn() -> T) -> T", "like or(), but the default is only computed when needed",
              "cache.at(key).or_else(|| load(key))"});
 
-
-        // ================================================================ maps
 
         def.method("keys",
             on_kind(TypeKind::Map, [](TypeTable& ts, TypeId r) -> std::optional<FunctionSig>
@@ -1368,7 +1322,6 @@ namespace foo
             {"(map).get_or(key: K, default: V) -> V"});
 
 
-        // ================================================================ strings (bytes, like at() and length())
 
         const auto is_string = [](TypeTable& ts, TypeId r) { return ts.kind(r) == TypeKind::String; };
 
@@ -1604,11 +1557,9 @@ namespace foo
             {
                 const std::string& s = as_string(a[0]);
 
-                // only plain decimal numbers: no spaces, no hex, no "inf" / "nan"
                 if (s.empty() || s.find_first_not_of("0123456789+-.eE") != std::string::npos)
                     return make_void();
 
-                // (std::from_chars for double is not available in every MinGW libstdc++, strtod is)
                 errno = 0;
                 char* end = nullptr;
                 const double value = std::strtod(s.c_str(), &end);
@@ -1621,7 +1572,6 @@ namespace foo
             {"(string).to_float() -> float?", "none when it is not a number"});
 
 
-        // ================================================================ numbers
 
         const std::vector<TypeId> numbers = {bt::Int, bt::Float};
 
@@ -1770,7 +1720,6 @@ namespace foo
         }
 
 
-        // ================================================================ math::
 
         def.function("math::pi", NativeDef::sig({}, bt::Float),
             [](Runtime&, Args, const auto&) { return make_float(std::numbers::pi); },
