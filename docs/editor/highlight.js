@@ -5,7 +5,7 @@
 //
 // every token becomes <span class="foo-t-...">, see editor.css for the colors.
 
-const KEYWORDS  = new Set(["fn", "struct", "enum", "import", "var", "if", "else", "while", "for", "in", "check", "return", "ref", "priv", "continue", "break", "as"]);
+const KEYWORDS  = new Set(["fn", "struct", "enum", "interface", "code", "import", "var", "if", "else", "while", "for", "in", "check", "return", "ref", "priv", "continue", "break", "as"]);
 const CONSTANTS = new Set(["true", "false", "none", "self"]);
 const TYPES     = new Set(["int", "float", "bool", "string", "any", "void"]);
 
@@ -180,12 +180,12 @@ function build(text, frag) {
             }
             else if (KEYWORDS.has(token))  {
                 cls = "foo-t-kw";
-                if (token === "as") startType();         // x as int
+                if (token === "as" || token === "code") startType();   // x as int,  code int[] { ... }
             }
             else if (CONSTANTS.has(token)) cls = "foo-t-const";
             else if (path)                 cls = "foo-t-ns";
             else if (call)                 cls = "foo-t-fn";                // int(x) is a call, not the type
-            else if (prev === "struct" || prev === "enum" || TYPES.has(token)) cls = "foo-t-type";
+            else if (prev === "struct" || prev === "enum" || prev === "interface" || TYPES.has(token)) cls = "foo-t-type";
         }
         else if (token === ":" || token === "->") {
             if (inType && depth > 0)                      complete = false;  // a label in (name: T), or the return type of a nested fn type

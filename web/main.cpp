@@ -24,10 +24,9 @@ using emscripten::val;
 
 namespace
 {
-    constexpr std::string_view kWorkDir = "/tmp/foo_web";   // lives in the in-memory filesystem
-    constexpr std::string_view kEntry   = "main";           // main.foo, collected without extension
+    constexpr std::string_view kWorkDir = "/tmp/foo_web";
+    constexpr std::string_view kEntry   = "main";
 
-    // ---------- problems ----------
 
     struct Span
     {
@@ -39,7 +38,7 @@ namespace
     {
         std::string message;
         bool is_error{true};
-        std::optional<Span> span{};     // empty for problems without a location
+        std::optional<Span> span{};
     };
 
     [[nodiscard]] Problem problem(std::string message, bool is_error)
@@ -56,7 +55,6 @@ namespace
         };
     }
 
-    // ---------- std::cout capture ----------
 
     class CoutCapture
     {
@@ -78,18 +76,17 @@ namespace
         std::streambuf* old_;
     };
 
-    // ---------- analysis (collect + natives + resolve) ----------
 
     struct Prepared
     {
         foo::RuntimeInput input;
-        foo::CollectorOutput collected;   // keeps the sources alive
+        foo::CollectorOutput collected;
     };
 
     struct Analysis
     {
         std::vector<Problem> problems;
-        std::optional<Prepared> prepared;   // empty when there were errors
+        std::optional<Prepared> prepared;
     };
 
     [[nodiscard]] Analysis analyze(std::string_view source)
@@ -97,7 +94,6 @@ namespace
         Analysis result;
         auto& problems = result.problems;
 
-        // the collector reads files, so give it one in the in-memory filesystem
         const fs::path dir{kWorkDir};
         std::error_code ec;
         fs::create_directories(dir, ec);
@@ -128,7 +124,7 @@ namespace
 
         auto& input = collected.resolver_input;
         foo::NativeTable natives;
-        foo::Runtime::inject(input.types, input.natives, natives);
+        foo::inject_std(input.types, input.natives, natives);
         foo::inject_io(input.types, input.natives, natives);
         foo::inject_os(input.types, input.natives, natives);
         foo::inject_rng(input.types, input.natives, natives);
@@ -168,13 +164,14 @@ namespace
         return static_cast<foo::FunctionId>(it - functions.begin());
     }
 
-    // ---------- running ----------
 
     struct RunOutcome
     {
         bool ok{};
-        std::string output;      // everything printed to std::cout
-        std::string returned;    // what main() returned
+
+        std::string output;
+        std::string returned;
+
         std::vector<Problem> problems;
     };
 
@@ -213,7 +210,6 @@ namespace
         return outcome;
     }
 
-    // ---------- conversion to plain JS values ----------
 
     [[nodiscard]] val to_js(const Problem& p)
     {
@@ -244,7 +240,6 @@ namespace
     }
 }
 
-// ---------- what JS can call (foo.js wraps these) ----------
 
 val run_source(const std::string& source)
 {
@@ -268,7 +263,7 @@ val run_source(const std::string& source)
     return to_js(outcome);
 }
 
-// parse + resolve without running anything
+
 val check_source(const std::string& source)
 {
     try
