@@ -10,7 +10,6 @@
 #include <string_view>
 #include <algorithm>
 
-#include <foo/lexer.hpp>
 #include <foo/util/scoped_timer.hpp>
 #include <foo/parser.hpp>
 #include <foo/source.hpp>
@@ -133,7 +132,6 @@ static void print_diagnostics(
 static void inject(foo::TypeTable& types, foo::NativeRegistry& natives, foo::NativeTable& table)
 {
     foo::inject_std(types, natives, table);
-
     foo::inject_io(types, natives, table);
     foo::inject_os(types, natives, table);
     foo::inject_rng(types, natives, table);
@@ -143,8 +141,7 @@ static void inject(foo::TypeTable& types, foo::NativeRegistry& natives)
 {
     foo::NativeTable table{};
 
-    foo::Runtime::inject(types, natives, table);
-
+    foo::inject_std(types, natives, table);
     foo::inject_io(types, natives, table);
     foo::inject_os(types, natives, table);
     foo::inject_rng(types, natives, table);
